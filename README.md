@@ -7,7 +7,7 @@
 
 ## 구성
 
-스킬 7 · 에이전트 6 · 커맨드 1 · 훅 0
+스킬 8 · 에이전트 6 · 커맨드 1 · 훅 0
 
 | 종류 | 이름 | 언제 쓰나 |
 | - | - | - |
@@ -18,6 +18,7 @@
 | 스킬 | `ui-ux-guide` | 화면·문구·인터랙션을 만들거나 고칠 때 6단계 + 7원칙 + 체크리스트 |
 | 스킬 | `data-migration` | 데이터가 있는 DB 의 스키마 이행 · 타 서비스 ETL |
 | 스킬 | `plugin-sync` | 플러그인(이 플러그인 또는 프로젝트 오버레이) 최신화 사이클 — 명시 호출 전용 |
+| 스킬 | `harness-install` | "하네스 설치해줘" — 지금 레포에 harness-agent 게이트(`.harness/` 훅)와 이 플러그인(project scope)을 함께 설치. 결정은 하나씩 묻는다 |
 | 에이전트 | `backend-engineer` | BE 구현 위임 기본 대상 |
 | 에이전트 | `frontend-engineer` | FE 구현 · BE→FE 계약 동기화 |
 | 에이전트 | `unit-test-engineer` | 테스트 작성/유지 |
@@ -70,8 +71,11 @@
 
 ### 업데이트
 
-- 설치본은 **버전이 바뀌어야 갱신된다.** 자산을 고치면 `plugins/harness-kit/.claude-plugin/plugin.json` 과 `.claude-plugin/marketplace.json` 의 `version` 을 **함께** 올린다(절차 변경·자산 추가 = minor, 문구 정리 = patch). 내용만 바꾸고 버전을 그대로 두면 팀원은 옛 판을 계속 쓴다.
-- 받는 쪽: `/plugin marketplace update harness-kit` → `/reload-plugins`
+- `plugin.json`·`marketplace.json` 에 **`version` 필드를 두지 않는다.** 설치본은 main 의 커밋 SHA 로 판을 가르므로, main 에 새 커밋이 들어가면 그것이 곧 새 판이다. 버전 범프는 하지 않는다(`claude plugin validate` 의 version 없음 경고 1건은 의도된 것이다).
+- autoUpdate 가 켜진 PC 는 **새 세션을 열 때**(또는 `/reload-plugins`) 새 판을 받는다. 켜지 않았다면 손으로: `/plugin marketplace update harness-kit` → `/reload-plugins`
+- autoUpdate 는 **사용자 범위**에서 켠다(`~/.claude/plugins/known_marketplaces.json` 의 이 마켓플레이스 항목). `/plugin` UI 의 autoUpdate 토글은 레포의 `.claude/settings.json` 에 키를 쓸 수 있어, 켜기만 했는데 레포 파일이 바뀐다.
+- main 병합은 곧 배포다 — autoUpdate 가 켜진 곳에 바로 퍼지므로, 시험을 통과한 브랜치만 병합한다.
+- 사용 범위를 팀으로 넓혀 판을 고정하거나 되돌릴 필요가 생기면, 명시 버전(`version` 필드 + 범프 규칙)으로 바꾸는 것을 검토한다.
 
 ## 프로젝트 프로필
 

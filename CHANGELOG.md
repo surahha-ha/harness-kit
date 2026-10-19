@@ -1,7 +1,12 @@
 # Changelog
 
-버전은 `plugins/harness-kit/.claude-plugin/plugin.json` 과 `.claude-plugin/marketplace.json` 이 항상 같다.
-절차 변경·자산 추가 = minor, 문구 정리 = patch.
+매니페스트에 `version` 필드를 두지 않는다 — 판은 main 커밋 SHA 로 갈린다. 절은 병합 단위로 적는다.
+(0.1.0 까지는 `plugin.json` 과 `marketplace.json` 의 명시 버전을 함께 올렸다.)
+
+## 미발행 — 하네스 설치 스킬
+
+- 스킬 추가: `harness-install`(SKILL·DECISIONS·PITFALLS·CHECKS·TEMPLATES) — 지금 레포에 harness-agent 게이트를 골격 복사 방식으로 설치하고, 이 플러그인을 project scope 로 켠다. 결정은 하나씩 묻는다
+- 버전 필드 제거: `plugin.json`·`marketplace.json` 에서 `version` 을 뺐다 — 이후 판은 main 커밋 SHA 로 갈리고 autoUpdate 로 갱신된다(README 「업데이트」). 아래 0.1.0 이 마지막 명시 버전이다
 
 ## 0.1.0 — 초기 구성
 
