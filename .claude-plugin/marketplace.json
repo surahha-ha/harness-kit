@@ -1,0 +1,18 @@
+{
+  "name": "harness-kit",
+  "owner": {
+    "name": "surah"
+  },
+  "description": "프로젝트에 묶이지 않는 공용 Claude Code 플러그인 마켓플레이스. 프로젝트 고유값은 각 레포의 harness.config.mjs project 블록에서 읽는다.",
+  "plugins": [
+    {
+      "name": "harness-kit",
+      "source": "./plugins/harness-kit",
+      "description": "다계층 작업 지휘·FE/BE 동시 추적·품질 사이클·기록 정리·UI/UX 단계 절차·데이터 이행·플러그인 최신화 스킬, 구현·테스트·검증 에이전트, 세이브 커맨드 (훅 없음)",
+      "version": "0.1.0",
+      "author": { "name": "surah" },
+      "category": "development",
+      "keywords": ["orchestration", "verification", "testing", "migration", "ui-ux", "workflow"]
+    }
+  ]
+}
