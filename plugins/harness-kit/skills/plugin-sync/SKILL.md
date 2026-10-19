@@ -37,7 +37,7 @@ git worktree add ../<플러그인명>-wt origin/<canonicalBranch> --detach
 
 `harness-kit:plugin-curator` 에이전트에 위임합니다(감사 소스 매트릭스 A~F·판정 규칙·산출 형식은 그 에이전트가 보유). 에이전트를 쓸 수 없으면 같은 매트릭스를 직접 훑습니다.
 
-위임 시 반드시 넘길 것: **워크트리 절대경로**, 직전 갱신 시점(플러그인 `version` 과 마지막 커밋), `plugin.auditSources`, 이번에 특별히 의심되는 영역(사용자가 말한 것).
+위임 시 반드시 넘길 것: **워크트리 절대경로**, 직전 갱신 시점(마지막 커밋, 매니페스트에 `version` 이 있으면 그 값도), `plugin.auditSources`, 이번에 특별히 의심되는 영역(사용자가 말한 것).
 
 **완료 기준**: 여섯 축(A~F) 각각에 대해 "드리프트 N건" 또는 "이상 없음"이 명시된 리포트를 손에 넣었다. 축 하나라도 언급이 없으면 감사는 끝나지 않았다.
 
@@ -68,17 +68,21 @@ git worktree add ../<플러그인명>-wt origin/<canonicalBranch> --detach
 | 파일 | 갱신할 것 |
 |------|-----------|
 | `plugin.readme` | 구성표의 **개수**(에이전트 N·스킬 N·커맨드 N·훅 N)와 "언제 쓰나" 목록 행 |
-| `<plugin.dir>/.claude-plugin/plugin.json` | `version` |
-| `plugin.marketplaceFile` | 같은 `version` (**둘은 항상 같이 올린다**) |
+| `<plugin.dir>/.claude-plugin/plugin.json` | `version` — **있을 때만** (아래 분기) |
+| `plugin.marketplaceFile` 의 이 플러그인 항목 | 같은 `version` — **있을 때만** |
 
-버전은 자산 추가·절차 변경이면 minor, 오타·문구 정리면 patch. git 소스 마켓플레이스는 **버전이 바뀌어야 설치본이 갱신된다** — 내용만 바꾸고 버전을 그대로 두면 팀원은 옛 판을 계속 쓴다.
+`version` 을 올릴지는 대상 플러그인의 두 매니페스트(`plugin.json` 과 마켓플레이스 항목)를 **먼저 열어 보고** 가른다.
 
-**완료 기준**: 실제 파일 수를 세어 README 개수표와 대조했고, 두 매니페스트의 `version` 문자열이 일치한다.
+- **둘 다 `version` 이 있다(명시 버전)** — 둘을 항상 같이 올린다. 자산 추가·절차 변경이면 minor, 오타·문구 정리면 patch. 이 방식에서는 **버전이 바뀌어야 설치본이 갱신된다** — 내용만 바꾸고 버전을 그대로 두면 설치한 사람은 옛 판을 계속 쓴다.
+- **둘 다 `version` 이 없다(커밋 SHA 추적)** — 올리지 않고, `version` 을 새로 넣지도 않는다. 설치본은 정본 브랜치의 커밋 SHA 로 판을 가르므로 **정본 브랜치 병합이 곧 배포**다. autoUpdate 가 켜진 곳에 바로 퍼지니, 6단계 검증은 병합 **전에** 끝낸다. `claude plugin validate` 의 version 없음 경고는 이 방식에서 의도된 것이다.
+- **한쪽에만 있다** — 고치지 말고 멈춰서 사용자에게 묻는다. 어느 정책이 맞는지는 이 스킬이 정할 수 없다(README·CHANGELOG 의 업데이트 정책을 근거로 보여 준다).
+
+**완료 기준**: 실제 파일 수를 세어 README 개수표와 대조했고, 두 매니페스트의 `version` 이 **둘 다 같은 문자열이거나 둘 다 없다.**
 
 ## 6. 검증
 
 - 훅을 건드렸다면 `plugin.hookTests` 의 테스트 — **전건 통과**여야 한다(`null` 이면 훅이 없다)
-- `claude plugin validate <plugin.dir> --strict` 와 마켓플레이스 루트 validate — 종료코드 0
+- `claude plugin validate <plugin.dir>` 와 마켓플레이스 루트 validate — 종료코드 0. 명시 버전이면 `--strict` 를 붙여 경고 0 까지 본다. 커밋 SHA 추적이면 `--strict` 는 version 없음 경고 때문에 반드시 실패하므로 붙이지 않고, 경고가 그 1건(마켓 루트는 그 플러그인 항목 1건)뿐인지 눈으로 확인한다
 - 새/수정 스킬·에이전트의 frontmatter 가 파싱되는지: `name`·`description` 존재, `---` 짝 맞음
 - `git status` 로 의도한 파일만 변경됐는지 (워크트리라 다른 브랜치 파일이 섞이지 않았는지)
 

@@ -3,6 +3,10 @@
 매니페스트에 `version` 필드를 두지 않는다 — 판은 main 커밋 SHA 로 갈린다. 절은 병합 단위로 적는다.
 (0.1.0 까지는 `plugin.json` 과 `marketplace.json` 의 명시 버전을 함께 올렸다.)
 
+## 미발행 — plugin-sync 버전 분기
+
+- `plugin-sync` 5단계와 `plugin-curator` F 축을 버전 정책으로 가른다 — 두 매니페스트에 `version` 이 있으면 함께 올리고 일치를 보며, 둘 다 없으면(커밋 SHA 추적) 올리지도 새로 넣지도 않고 정상으로 보고, 한쪽에만 있으면 멈추고 묻는다(감사에서는 드리프트). 6단계 validate 의 `--strict` 는 명시 버전일 때만 붙인다
+
 ## 미발행 — 하네스 설치 스킬
 
 - 스킬 추가: `harness-install`(SKILL·DECISIONS·PITFALLS·CHECKS·TEMPLATES) — 지금 레포에 harness-agent 게이트를 골격 복사 방식으로 설치하고, 이 플러그인을 project scope 로 켠다. 결정은 하나씩 묻는다
