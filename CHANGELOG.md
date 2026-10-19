@@ -3,6 +3,11 @@
 버전은 `plugins/harness-kit/.claude-plugin/plugin.json` 과 `.claude-plugin/marketplace.json` 이 항상 같다.
 절차 변경·자산 추가 = minor, 문구 정리 = patch.
 
+## 미발행 — 하네스 설치 스킬
+
+- 스킬 추가: `harness-install`(SKILL·DECISIONS·PITFALLS·CHECKS·TEMPLATES) — 지금 레포에 harness-agent 게이트를 골격 복사 방식으로 설치하고, 이 플러그인을 project scope 로 켠다. 결정은 하나씩 묻는다
+- 버전 표기는 아직 0.1.0 이다 — 버전 정책(명시 버전 / 커밋 SHA 추적)을 정한 뒤 매니페스트를 고친다
+
 ## 0.1.0 — 초기 구성
 
 - 스킬 7: `coordinator` · `fe-be-trace` · `qa-cycle` · `archive-cycle` · `ui-ux-guide`(SKILL·PRINCIPLES·CHECKLIST·REPO_TEMPLATE) · `data-migration` · `plugin-sync`
