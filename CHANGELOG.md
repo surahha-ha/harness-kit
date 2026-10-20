@@ -5,6 +5,7 @@
 
 ## 미발행 — 하네스 걷어내기
 
+- 스킬 추가: `harness-uninstall`(SKILL·DECISIONS·PITFALLS · `scripts/uninstall.mjs`·`scripts/edit.mjs`) — harness-install 이 넣은 것만 블록·줄·치환·JSON 키 단위로 걷어 낸다. 영수증이 있으면 영수증 기준(sha256 이 다르면 「설치 뒤 손댄 것」으로 따로 묻는다), 없으면 알려진 구조로 후보를 뽑아 항목마다 묻는다. 손대기 전 `git-path harness-uninstall-backup/` 백업과 런타임 산출물의 `git-common-dir` 증거 사본, 체크포인트로 이어받기, 후보 밖 파일을 가리키는 참조는 보고만, settings 는 하네스가 아닌 훅을 이벤트별로 백업과 대조, `git restore`·`checkout` 금지, 커밋은 지우기 전에 읽어 둔 `commitExecution` 대로 경로 지정·직전 확인, 플러그인 키는 맨 마지막 결정. 재설치는 uninstall → 새 세션 → install
 - `harness-install` 이 영수증과 경계 표시를 남긴다 — 9단계가 레포 루트 `harness.install.json`(커밋 대상)에 원본·SHA·설치 시각·결정 답·만든 파일과 sha256(줄끝 LF 정규화)·고친 곳(표시 블록 · 한 줄 표시 · 바꾸기 전·뒤 원문)·settings 훅과 키·플러그인 설치 기록을 `scripts/write-manifest.mjs` 로 쓴다. `.gitignore` 줄과 `CLAUDE.md` 「개발 하네스」 절은 `harness-kit:begin`·`harness-kit:end` 로 감싸고, 절을 가리키는 줄에는 `harness-kit:line` 을 붙인다(TEMPLATES §3·§4·§9, CHECKS §7). 0단계가 끝난 설치에서 멈출 때 「`harness-uninstall` → 새 세션 → install」을 안내한다
 
 ## 미발행 — 하네스 설치 재개

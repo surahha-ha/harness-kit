@@ -7,7 +7,7 @@
 
 ## 구성
 
-스킬 8 · 에이전트 6 · 커맨드 1 · 훅 0
+스킬 9 · 에이전트 6 · 커맨드 1 · 훅 0
 
 | 종류 | 이름 | 언제 쓰나 |
 | - | - | - |
@@ -18,7 +18,8 @@
 | 스킬 | `ui-ux-guide` | 화면·문구·인터랙션을 만들거나 고칠 때 6단계 + 7원칙 + 체크리스트 |
 | 스킬 | `data-migration` | 데이터가 있는 DB 의 스키마 이행 · 타 서비스 ETL |
 | 스킬 | `plugin-sync` | 플러그인(이 플러그인 또는 프로젝트 오버레이) 최신화 사이클 — 명시 호출 전용 |
-| 스킬 | `harness-install` | "하네스 설치해줘" — 지금 레포에 harness-agent 게이트(`.harness/` 훅)와 이 플러그인(project scope)을 함께 설치. 결정은 하나씩 묻는다 |
+| 스킬 | `harness-install` | "하네스 설치해줘" — 지금 레포에 harness-agent 게이트(`.harness/` 훅)와 이 플러그인(project scope)을 함께 설치. 결정은 하나씩 묻는다. 끝에 영수증 `harness.install.json` 을 남긴다 |
+| 스킬 | `harness-uninstall` | "하네스 제거해줘" · "하네스 재설치" — harness-install 이 넣은 것만 블록·키 단위로 걷어 낸다. 영수증이 있으면 영수증 기준, 없으면 알려진 구조로 후보를 뽑아 항목마다 확인. 재설치는 이 스킬 → 새 세션 → `harness-install` |
 | 에이전트 | `backend-engineer` | BE 구현 위임 기본 대상 |
 | 에이전트 | `frontend-engineer` | FE 구현 · BE→FE 계약 동기화 |
 | 에이전트 | `unit-test-engineer` | 테스트 작성/유지 |
