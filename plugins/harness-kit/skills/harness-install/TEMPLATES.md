@@ -1,4 +1,4 @@
-# 꼴 — settings.json · .gitignore · CLAUDE.md · 커밋 명령
+# 꼴 — settings.json · .gitignore · CLAUDE.md · 커밋 명령 · config 머리 줄 · 체크포인트
 
 ## §1 훅 5개 (`.claude/settings.json` 의 `hooks`)
 
@@ -65,7 +65,7 @@
 
 ## §4 CLAUDE.md 「개발 하네스」 절
 
-값은 이 레포의 config 에서 옮긴다. 하네스 원본 SHA 는 커밋 메시지에 두고 여기에는 적지 않는다(갱신 때마다 낡는다).
+값은 이 레포의 config 에서 옮긴다. 하네스 원본 SHA 는 config 머리 줄(§6)과 커밋 메시지에 두고 여기에는 적지 않는다(갱신 때마다 낡는다).
 
 ```markdown
 ## 개발 하네스 (`.harness/` · `harness.config.mjs`)
@@ -96,3 +96,43 @@ R=<레포 루트>; B=<설치 브랜치>
 
 - worktree 에서는 `.git` 이 파일이라 `index.lock` 경로가 다르다 — `git -C "$R" rev-parse --git-path index.lock` 으로 구한다.
 - 커밋 뒤 `git -C "$R" status --short` 와 `git -C "$R" show --stat HEAD` 로 남은 변경·포함 파일을 본다.
+
+## §6 config 머리 줄 (3단계 6번)
+
+example 을 복사한 직후 **첫 줄 앞에** 한 줄을 넣는다(Edit). 정확히 한 줄이어야 CHECKS.md §5 의 「머리 줄을 뺀 본문」 비교가 맞는다.
+
+```js
+// 하네스 원본: https://github.com/surahha-ha/harness-agent @ <40자 SHA> — harness-install 이 harness.config.example.mjs 에서 시작 (<YYYY-MM-DD>)
+```
+
+- 로컬 클론을 썼어도 **공개 저장소 주소**를 적는다(로컬 경로는 반출 위반). 그 SHA 가 공개 저장소에 없거나 원본에 미커밋 변경이 있었으면 줄 끝에 ` · 미공개 커밋` / ` · 미커밋 변경 있음` 을 붙인다.
+- 4단계에서 이 줄은 고치지 않는다. 나중 갱신 설치가 이 줄을 새 SHA 로 바꾼다.
+
+## §7 체크포인트 (`git rev-parse --git-path harness-install-state.json`)
+
+대상 트리에서 위 명령이 돌려주는 경로(worktree 면 그 worktree 전용 git 디렉토리 아래)에 Write 로 쓴다. 커밋되지 않으므로 로컬 경로를 적어도 된다.
+
+```json
+{
+  "skill": "harness-install",
+  "source": { "repo": "https://github.com/surahha-ha/harness-agent", "local": "<로컬 클론 또는 임시 clone 경로>", "sha": "<40자 SHA>", "dirty": false },
+  "done": [2, 3],
+  "decisions": [
+    { "id": "D5", "answer": "커밋하지 않고 메시지만 · push 확인 · trailer 없음 · 리뷰 문턱 미정",
+      "slots": [
+        { "file": "config", "path": ["project", "git", "commitExecution"], "value": "message-only" },
+        { "file": "config", "path": ["project", "git", "reviewThreshold"], "value": null }
+      ] },
+    { "id": "D4", "answer": "deny 2개 — …",
+      "slots": [{ "file": "config", "path": ["dangerGuard", "deny", "*", "id"], "value": ["<규칙 id>", "<규칙 id>"] }] },
+    { "id": "D6", "answer": "커밋되는 settings 에서 끈다",
+      "slots": [{ "file": "settings", "path": ["enabledPlugins", "<이름>@<마켓>"], "value": false }] }
+  ],
+  "nulls": [{ "path": "project.commands.fe.lint", "why": "lint 도구 없음 — 도입하면 채운다" }],
+  "updated": "<ISO 시각>"
+}
+```
+
+- `done` 에는 완료 기준을 통과한 단계 번호만 넣는다. 0·1단계는 읽기뿐이라 적지 않는다 — 재개 때 다시 한다.
+- `slots` 는 그 답이 정하는 슬롯 값이다. `"*"` 는 배열의 모든 원소, 정규식 값은 `String(re)` 꼴(`"/…/i"`) 문자열로 적는다. CHECKS.md §6 스크립트가 이것을 config·settings 와 대조한다.
+- 쓰기가 권한 확인에 걸리면 사용자에게 위치와 이유를 말하고 승인받는다. 끝내 쓸 수 없으면 「체크포인트 없음 — 끊기면 재개 불가」를 보고에 적고 진행할지 묻는다.

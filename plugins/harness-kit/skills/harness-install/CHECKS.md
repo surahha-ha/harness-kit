@@ -1,4 +1,4 @@
-# 정적 확인 · 발동 확인 안내
+# 정적 확인 · 발동 확인 안내 · 설치 진행 판정
 
 스크립트는 **scratchpad 에 둔다**(대상 레포에 파일을 만들지 않는다). 셸 인자에는 레포 경로만 넘기고, 판정할 명령 문자열은 파일 안에 둔다 — 셸 인자로 넘기면 실행 전 훅이 그 문자열을 보고 막는다.
 
@@ -97,13 +97,13 @@ process.exit(fail ? 1 : 0);
 
 | 명령 | 설치 직후 기대 | 종료코드 |
 | - | - | - |
-| `node .harness/danger-guard.mjs --status` | 「활성 — deny N · ask M」 + 공유자원·프로브 설정 표기 | 0 |
+| `node .harness/danger-guard.mjs --status` | 「활성 — deny N · ask M · 공유자원 규칙 … · 프로브 설정됨」(deny·ask·공유자원 중 1개 이상) | 0 |
 | `node .harness/test-first.mjs --status` | `enabled:false` 면 「꺼짐」 | 1 (의도) |
 | `node .harness/drift-watch.mjs --status` | 미러를 비웠으면 「미러 없음」 | 1 (의도) |
 | `node .harness/turn-end.mjs --status` | 발동 전 「stop 이벤트 없음」 · 증거 슬롯을 채웠으면 그 유형 수 | 1 (발동 전 정상) |
 | `node .harness/turn-start.mjs --status` | 발동 전 「이벤트 없음」 | 1 (발동 전 정상) |
 
-config 를 채우기 **전**(example 복사 직후)의 danger-guard 는 「설정됨 · 규칙 없음」(1)이어야 한다 — 4단계에서 한 번 본다.
+config 를 채우기 **전**(3단계 끝, example 복사 직후)의 danger-guard 는 「설정됨 · 규칙 없음」(1)이어야 한다. 4단계 뒤에도 이 줄이면 config 가 안 채워진 것이다.
 
 ## §3 발동 확인 안내문 — 사용자에게 그대로 건넨다
 
@@ -152,6 +152,104 @@ for (const [id, cmd, want] of evidenceCases) {
   if (got !== want) fail++;
   console.log(`${got === want ? 'OK  ' : 'FAIL'} evidence ${id} want=${want} got=${got} :: ${cmd}`);
 }
+console.log(`failures=${fail}`);
+process.exit(fail ? 1 : 0);
+```
+
+## §5 설치 진행 판정 · `.harness/` 비교 — 0·3·4단계
+
+**줄끝은 무시하고 비교한다.** autocrlf 트리에서는 원본 클론·대상 트리의 작업본이 CRLF 일 수 있고, `git show`·`git archive` 로 꺼낸 판은 index 그대로(보통 LF)다. 그대로 `diff -r` 하면 모든 줄이 거짓 차이로 뜬다(PITFALLS §3).
+
+```bash
+R=<대상 트리>; O=<원본 클론>; S=<원본 SHA>; T=<scratchpad>
+# ① .harness/ ↔ 원본 skeletons — 출력 0줄이면 같다(계측 로그는 대상 쪽에만 있다)
+diff -r --strip-trailing-cr -x log.jsonl -x promotions.jsonl "$O/skeletons" "$R/.harness"
+#    원본 작업본이 S 판과 다를 수 있으면 S 판을 풀어 비교한다
+mkdir -p "$T/src-$S" && git -C "$O" archive "$S" skeletons | tar -x -C "$T/src-$S"
+# ② config 가 아직 example 그대로인가 — 종료코드 0 = 그대로(미완) · 1 = 채워짐
+git -C "$O" show "$S:harness.config.example.mjs" > "$T/example.mjs"
+tail -n +2 "$R/harness.config.mjs" | diff -q --strip-trailing-cr - "$T/example.mjs"
+#    첫 줄이 머리 줄(TEMPLATES §6)이 아니면 tail 없이 파일 전체를 비교한다
+# ③ HEAD 에는 있는데 작업본에서 지워졌나 — 앞 줄이 비어 있지 않고 뒤 줄에 " D" 가 있으면 그렇다
+git -C "$R" ls-tree --name-only HEAD -- .harness harness.config.mjs
+git -C "$R" status --short -- .harness harness.config.mjs
+```
+
+- 커밋된 `.harness/` 는 index 기준으로도 본다: `git -C "$R" ls-tree -r HEAD -- .harness` 와 `git -C "$O" ls-tree -r "$S" -- skeletons` 의 blob SHA 가 경로 앞머리만 빼고 같아야 한다. 줄끝 정규화 뒤의 값이라 CR 에 흔들리지 않는다.
+- 원본 SHA 는 체크포인트 → config 머리 줄 순으로 찾고, 둘 다 없으면 묻는다.
+
+재개 판정 — 위에서부터 처음 맞는 줄을 고른다.
+
+| 관찰 | 판정 | 할 일 |
+| - | - | - |
+| 체크포인트 있음 | 중단된 설치 | `done`·답을 보이고 「재개 / 초기화」를 묻는다 |
+| ③ 이 「지워짐」 | 지워진 설치 | 멈추고 보고 → 「의도적 재설치인가」. 그렇다면 새 설치로 진행하고, HEAD 판은 9단계 전 `git diff HEAD -- <설치 파일>` 대조 기준으로 쓴다 |
+| `.harness/` 있음 · config 없음, 또는 ② 가 「그대로」, 또는 `--status` 가 「규칙 없음」 | 중단된 설치(체크포인트 없음) | 같은 질문. 재개면 답은 2단계에서 다시 묻는다 |
+| config 채워짐 · `--status` 활성 · 체크포인트 없음 | 끝난 설치 | 멈추고 보고(업그레이드는 범위 밖) |
+| 아무것도 없음 | 새 설치 | 1단계로 |
+
+- **재개** — 0·1단계는 다시 한다. `done` 의 각 단계는 완료 기준을 한 번 더 확인하고(끊긴 쪽이 기록 뒤에 파일을 바꿨을 수 있다), 틀린 첫 단계부터 잇는다.
+- **초기화** — 설치가 만든 것만 지운다: `.harness/` · `harness.config.mjs` · `.gitignore` 의 두 줄 · 보조 파일 · (5단계를 지났으면) settings.json 의 하네스 훅·플러그인 키 · 체크포인트. 지울 목록을 먼저 보이고 승인받는다. 설치 전부터 있던 미커밋 변경은 건드리지 않는다.
+
+## §6 답을 바꾼 흔적 — 6단계
+
+답을 여러 번 바꾼 설치에서는 옛 답의 값·주석이 남는다. 아래 넷을 보고 항목마다 「고침 / 의도(근거)」를 적는다.
+
+1. **체크포인트 답 ↔ config·settings 값** — 스크립트 ①. 다르면 어느 쪽이 최종 답인지 사용자에게 묻는다.
+2. **같은 규칙 중복** — deny·ask 안에서 같은 `id` 나 같은 패턴. 스크립트 ②.
+3. **example 기본값이 남은 슬롯** — example 과 값이 같은 칸. 스크립트 ③ 이 목록만 낸다(실패로 세지 않음). 각 칸이 「답이 기본 유지」인지 「옛 답에서 못 바꾼 것」인지 가린다.
+4. **주석 ↔ 값** — 「미확정」 주석인데 값이 있는 줄은 스크립트 ④ 가 잡는다. 그 밖(「끔」이라 적고 `true`, ask 라 적힌 규칙이 deny 배열에 있음 등)은 `diff --strip-trailing-cr "$T/example.mjs" harness.config.mjs` 의 바뀐 덩어리마다 바로 위 주석을 읽어 본다.
+
+`answer-trace.mjs` — 사용: `node answer-trace.mjs <레포 루트> <example 사본>`
+
+```js
+import { readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
+
+const root = path.resolve(process.argv[2]);
+const load = async (p) => (await import(pathToFileURL(p).href)).default;
+const config = await load(path.join(root, 'harness.config.mjs'));
+const example = await load(path.resolve(process.argv[3]));
+const settings = JSON.parse(readFileSync(path.join(root, '.claude/settings.json'), 'utf8'));
+const statePath = path.resolve(root, execFileSync('git', ['-C', root, 'rev-parse', '--git-path', 'harness-install-state.json'], { encoding: 'utf8' }).trim());
+const state = JSON.parse(readFileSync(statePath, 'utf8'));
+let fail = 0;
+const bad = (m) => { fail++; console.log(`FAIL ${m}`); };
+const canon = (v) => JSON.stringify(v, (_, x) => (x instanceof RegExp ? String(x) : x));
+const pick = (o, [k, ...rest]) => k === undefined ? o
+  : k === '*' ? (Array.isArray(o) ? o.map((x) => pick(x, rest)) : undefined)
+  : o == null ? undefined : pick(o[k], rest);
+
+// ① 체크포인트 답 ↔ 값 (정규식 값은 체크포인트에 String(re) 꼴로 적혀 있다)
+for (const d of state.decisions || []) for (const s of d.slots || []) {
+  const got = pick(s.file === 'settings' ? settings : config, s.path);
+  canon(got) === canon(s.value) ? console.log(`OK   ${d.id} ${s.path.join('.')}`)
+    : bad(`${d.id} ${s.path.join('.')} 답=${canon(s.value)} 값=${canon(got)}`);
+}
+
+// ② 같은 규칙 중복
+const g = config.dangerGuard || {};
+const seen = new Map();
+for (const [kind, r] of [...(g.deny || []).map((r) => ['deny', r]), ...(g.ask || []).map((r) => ['ask', r])]) {
+  for (const key of [r.id && `id ${r.id}`, `pattern ${String(r.pattern)}`].filter(Boolean)) {
+    seen.has(key) ? bad(`규칙 중복 ${key} — ${seen.get(key)} · ${kind}`) : seen.set(key, kind);
+  }
+}
+
+// ③ example 과 값이 같은 칸 — 배열·정규식은 한 칸으로 본다
+const walk = (v, p, out) => {
+  if (v && typeof v === 'object' && !Array.isArray(v) && !(v instanceof RegExp)) for (const k of Object.keys(v)) walk(v[k], [...p, k], out);
+  else out.push([p, v]);
+  return out;
+};
+for (const [p, v] of walk(example, [], [])) if (v != null && canon(pick(config, p)) === canon(v)) console.log(`SAME ${p.join('.')} = ${canon(v).slice(0, 60)}`);
+
+// ④ 「미확정」 주석인데 값이 있는 줄
+readFileSync(path.join(root, 'harness.config.mjs'), 'utf8').split(/\r?\n/).forEach((l, i) => {
+  if (/미확정/.test(l) && /:\s*(?!null\b)\S/.test(l.split('//')[0])) bad(`미확정인데 값이 있음 :${i + 1} ${l.trim()}`);
+});
 console.log(`failures=${fail}`);
 process.exit(fail ? 1 : 0);
 ```
