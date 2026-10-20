@@ -193,12 +193,13 @@ git -C "$R" status --short -- .harness harness.config.mjs
 
 ## §6 답을 바꾼 흔적 — 6단계
 
-답을 여러 번 바꾼 설치에서는 옛 답의 값·주석이 남는다. 아래 넷을 보고 항목마다 「고침 / 의도(근거)」를 적는다.
+답을 여러 번 바꾼 설치에서는 옛 답의 값·주석이 남는다. 아래 1~4 를 보고 항목마다 「고침 / 의도(근거)」를 적고, 5 는 보고에 옮긴다.
 
 1. **체크포인트 답 ↔ config·settings 값** — 스크립트 ①. 다르면 어느 쪽이 최종 답인지 사용자에게 묻는다.
 2. **같은 규칙 중복** — deny·ask 안에서 같은 `id` 나 같은 패턴. 스크립트 ②.
 3. **example 기본값이 남은 슬롯** — example 과 값이 같은 칸. 스크립트 ③ 이 목록만 낸다(실패로 세지 않음). 각 칸이 「답이 기본 유지」인지 「옛 답에서 못 바꾼 것」인지 가린다.
 4. **주석 ↔ 값** — 「미확정」 주석인데 값이 있는 줄은 스크립트 ④ 가 잡는다. 그 밖(「끔」이라 적고 `true`, ask 라 적힌 규칙이 deny 배열에 있음 등)은 `diff --strip-trailing-cr "$T/example.mjs" harness.config.mjs` 의 바뀐 덩어리마다 바로 위 주석을 읽어 본다.
+5. **권장과 다른 답** — 스크립트 ⑤ 가 체크포인트 `recs` 의 「권장과 다름」·「권장 없음」을 목록으로 낸다(실패로 세지 않음). 보고의 결정 표 「권장」 열과 같아야 한다. `recs` 가 없는 답은 2단계 기록 누락이라 실패로 센다.
 
 `answer-trace.mjs` — 사용: `node answer-trace.mjs <레포 루트> <example 사본>`
 
@@ -250,6 +251,15 @@ for (const [p, v] of walk(example, [], [])) if (v != null && canon(pick(config, 
 readFileSync(path.join(root, 'harness.config.mjs'), 'utf8').split(/\r?\n/).forEach((l, i) => {
   if (/미확정/.test(l) && /:\s*(?!null\b)\S/.test(l.split('//')[0])) bad(`미확정인데 값이 있음 :${i + 1} ${l.trim()}`);
 });
+
+// ⑤ 권장과 다른 답 · 권장 없음 — 목록만(recs 누락은 실패)
+for (const d of state.decisions || []) {
+  if (!Array.isArray(d.recs) || !d.recs.length) { bad(`${d.id} recs 없음 — 권장·따름 여부 미기록`); continue; }
+  for (const r of d.recs) {
+    if (r.recommended == null) console.log(`NOREC ${d.id} ${r.item} — ${r.basis}`);
+    else if (r.followed === false) console.log(`DIFF ${d.id} ${r.item} 권장=${canon(r.recommended)} 답=${d.answer} — ${r.basis}`);
+  }
+}
 console.log(`failures=${fail}`);
 process.exit(fail ? 1 : 0);
 ```

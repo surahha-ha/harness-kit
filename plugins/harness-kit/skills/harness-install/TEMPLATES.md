@@ -1,4 +1,4 @@
-# 꼴 — settings.json · .gitignore · CLAUDE.md · 커밋 명령 · config 머리 줄 · 체크포인트
+# 꼴 — settings.json · .gitignore · CLAUDE.md · 커밋 명령 · config 머리 줄 · 체크포인트 · 결정 질문
 
 ## §1 훅 5개 (`.claude/settings.json` 의 `hooks`)
 
@@ -122,6 +122,10 @@ example 을 복사한 직후 **첫 줄 앞에** 한 줄을 넣는다(Edit). 정�
       "slots": [
         { "file": "config", "path": ["project", "git", "commitExecution"], "value": "message-only" },
         { "file": "config", "path": ["project", "git", "reviewThreshold"], "value": null }
+      ],
+      "recs": [
+        { "item": "commitExecution", "recommended": "message-only", "basis": "CLAUDE.md:<행> 「커밋은 하지 않고 메시지만」", "followed": true },
+        { "item": "reviewThreshold", "recommended": null, "basis": "레포 문서에 리뷰 문턱 없음", "followed": null }
       ] },
     { "id": "D4", "answer": "deny 2개 — …",
       "slots": [{ "file": "config", "path": ["dangerGuard", "deny", "*", "id"], "value": ["<규칙 id>", "<규칙 id>"] }] },
@@ -135,4 +139,30 @@ example 을 복사한 직후 **첫 줄 앞에** 한 줄을 넣는다(Edit). 정�
 
 - `done` 에는 완료 기준을 통과한 단계 번호만 넣는다. 0·1단계는 읽기뿐이라 적지 않는다 — 재개 때 다시 한다.
 - `slots` 는 그 답이 정하는 슬롯 값이다. `"*"` 는 배열의 모든 원소, 정규식 값은 `String(re)` 꼴(`"/…/i"`) 문자열로 적는다. CHECKS.md §6 스크립트가 이것을 config·settings 와 대조한다.
+- `recs` 는 그 D 의 항목마다 권장(DECISIONS.md 「권장」)이다. `recommended: null` 은 「판단 근거 부족」이고 그때 `followed` 도 `null` 이다. 권장과 다르게 고르면 `followed: false` — CHECKS.md §6 ⑤ 와 보고의 「권장과 다름」이 이것을 읽는다.
 - 쓰기가 권한 확인에 걸리면 사용자에게 위치와 이유를 말하고 승인받는다. 끝내 쓸 수 없으면 「체크포인트 없음 — 끊기면 재개 불가」를 보고에 적고 진행할지 묻는다.
+
+## §8 결정 질문 (2단계)
+
+한 번에 질문 하나. 한 D 에 항목이 여럿이면 항목마다 따로 묻는다. 꺾쇠 자리는 이 레포의 1단계 관찰로 채운다.
+
+```text
+D3-1. commands.unitTest 의 범위 — 로컬 컨테이너 통합 테스트를 넣는가
+근거: <기반 클래스 파일:행> 을 상속하는 통합 테스트 <N>개 · 대상 localhost:<포트> 컨테이너(<compose 파일>) · 거를 이름 관습·태그 없음
+
+1. 통합 포함 (권장)
+   바뀌는 것: commands.unitTest·project.commands.be.testAll 이 통합까지 돈다. 컨테이너가 없으면 무관한 레드 — config 주석·CLAUDE.md 에 「실행 전 컨테이너 기동 · 대상 환경 확인」
+2. 통합 제외
+   바뀌는 것: 같은 명령에 제외 필터. 이름 관습·태그가 없어 클래스 목록을 박아야 하고, 새 통합 테스트는 목록에서 빠진다
+
+D3-2. 공유 자원에 직접 붙는 테스트를 빼는 방법
+근거: <테스트 파일:행> 이 공유 호스트에 하드코딩 접속해 쓰기 구문 실행 · 빌드 설정의 test 작업에 제외 없음
+
+1. 소스 무수정 (권장)
+   바뀌는 것: .harness/ 밖 init script 1개 + 테스트 명령에 --init-script <경로>. 레포 코드 변경 0
+2. 소스 수정 — 레포 코드를 바꾼다
+   바뀌는 것: 테스트 소스에 태그 + 필터. 설치 커밋에 테스트 코드 변경이 섞이고 레포 소유자 리뷰 대상
+```
+
+- 근거가 모자라면 근거 줄에 무엇을 찾지 못했는지 적고, 그 아래 「판단 근거 부족 — 직접 골라 주세요」를 둔다. 어느 선택지에도 「(권장)」을 붙이지 않는다.
+- AskUserQuestion 을 쓰면 `question` 에 질문과 근거 한 줄을, 권장 선택지를 `options` 의 첫 번째에 두고 `label` 끝에 「(권장)」을, 각 `description` 에 바뀌는 것을 넣는다. 「판단 근거 부족」이면 `question` 끝에 그 문구를 붙인다.
