@@ -1,4 +1,4 @@
-# 꼴 — settings.json · .gitignore · CLAUDE.md · 커밋 명령 · config 머리 줄 · 체크포인트 · 결정 질문
+# 꼴 — settings.json · .gitignore · CLAUDE.md · 커밋 명령 · config 머리 줄 · 체크포인트 · 결정 질문 · 영수증
 
 ## §1 훅 5개 (`.claude/settings.json` 의 `hooks`)
 
@@ -56,18 +56,23 @@
 ## §3 `.gitignore`
 
 ```
+# harness-kit:begin
 # 하네스 계측 로그 · 승격 레코드 — 커밋하지 않는다
 .harness/log.jsonl
 .harness/promotions.jsonl
+# harness-kit:end
 ```
 
-미커밋 변경과 같은 자리(파일 끝)를 피할 수 있으면 피한다 — 나중 병합이 쉬워진다.
+- 시작·끝 표시 줄(`# harness-kit:begin` · `# harness-kit:end`)은 줄 전체가 그 문자열이어야 한다. `.gitignore` 는 줄 끝 주석이 없어 한 줄 표시를 쓰지 않는다 — 넣는 줄은 늘 블록으로 감싼다.
+- 블록 앞뒤에 빈 줄을 하나씩 두면, harness-uninstall 이 블록을 지울 때 빈 줄 하나만 남겨 원래 모양으로 돌아간다.
+- 미커밋 변경과 같은 자리(파일 끝)를 피할 수 있으면 피한다 — 나중 병합이 쉬워진다.
 
 ## §4 CLAUDE.md 「개발 하네스」 절
 
 값은 이 레포의 config 에서 옮긴다. 하네스 원본 SHA 는 config 머리 줄(§6)과 커밋 메시지에 두고 여기에는 적지 않는다(갱신 때마다 낡는다).
 
 ```markdown
+<!-- harness-kit:begin -->
 ## 개발 하네스 (`.harness/` · `harness.config.mjs`)
 
 에이전트 훅(`.claude/settings.json`)으로 자동으로 돈다. 규칙·명령의 기준은 `harness.config.mjs` 다.
@@ -77,9 +82,19 @@
 - **관찰만 하는 것** — 턴 시작·종료{, 증거 슬롯을 채웠으면 그 유형}. 아무것도 막지 않는다. 결과는 `node .harness/metrics.mjs` 로 본다.
 - 상태 확인: `node .harness/danger-guard.mjs --status` · `node .harness/turn-end.mjs --status`. 계측 로그 `.harness/log.jsonl` 은 커밋하지 않는다.
 - **플러그인** — `harness-kit` 은 `.claude/settings.json` 으로 project scope 에서 켜져 있다{, 끈 플러그인과 이유}. 처음 쓰는 PC 에서는 한 번: `claude plugin marketplace add surahha-ha/harness-kit` → `claude plugin install harness-kit@harness-kit --scope project` → 이 명령이 `.claude/settings.json` 을 다시 쓰므로 직후 `git restore .claude/settings.json`(설치 기록은 남는다). 같은 PC 의 새 worktree 는 다시 설치하지 않아도 된다.
+- 걷어내기: `harness-uninstall` — 이 절과 `harness.install.json` 의 영수증대로 넣은 것만 뺀다. 다시 설치하려면 걷어 낸 뒤 새 세션에서 `harness-install`.
+<!-- harness-kit:end -->
 ```
 
-레포 `CLAUDE.md` 에 작업 라우팅 표가 있으면 이 절을 가리키는 한 줄을 건다.
+- 시작·끝 표시는 절 전체를 감싼다. 표시 줄은 앞뒤 공백 말고는 그 문자열만 있어야 하고, 블록 앞뒤에 빈 줄을 하나씩 둔다. 블록 안에 같은 표시를 또 넣지 않는다.
+- 레포 `CLAUDE.md` 에 작업 라우팅 표나 목록이 있으면 이 절을 가리키는 한 줄을 건다. 그 줄 끝(표의 행이면 마지막 칸 안)에 **한 줄 표시** `<!-- harness-kit:line -->` 를 붙인다 — 목록·표 한가운데에 블록 표시 줄을 넣으면 목록·표가 끊긴다.
+
+```markdown
+- 팀 공용 게이트(위험 명령 가드·계측)는 아래 「개발 하네스」 절 참조 <!-- harness-kit:line -->
+| 하네스 가드에 막혔을 때 | 「개발 하네스」 절 <!-- harness-kit:line --> |
+```
+
+- 코드 블록 안의 명령 줄을 고친 것(8단계의 「고침」)에는 표시를 붙이지 않는다 — 표시가 명령의 일부로 보인다. 그 대신 바꾸기 전·뒤 원문을 체크포인트 `edits` 에 `replace` 로 적고 영수증(§9)에 옮긴다.
 
 ## §5 커밋 명령
 
@@ -133,6 +148,22 @@ example 을 복사한 직후 **첫 줄 앞에** 한 줄을 넣는다(Edit). 정�
       "slots": [{ "file": "settings", "path": ["enabledPlugins", "<이름>@<마켓>"], "value": false }] }
   ],
   "nulls": [{ "path": "project.commands.fe.lint", "why": "lint 도구 없음 — 도입하면 채운다" }],
+  "created": [
+    { "path": ".harness", "role": "skeleton" },
+    { "path": "harness.config.mjs", "role": "config" },
+    { "path": "<빌드 디렉토리>/<보조 파일>", "role": "aux", "why": "commands.unitTest 의 --init-script" }
+  ],
+  "edits": [
+    { "path": ".gitignore", "how": "block" },
+    { "path": "CLAUDE.md", "how": "block" },
+    { "path": "CLAUDE.md", "how": "line" },
+    { "path": ".claude/commands/<커맨드>.md", "how": "replace", "before": "<고치기 전 줄>", "after": "<고친 뒤 줄>" }
+  ],
+  "settings": {
+    "hooks": [{ "event": "Stop", "matcher": null, "command": "node \"$CLAUDE_PROJECT_DIR/.harness/turn-end.mjs\"", "eventCreated": false }],
+    "keys": [{ "path": ["enabledPlugins", "harness-kit@harness-kit"], "value": true, "parentCreated": true }]
+  },
+  "plugin": { "id": "harness-kit@harness-kit", "scope": "project", "marketplace": "project", "installRecord": "installed" },
   "updated": "<ISO 시각>"
 }
 ```
@@ -140,6 +171,7 @@ example 을 복사한 직후 **첫 줄 앞에** 한 줄을 넣는다(Edit). 정�
 - `done` 에는 완료 기준을 통과한 단계 번호만 넣는다. 0·1단계는 읽기뿐이라 적지 않는다 — 재개 때 다시 한다.
 - `slots` 는 그 답이 정하는 슬롯 값이다. `"*"` 는 배열의 모든 원소, 정규식 값은 `String(re)` 꼴(`"/…/i"`) 문자열로 적는다. CHECKS.md §6 스크립트가 이것을 config·settings 와 대조한다.
 - `recs` 는 그 D 의 항목마다 권장(DECISIONS.md 「권장」)이다. `recommended: null` 은 「판단 근거 부족」이고 그때 `followed` 도 `null` 이다. 권장과 다르게 고르면 `followed: false` — CHECKS.md §6 ⑤ 와 보고의 「권장과 다름」이 이것을 읽는다.
+- `created`·`edits`·`settings`·`plugin` 은 그 단계에서 넣을 때마다 더한다(3단계 `.gitignore`·보조 파일 · 4단계 config · 5단계 훅·키·설치 기록 · 8단계 블록·줄·고친 줄). 9단계가 이것을 영수증 초안으로 옮긴다(§9).
 - 쓰기가 권한 확인에 걸리면 사용자에게 위치와 이유를 말하고 승인받는다. 끝내 쓸 수 없으면 「체크포인트 없음 — 끊기면 재개 불가」를 보고에 적고 진행할지 묻는다.
 
 ## §8 결정 질문 (2단계)
@@ -207,3 +239,48 @@ D4-3. 테스트 DB 볼륨을 지우는 명령을 막을까? (docker compose … 
 
 - 근거가 모자라면 근거 줄에 무엇을 찾지 못했는지 적고, 그 아래 「판단 근거 부족 — 직접 골라 주세요」를 둔다. 어느 선택지에도 「(권장)」을 붙이지 않는다.
 - AskUserQuestion 을 쓰면 `header` 에 위 header 를, `question` 에 질문과 근거 한 줄을, 권장 선택지를 `options` 의 첫 번째에 두고 `label` 끝에 「(권장)」을, 각 `description` 에 바뀌는 것을 넣는다. 「판단 근거 부족」이면 `question` 끝에 그 문구를 붙인다.
+
+## §9 영수증 (`harness.install.json`, 9단계)
+
+**자리: 레포 루트, `harness.config.mjs` 옆 · 커밋 대상.** `.harness/` 안에 두지 않는다 — `.harness/` 는 원본 `skeletons/` 와 같아야 하고(3단계 완료 기준 「원본에 없는 파일 0개」), 다음 갱신 설치가 디렉토리째 바꾸면 지워진다. git 디렉토리(체크포인트 자리)에 두지 않는다 — 커밋되지 않아 다른 PC·worktree 에서 걷어 낼 때 기준이 없다.
+
+초안 — 체크포인트에서 옮겨 scratchpad 에 Write 한다. sha256 은 쓰지 않는다(스크립트가 채운다).
+
+```json
+{
+  "installedAt": "<ISO 시각>",
+  "source": { "repo": "https://github.com/surahha-ha/harness-agent", "sha": "<40자 SHA>", "dirty": false },
+  "kit": { "repo": "surahha-ha/harness-kit", "sha": "<설치에 쓴 harness-kit SHA 또는 null>" },
+  "decisions": [{ "id": "D1", "answer": "새 worktree 에 설치" }, { "id": "D5", "answer": "메시지만 · push 확인 · trailer 없음" }],
+  "files": [
+    { "path": ".harness", "role": "skeleton" },
+    { "path": "harness.config.mjs", "role": "config" },
+    { "path": "<빌드 디렉토리>/<보조 파일>", "role": "aux", "why": "commands.unitTest 의 --init-script" }
+  ],
+  "edits": [
+    { "path": ".gitignore", "how": "block" },
+    { "path": "CLAUDE.md", "how": "block" },
+    { "path": "CLAUDE.md", "how": "line" },
+    { "path": ".claude/commands/<커맨드>.md", "how": "replace", "before": "<고치기 전 줄>", "after": "<고친 뒤 줄>", "count": 1 }
+  ],
+  "settings": {
+    "path": ".claude/settings.json",
+    "hooks": [{ "event": "PreToolUse", "matcher": "Bash|PowerShell", "command": "node \"$CLAUDE_PROJECT_DIR/.harness/danger-guard.mjs\"", "eventCreated": true }],
+    "keys": [
+      { "path": ["enabledPlugins", "harness-kit@harness-kit"], "value": true, "parentCreated": true },
+      { "path": ["extraKnownMarketplaces", "harness-kit"], "value": { "source": { "source": "github", "repo": "surahha-ha/harness-kit" } }, "parentCreated": true },
+      { "path": ["enabledPlugins", "<이름>@<마켓>"], "value": false, "parentCreated": false, "decision": "D6" }
+    ]
+  },
+  "plugin": { "id": "harness-kit@harness-kit", "scope": "project", "marketplace": "project", "installRecord": "installed" }
+}
+```
+
+- `files` — 디렉토리 항목은 스크립트가 파일로 편다(`.harness/*.jsonl` 런타임 산출물은 뺀다). `role` 은 `skeleton` · `config` · `aux`.
+- `edits` — `block`(시작·끝 표시 블록) · `line`(한 줄 표시) · `replace`(표시 없이 고친 줄). block·line 은 그 파일 안에 나오는 순서대로 하나씩 적는다 — 스크립트가 표시 수와 맞춰 보고 해시를 채운다. `replace` 의 `before`·`after` 는 줄끝 없이 LF 로 잇고, `count` 는 `after` 가 그 파일에 나오는 수다.
+- `settings.hooks` — 넣은 훅마다 하나. `matcher` 가 없는 이벤트는 `null`. `eventCreated` 는 그 이벤트 키를 이 설치가 새로 만들었는가.
+- `settings.keys` — 넣은 키마다 하나. `parentCreated` 는 `enabledPlugins`·`extraKnownMarketplaces` 객체를 새로 만들었는가, `decision` 은 그 키를 정한 결정.
+- `plugin.installRecord` — `installed`(5단계 3번을 실행) · `skipped`(이미 enabled 라 건너뜀).
+- 반출 — 로컬 클론 경로·사용자 홈·드라이브 경로를 넣지 않는다(스크립트가 막는다). 결정 답에 경로가 필요하면 상대경로나 일반 이름으로 적는다.
+
+스크립트가 쓰는 영수증은 초안에 `schema: 1`·`tool` 과 sha256(파일·블록·줄)을 더한 꼴이다. sha256 은 **줄끝을 LF 로 맞춘 UTF-8 내용**의 해시이고, 블록·줄은 표시 줄을 포함해 줄끝을 뺀 줄을 LF 로 이은 것의 해시다.

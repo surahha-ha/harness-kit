@@ -3,6 +3,10 @@
 매니페스트에 `version` 필드를 두지 않는다 — 판은 main 커밋 SHA 로 갈린다. 절은 병합 단위로 적는다.
 (0.1.0 까지는 `plugin.json` 과 `marketplace.json` 의 명시 버전을 함께 올렸다.)
 
+## 미발행 — 하네스 걷어내기
+
+- `harness-install` 이 영수증과 경계 표시를 남긴다 — 9단계가 레포 루트 `harness.install.json`(커밋 대상)에 원본·SHA·설치 시각·결정 답·만든 파일과 sha256(줄끝 LF 정규화)·고친 곳(표시 블록 · 한 줄 표시 · 바꾸기 전·뒤 원문)·settings 훅과 키·플러그인 설치 기록을 `scripts/write-manifest.mjs` 로 쓴다. `.gitignore` 줄과 `CLAUDE.md` 「개발 하네스」 절은 `harness-kit:begin`·`harness-kit:end` 로 감싸고, 절을 가리키는 줄에는 `harness-kit:line` 을 붙인다(TEMPLATES §3·§4·§9, CHECKS §7). 0단계가 끝난 설치에서 멈출 때 「`harness-uninstall` → 새 세션 → install」을 안내한다
+
 ## 미발행 — 하네스 설치 재개
 
 - `harness-install` 을 재현 시험 결과대로 고친다 — 체크포인트(`git rev-parse --git-path harness-install-state.json`)에 완료 단계·결정 답·원본 SHA 를 적고, 0단계가 중단된 설치·지워진 설치·끝난 설치를 가른다(CHECKS §5). example 복사와 원본 SHA 머리 줄을 3단계로 옮기고, 4단계 완료 기준에 「example 과 다름 + `--status` 활성·프로브」를, 5단계에 「4단계 통과 뒤에만」을 넣는다
