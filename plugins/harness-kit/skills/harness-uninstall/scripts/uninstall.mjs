@@ -9,8 +9,9 @@
  *   backup                          손댈 파일 전부를 git-path 아래로, 런타임 산출물을 git-common-dir 아래로 복사
  *   apply                           플러그인 키를 뺀 나머지를 걷어 낸다(다시 돌려도 안전)
  *   plugin                          플러그인 키 답(off|keep)을 반영한다 — 맨 마지막 결정
- *   verify                          남은 참조 · settings 대조 · 후보 밖 변경 · git status · 커밋 경로
- *   finish                          체크포인트를 지운다(백업은 남긴다)
+ *   verify                          남은 참조 · settings 대조 · 후보 밖 변경 · git status · 커밋 경로 · 보고용 요약
+ *   finish                          체크포인트를 지운다(백업은 남긴다) — 보고를 사용자에게 보인 뒤에 부른다
+ *   restore-check <백업 디렉토리> [증거 디렉토리]   백업을 되돌려 놓은 뒤 index.json 과 바이트 대조(체크포인트 없이 돈다)
  *
  * 인자에는 경로·후보 id·답만 넘긴다. 명령 문자열을 셸 인자로 넘기지 않는다(실행 전 가드가 그 문자열을 본다).
  * 이 스크립트는 git 에 쓰지 않는다 — add·commit·restore·checkout 을 부르지 않는다.
@@ -20,13 +21,14 @@ import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import os from 'node:os';
 import { pathToFileURL } from 'node:url';
+import { createHash } from 'node:crypto';
 import {
-  sha256, splitLines, body, marksFor, MARKS, findMarked, findSection, findPointerLines, findIgnoreGroups,
+  sha256, normEol, splitLines, body, marksFor, MARKS, findMarked, findSection, findPointerLines, findIgnoreGroups,
   rangeSha, widen, countText, toFileEol, applyTextOps, deleteKey, deleteHook, hookEntries, dupKeys, findKey, parseSpans,
 } from './edit.mjs';
 
 const [cmd, rootArg, ...args] = process.argv.slice(2);
-if (!cmd || !rootArg) { console.error('사용: node uninstall.mjs <scan|status|answer|backup|apply|plugin|verify|finish> <레포 루트> [인자…]'); process.exit(2); }
+if (!cmd || !rootArg) { console.error('사용: node uninstall.mjs <scan|status|answer|backup|apply|plugin|verify|finish|restore-check> <레포 루트> [인자…]'); process.exit(2); }
 const root = path.resolve(rootArg);
 const git = (...a) => execFileSync('git', ['-C', root, ...a], { encoding: 'utf8', maxBuffer: 256 << 20 });
 const tryGit = (...a) => { try { return execFileSync('git', ['-C', root, ...a], { encoding: 'utf8', maxBuffer: 256 << 20, stdio: ['ignore', 'pipe', 'ignore'] }); } catch { return null; } };
@@ -74,6 +76,49 @@ const walkDir = (rel) => {
   return out.sort();
 };
 const fileSha = (rel) => sha256(read(rel));
+/** 바이트 그대로의 해시 — 되돌려 놓은 파일을 대조할 때 쓴다(sha256 은 줄끝을 LF 로 맞춘 뒤의 해시라 CRLF 파일의 바이트와 맞지 않는다). */
+const rawSha = (buf) => createHash('sha256').update(buf).digest('hex');
+/** 그 판에 설치가 커밋돼 있는가 — config 나 .harness/ 파일이 그 판에 있으면 커밋된 설치다. */
+const installAt = (rev) => ({
+  config: tryGit('cat-file', '-e', `${rev}:${CONFIG}`) !== null,
+  harnessDir: !!(tryGit('ls-tree', '-r', '--name-only', rev, '--', '.harness') || '').trim(),
+  manifest: tryGit('cat-file', '-e', `${rev}:${MANIFEST}`) !== null,
+});
+const isWorktree = () => path.resolve(root, git('rev-parse', '--git-dir').trim()) !== path.resolve(root, git('rev-parse', '--git-common-dir').trim());
+
+// ── 질문 header — 후보마다 하나, 한 계획 안에서 겹치지 않게(12자 이하) ────────────
+const HOOK_SHORT = { Stop: 'Stop', PreToolUse: 'PreTool', PostToolUse: 'PostTool', PostToolUseFailure: 'PostFail', UserPromptSubmit: 'Prompt',
+  SessionStart: 'Session', SessionEnd: 'SessEnd', SubagentStop: 'SubStop', Notification: 'Notify', PreCompact: 'Compact' };
+const HEADER_MAX = 12;
+/** header 의 조각 — pre + core + tail + ' ' + action. 12자를 넘으면 core 만 뒤에서 줄인다. */
+function headerParts(c) {
+  const H = (core, action, pre = '', tail = '') => ({ pre, core, tail, action });
+  if (['modified', 'extra'].includes(c.status) && ['file', 'text', 'hook'].includes(c.kind)) return H('손댄파일', '처리');
+  if (c.kind === 'files') return H('하네스파일', '삭제');
+  if (c.kind === 'runtime') return H('계측로그', '보관');
+  if (c.kind === 'manifest') return H('영수증', '삭제');
+  if (c.kind === 'plugin') return H('kit 키', '처리');
+  if (c.kind === 'key') return H('끈플러그인', '복원');
+  if (c.kind === 'hook') return H(HOOK_SHORT[c.data.event] || c.data.event, '삭제', c.data.file === SETTINGS_LOCAL ? '로컬' : '', '훅');
+  if (c.kind === 'file') return H(c.data.path === CONFIG ? '하네스설정' : '보조파일', '삭제');
+  const p = c.data.path, op = c.data.op.op;
+  if (op === 'replace') return H('문서줄', '되돌림');
+  if (p === '.gitignore') return H('무시목록', '줄삭제');
+  if (op === 'section' || op === 'block') return /(^|\/)CLAUDE\.md$/.test(p) ? H('안내절', '삭제') : H('표시블록', '삭제');
+  return H('안내줄', '삭제');
+}
+/** 후보마다 header 를 정한다 — 같은 header 가 둘 이상이면 끝에 번호를 붙여 한 계획 안에서 겹치지 않게 한다. */
+function assignHeaders(cands) {
+  const join = (h, core) => `${h.pre}${core}${h.tail} ${h.action}`;
+  const by = new Map();
+  for (const c of cands) { const h = headerParts(c); const k = join(h, h.core); if (!by.has(k)) by.set(k, []); by.get(k).push({ c, h }); }
+  for (const cs of by.values()) cs.forEach(({ c, h }, i) => {
+    const suffix = cs.length > 1 ? ` ${i + 1}` : '';
+    let core = h.core;
+    while (core.length > 1 && (join(h, core) + suffix).length > HEADER_MAX) core = core.slice(0, -1);
+    c.header = join(h, core) + suffix;
+  });
+}
 
 async function loadConfig() {
   if (!exists(CONFIG)) return null;
@@ -250,9 +295,9 @@ async function scan() {
   if (settings) {
     const ep = settings.enabledPlugins || {};
     const mKeys = (mf.settings && mf.settings.keys) || [];
-    const headSettings = (() => { try { return JSON.parse(git('show', `HEAD:${SETTINGS}`)); } catch { return null; } })();
+    const headSettings = (() => { try { return JSON.parse(tryGit('show', `HEAD:${SETTINGS}`)); } catch { return null; } })();
     const allSection = sectionTexts.join('\n');
-    const atInstall = (rev) => { try { return (JSON.parse(git('show', `${rev}:${SETTINGS}`)).enabledPlugins) || {}; } catch { return {}; } };
+    const atInstall = (rev) => { try { return (JSON.parse(tryGit('show', `${rev}:${SETTINGS}`)).enabledPlugins) || {}; } catch { return {}; } };
     for (const [k, v] of Object.entries(ep)) {
       if (k === KIT_PLUGIN) continue;
       const m = mKeys.find((x) => x.path && x.path[0] === 'enabledPlugins' && x.path[1] === k);
@@ -286,7 +331,10 @@ async function scan() {
   if (manifest) cands.push({ id: `file:${MANIFEST}`, kind: 'manifest', group: 'gate', title: `${MANIFEST} (영수증)`, status: 'clean', options: ['remove', 'keep'], recommend: 'remove', basis: '다른 항목을 하나라도 남기면 남긴다(다음 걷어내기의 기준)', data: { path: MANIFEST } });
 
   // 4) 참조 — 권장대로 걷어 낸 뒤에도 남을 줄
-  const plan = { scannedAt: new Date().toISOString(), head: git('rev-parse', 'HEAD').trim(), branch: git('rev-parse', '--abbrev-ref', 'HEAD').trim(), manifest: !!manifest,
+  assignHeaders(cands);
+  const head = git('rev-parse', 'HEAD').trim();
+  const plan = { scannedAt: new Date().toISOString(), head, branch: git('rev-parse', '--abbrev-ref', 'HEAD').trim(), manifest: !!manifest,
+    installAtHead: installAt(head),
     source: mf.source || (exists(CONFIG) ? { headLine: body(splitLines(read(CONFIG))[0] || '').slice(0, 200) } : null), captured, candidates: cands, warnings };
   plan.refs = findRefs(plan, Object.fromEntries(cands.map((c) => [c.id, c.recommend ?? 'keep'])), files);
   for (const c of cands.filter((x) => x.data && x.data.aux)) {
@@ -350,14 +398,17 @@ const recOf = (c, s) => {
   if (c.id.startsWith('text:.gitignore') && s.answers.runtime === 'keep') return 'keep';
   return c.recommend;
 };
+const committedText = (ia) => (!ia ? '확인 전' : ia.config || ia.harnessDir || ia.manifest ? 'HEAD 에 커밋됨' : 'HEAD 에 없음 — 작업본에만 있는 설치');
 function printPlan(s) {
   const p = s.plan;
-  console.log(`기준: ${p.manifest ? `영수증(${MANIFEST})` : '영수증 없음 — 알려진 구조로 뽑은 후보, 항목마다 확인'} · HEAD ${p.head.slice(0, 7)} (${p.branch})`);
+  if (p.candidates.some((c) => !c.header)) assignHeaders(p.candidates);
+  console.log(`기준: ${p.manifest ? `영수증(${MANIFEST})` : '영수증 없음 — 알려진 구조로 뽑은 후보, 항목마다 확인'} · HEAD ${p.head.slice(0, 7)} (${p.branch}) · 설치: ${committedText(p.installAtHead)}`);
   console.log(`읽어 둔 커밋 정책: commitExecution=${p.captured.commitExecution} · push=${p.captured.push} · coAuthor=${p.captured.coAuthor}`);
   console.log(`목적: ${s.purpose ?? '미정'} · 진행: ${s.done.join(' → ')} · 적용 ${s.applied.length}건`);
+  console.log(`후보 ${p.candidates.length}개 (플러그인 키 ${p.candidates.filter((c) => c.kind === 'plugin').length}개 포함) · 답 ${Object.keys(s.answers).length}개 — 보고의 후보 수는 이 줄에서 옮긴다`);
   for (const w of p.warnings) console.log(`WARN ${w}`);
-  console.log('\nid | 상태 | 권장 | 답 | 항목 — 근거');
-  for (const c of p.candidates) console.log(`${c.id} | ${c.status} | ${recOf(c, s) ?? '근거 부족'} | ${s.answers[c.id] ?? '-'} | ${c.title} — ${c.basis}`);
+  console.log('\nid | 질문 header | 상태 | 권장 | 답 | 항목 — 근거');
+  for (const c of p.candidates) console.log(`${c.id} | ${c.header} | ${c.status} | ${recOf(c, s) ?? '권장 없음'} | ${s.answers[c.id] ?? '-'} | ${c.title} — ${c.basis}`);
   const by = {};
   for (const r of p.refs) (by[r.path] ||= []).push(r);
   console.log(`\n남을 참조 ${p.refs.length}줄 (지우지 않고 보고만):`);
@@ -377,9 +428,18 @@ function answer() {
     if (!c.options.includes(v)) { console.error(`${id} 의 답은 ${c.options.join('|')}`); process.exit(2); }
     s.answers[id] = v;
   }
-  if (args.includes('--recommended')) for (const c of s.plan.candidates) if (!(c.id in s.answers)) {
-    if (c.kind === 'plugin' && !s.purpose) continue;
-    s.answers[c.id] = recOf(c, s) ?? 'keep';
+  if (args.includes('--recommended')) {
+    const filled = [], skipped = [];
+    for (const c of s.plan.candidates) if (!(c.id in s.answers)) {
+      if (c.kind === 'plugin' && !s.purpose) { skipped.push(c.id); continue; }
+      const r = recOf(c, s);
+      s.answers[c.id] = r ?? 'keep';
+      if (!r) filled.push(c.id);
+    }
+    s.filledByDefault = [...new Set([...(s.filledByDefault || []), ...filled])];
+    if (!s.purpose) console.log('INFO 목적(purpose)은 권장이 없어 채우지 않았다 — 사용자에게 묻고 purpose=remove|reinstall 로 적는다');
+    if (skipped.length) console.log(`INFO 목적이 미정이라 채우지 않은 칸: ${skipped.join(', ')}`);
+    if (filled.length) console.log(`INFO 권장이 없어 keep 으로 채운 칸 ${filled.length}개(보고에 적는다): ${filled.join(', ')}`);
   }
   const rt = s.answers.runtime, ig = s.plan.candidates.filter((c) => c.id.startsWith('text:.gitignore'));
   if (rt === 'keep' && ig.some((c) => s.answers[c.id] === 'remove')) console.log('WARN 런타임 산출물을 남기는데 .gitignore 줄을 지우면 그 파일이 미추적으로 뜬다 — .gitignore 줄도 남기길 권한다');
@@ -398,7 +458,9 @@ function backup() {
   if (s.applied.length) { console.error('백업 없이 걷어내기가 시작됐다 — 멈추고 사용자에게 보고한다'); process.exit(2); }
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
   const dir = path.join(gitPath('harness-uninstall-backup'), stamp);
-  const paths = [...candidatePaths(s.plan)].filter((p) => exists(p) && statSync(abs(p)).isFile()).sort();
+  const planned = [...candidatePaths(s.plan)].sort();
+  const missing = planned.filter((p) => !exists(p));
+  const paths = planned.filter((p) => exists(p) && statSync(abs(p)).isFile());
   const index = [];
   for (const p of paths) {
     const dst = path.join(dir, 'files', p);
@@ -406,25 +468,73 @@ function backup() {
     copyFileSync(abs(p), dst);
     const a = readFileSync(abs(p)), b = readFileSync(dst);
     if (!a.equals(b)) { console.error(`백업 대조 실패: ${p}`); process.exit(1); }
-    index.push({ path: p, bytes: a.length, sha256: sha256(a.toString('utf8')) });
+    // sha256 = 바이트 그대로(되돌려 놓은 뒤 대조용) · sha256Lf = 줄끝을 LF 로 맞춘 뒤(영수증과 같은 계산)
+    index.push({ path: p, bytes: a.length, sha256: rawSha(a), sha256Lf: sha256(a.toString('utf8')) });
   }
-  writeFileSync(path.join(dir, 'index.json'), JSON.stringify({ root: posix(root), head: s.plan.head, at: stamp, files: index }, null, 2) + '\n', 'utf8');
+  writeFileSync(path.join(dir, 'index.json'), JSON.stringify({ root: posix(root), head: s.plan.head, at: stamp, hash: { sha256: '바이트 그대로', sha256Lf: '줄끝을 LF 로 맞춘 뒤' }, files: index }, null, 2) + '\n', 'utf8');
   let evidence = null;
+  const evFiles = [];
   const rt = s.plan.candidates.find((c) => c.kind === 'runtime');
   if (rt && s.answers.runtime === 'remove') {
     const common = path.resolve(root, git('rev-parse', '--git-common-dir').trim());
     evidence = path.join(common, 'harness-evidence', `${path.basename(root)}-${stamp}`);
-    for (const p of rt.data.paths) { const dst = path.join(evidence, p); mkdirSync(path.dirname(dst), { recursive: true }); copyFileSync(abs(p), dst); }
+    for (const p of rt.data.paths) {
+      const dst = path.join(evidence, 'files', p);
+      mkdirSync(path.dirname(dst), { recursive: true });
+      copyFileSync(abs(p), dst);
+      evFiles.push({ path: p, bytes: statSync(dst).size });
+    }
   }
-  s.backup = { dir: posix(dir), evidence: evidence && posix(evidence), files: index.map((f) => f.path) };
+  s.backup = { dir: posix(dir), evidence: evidence && posix(evidence), files: index.map((f) => f.path), evidenceFiles: evFiles, plannedFiles: paths.length, missing };
   s.done.push('backup');
   saveState(s);
-  console.log(`백업 ${index.length}개 → ${dir}${evidence ? `\n증거(런타임 산출물) → ${evidence}` : ''}`);
+  const same = index.length === paths.length;
+  console.log(`백업 ${index.length}개 ${same ? '=' : '≠'} 후보 파일 ${paths.length}개${same ? '' : ' — 맞지 않는다. 멈추고 보고한다'} → ${dir}`);
+  if (missing.length) console.log(`INFO 후보 경로 ${planned.length}개 중 ${missing.length}개는 이미 없어 백업하지 않았다: ${missing.join(', ')}`);
+  if (evidence) console.log(`증거 사본(계측 로그) ${evFiles.length}개 → ${evidence}  (걷어내기 직전에 한 번 더 맞춘다)`);
+  console.log(`되돌리기: cp -r "${posix(dir)}/files/." "${posix(root)}/"${evidence ? ` && cp -r "${posix(evidence)}/files/." "${posix(root)}/"` : ''}  → 그 뒤 restore-check "${posix(root)}" "${posix(dir)}"${evidence ? ` "${posix(evidence)}"` : ''}`);
+  if (!same) process.exit(1);
 }
 
 // ── apply · plugin ───────────────────────────────────────────────────────────
 
 function writeKeep(rel, text) { writeFileSync(abs(rel), text, 'utf8'); }
+
+/**
+ * 런타임 산출물을 지우기 직전에 증거 사본을 지금 판으로 맞춘다.
+ * 백업과 걷어내기 사이에도 살아 있는 훅이 로그에 줄을 더한다 — 백업 때 뜬 사본만 두고 지우면 그 줄을 잃는다.
+ * 사본이 지금 파일의 앞부분이면(덧붙이기만 한 로그) 통째로 다시 복사하고, 아니면 지금 판을 at-apply/ 에 따로 둔다.
+ * 백업 뒤 새로 생긴 런타임 파일도 사본에 더하고 지울 목록에 넣는다. @returns 모두 맞췄으면 true
+ */
+function syncEvidence(s, c) {
+  const ev = s.backup.evidence;
+  const now = walkDir('.harness').filter((p) => RUNTIME.test(p));
+  for (const p of now) if (!c.data.paths.includes(p)) { c.data.paths.push(p); console.log(`INFO 백업 뒤 새로 생긴 런타임 파일 ${p} — 증거 사본에 더하고 함께 지운다`); }
+  const legacy = (p) => path.join(ev, p);                  // 예전 체크포인트: <증거>/<경로>
+  const target = (p) => path.join(ev, 'files', p);
+  let ok = true;
+  for (const p of c.data.paths) {
+    if (!exists(p)) continue;
+    const cur = readFileSync(abs(p));
+    const dst = existsSync(target(p)) || !existsSync(legacy(p)) ? target(p) : legacy(p);
+    const old = existsSync(dst) ? readFileSync(dst) : null;
+    if (old && cur.equals(old)) { console.log(`INFO 증거 사본 ${p} — 백업 뒤 바뀐 것 없음`); continue; }
+    let out = dst, note;
+    if (!old) note = '새로 복사';
+    else if (cur.length > old.length && cur.subarray(0, old.length).equals(old)) {
+      const added = cur.subarray(old.length).toString('utf8').split('\n').filter(Boolean).length;
+      note = `백업 뒤 더해진 ${added}줄까지 다시 복사`;
+    } else { out = path.join(ev, 'at-apply', p); note = `백업 때 사본과 앞부분이 달라 지금 판을 따로 둔다(${posix(out)})`; }
+    mkdirSync(path.dirname(out), { recursive: true });
+    copyFileSync(abs(p), out);
+    if (!readFileSync(out).equals(cur)) { console.log(`FAIL 증거 사본 대조 실패 ${p}`); ok = false; continue; }
+    console.log(`OK   증거 사본 ${p} — ${note}`);
+    const f = (s.backup.evidenceFiles ||= []).find((x) => x.path === p);
+    if (f) f.bytes = cur.length; else s.backup.evidenceFiles.push({ path: p, bytes: cur.length });
+  }
+  saveState(s);
+  return ok;
+}
 
 function apply() {
   const s = need(loadState());
@@ -455,6 +565,7 @@ function apply() {
   const rmFile = (p) => { if (exists(p)) { rmSync(abs(p)); return true; } return false; };
   for (const c of C.filter((x) => ['file', 'files', 'runtime'].includes(x.kind) && todo(x))) {
     if (c.kind === 'runtime' && !s.backup.evidence) { console.log(`SKIP ${c.id} — 증거 사본이 없다`); continue; }
+    if (c.kind === 'runtime' && !syncEvidence(s, c)) { console.log(`SKIP ${c.id} — 증거 사본을 지금 판으로 맞추지 못했다. 지우지 않는다`); continue; }
     const ps = c.data.paths || [c.data.path];
     const n = ps.filter(rmFile).length;
     mark(c.id, `OK   removed ${n}/${ps.length} ${c.id}`);
@@ -567,15 +678,92 @@ function verify() {
   const st = git('status', '--short', '--untracked-files=all');
   console.log(`INFO git status --short ${st.trim() ? st.trim().split('\n').length : 0}줄`);
   if (st.trim()) console.log(st.trimEnd().split('\n').map((l) => `     ${l}`).join('\n'));
+  // 커밋 경로 = 추적 중인 후보 중 HEAD 와 다르고, 걷어 낸 조각이 HEAD 에 있던 것.
+  // 설치가 커밋되지 않은 트리에서는 걷어내기가 작업본을 HEAD 쪽으로 되돌릴 뿐이라, HEAD 와 남은 차이는
+  // 손대지 않은 문서 줄·남긴 키 같은 설치의 남은 조각이다 — 그것을 커밋하면 「제거」가 아니라 「설치 일부」 커밋이 된다.
   const isTracked = (p) => git('ls-files', '--', p).trim() !== '' || inHead(p);
   const changed = [...candPaths].filter((p) => isTracked(p) && git('status', '--porcelain', '--', p).trim() !== '').sort();
-  const tracked = changed.filter((p) => tryGit('diff', '--quiet', 'HEAD', '--', p) === null);
-  for (const p of changed.filter((x) => !tracked.includes(x))) console.log(`INFO ${p} — status 는 M 이지만 HEAD 와 내용이 같다(줄끝만 다름: 설치가 다른 줄끝으로 썼다). 커밋 대상 아님`);
-  console.log(`INFO 커밋 경로(추적 중인 후보 중 HEAD 와 다른 것) ${tracked.length}개${tracked.length ? `: ${tracked.join(' ')}` : ' — 커밋할 것이 없다'}`);
+  const differs = changed.filter((p) => tryGit('diff', '--quiet', 'HEAD', '--', p) === null);
+  for (const p of changed.filter((x) => !differs.includes(x))) console.log(`INFO ${p} — status 는 M 이지만 HEAD 와 내용이 같다(줄끝만 다름: 설치가 다른 줄끝으로 썼다). 커밋 대상 아님`);
+  const commitPaths = [], notRemoval = [];
+  for (const p of differs) {
+    const r = removalAtHead(s, p);
+    if (!r.hit) { notRemoval.push(p); console.log(`INFO ${p} — HEAD 에 걷어 낸 조각이 없다(${r.why}). HEAD 와 남은 차이는 걷어내기 결과가 아니다 — 커밋 대상 아님`); continue; }
+    commitPaths.push(p);
+    if (r.mixed) console.log(`INFO ${p} — 걷어내기 말고도 HEAD 와 다른 곳이 있다(남긴 항목 · 커밋되지 않은 설치 조각 · 하네스와 무관한 변경). 경로 지정 커밋에 함께 실린다`);
+  }
+  const ia = s.plan.installAtHead || installAt(s.plan.head);
+  const committed = ia.config || ia.harnessDir || ia.manifest;
+  const reason = commitPaths.length ? null
+    : !committed ? `설치가 HEAD(${s.plan.head.slice(0, 7)})에 커밋된 적이 없다 — 걷어내기는 작업본을 HEAD 쪽으로 되돌렸을 뿐이다${notRemoval.length ? `. HEAD 와 남은 차이 ${notRemoval.length}개(${notRemoval.join(' ')})는 설치의 남은 조각이라 커밋하지 않는다` : ''}`
+    : 'HEAD 와 다른 후보 경로가 없다';
+  console.log(`INFO 커밋 경로(추적 중인 후보 중 걷어 낸 조각이 HEAD 에 있던 것) ${commitPaths.length}개${commitPaths.length ? `: ${commitPaths.join(' ')}` : ` — 커밋하지 않는다. 메시지 파일도 만들지 않는다. 이유: ${reason}`}`);
+  // ⑥ 보고용 요약 — 보고의 수와 경로는 여기서 옮긴다(손으로 세지 않는다)
+  printSummary(s);
   console.log(`failures=${fail}`);
   s.done.includes('verify') || s.done.push('verify');
-  s.lastVerify = { at: new Date().toISOString(), failures: fail, commitPaths: tracked };
+  s.lastVerify = { at: new Date().toISOString(), failures: fail, commitPaths, noCommitReason: reason, notRemoval };
   saveState(s);
+  process.exit(fail ? 1 : 0);
+}
+
+/** 이 경로에서 실제로 걷어 낸 연산을 HEAD 판에 똑같이 해 보아, HEAD 에 그 조각이 있었는지 가린다. */
+function removalAtHead(s, p) {
+  if (!inHead(p)) return { hit: false, why: 'HEAD 에 없는 파일' };
+  const applied = new Set(s.applied);
+  const C = s.plan.candidates.filter((c) => applied.has(c.id));
+  if (!exists(p)) return C.some((c) => (c.data.paths || [c.data.path]).includes(p)) ? { hit: true, mixed: false } : { hit: false, why: '걷어내기가 지운 파일이 아님' };
+  let text = tryGit('show', `HEAD:${p}`);
+  if (text === null) return { hit: false, why: 'HEAD 판을 읽지 못함' };
+  let hit = false;
+  const ops = C.filter((c) => c.kind === 'text' && c.data.path === p).map((c) => ({ id: c.id, ...c.data.op }));
+  if (ops.length) { const r = applyTextOps(text, ops, p); text = r.text; hit = Object.values(r.results).some((v) => v === 'removed' || v === 'reverted'); }
+  for (const c of C.filter((x) => ['hook', 'key', 'plugin'].includes(x.kind) && x.data.file === p)) {
+    try {
+      const steps = c.kind === 'hook' ? [(t) => deleteHook(t, { event: c.data.event, command: c.data.command, matcher: c.data.matcher })]
+        : (c.kind === 'key' ? [c.data.keys] : c.data.keys).map((ks) => (t) => deleteKey(t, ks));
+      for (const f of steps) { const r = f(text); if (r.removed) { hit = true; text = r.text; } }
+    } catch { /* HEAD 판이 JSON 이 아니면 그 조각은 HEAD 에 없다 */ }
+  }
+  if (!hit) return { hit: false, why: ops.length ? '지운 블록·줄이 HEAD 판에 없음' : '지운 훅·키가 HEAD 판에 없음' };
+  return { hit: true, mixed: normEol(text) !== normEol(read(p)) };
+}
+
+function printSummary(s) {
+  const C = s.plan.candidates, A = s.answers;
+  const count = (v) => C.filter((c) => A[c.id] === v).length;
+  const skipped = C.filter((c) => ['remove', 'revert', 'off'].includes(A[c.id]) && !s.applied.includes(c.id)).map((c) => c.id);
+  console.log('\n요약 — 보고의 수·경로는 이 블록에서 옮긴다');
+  console.log(`  후보 ${C.length}개 (플러그인 키 포함) · 지움 ${count('remove')} · 되돌림 ${count('revert')} · 끔 ${count('off')} · 남김 ${count('keep')} · 미답 ${C.filter((c) => !(c.id in A)).length}`);
+  console.log(`  적용 ${s.applied.length}건${skipped.length ? ` · 지우기로 했는데 적용 안 된 것 ${skipped.length}개: ${skipped.join(', ')}` : ''}`);
+  if ((s.filledByDefault || []).length) console.log(`  권장이 없어 keep 으로 채운 칸 ${s.filledByDefault.length}개: ${s.filledByDefault.join(', ')}`);
+  if (!s.backup) { console.log('  백업 없음'); return; }
+  const bdir = path.resolve(s.backup.dir), ev = s.backup.evidence && path.resolve(s.backup.evidence);
+  console.log(`  백업 ${s.backup.files.length}개${s.backup.plannedFiles != null ? ` (후보 파일 ${s.backup.plannedFiles}개)` : ''}: ${bdir}`);
+  if (ev) console.log(`  증거 사본(계측 로그) ${(s.backup.evidenceFiles || []).length}개: ${ev}`);
+  console.log(`  되돌리기: cp -r "${posix(bdir)}/files/." "${posix(root)}/"${ev ? ` && cp -r "${posix(ev)}/files/." "${posix(root)}/"` : ''} → restore-check "${posix(root)}" "${posix(bdir)}"${ev ? ` "${posix(ev)}"` : ''}`);
+  console.log(`  백업 수명: ${isWorktree() ? `이 트리는 worktree 라 백업이 ${posix(path.dirname(bdir))} 아래(.git/worktrees/<이름>/)에 있다 — git worktree remove 하면 백업도 함께 지워진다` : '백업은 이 저장소의 .git 아래에 있다 — 저장소를 지우면 함께 지워진다'}. 재설치할 수 있으면 레포 밖으로 옮겨 둔다`);
+  if (ev) console.log(`  증거 사본 수명: git-common-dir 아래라 worktree 를 지워도 남는다 — 필요 없어지면 손으로 지운다`);
+}
+
+/** 백업을 되돌려 놓은 뒤 대조한다 — 체크포인트 없이(finish 뒤에도) 돈다. */
+function restoreCheck() {
+  const [bdirArg, evArg] = args;
+  if (!bdirArg) { console.error('사용: restore-check <레포 루트> <백업 디렉토리> [증거 디렉토리]'); process.exit(2); }
+  const idx = JSON.parse(readFileSync(path.join(path.resolve(bdirArg), 'index.json'), 'utf8'));
+  let fail = 0;
+  for (const f of idx.files) {
+    if (!exists(f.path)) { fail++; console.log(`FAIL 없음 ${f.path}`); continue; }
+    const buf = readFileSync(abs(f.path));
+    if (RUNTIME.test(f.path) && evArg) {
+      const e = [path.join(path.resolve(evArg), 'files', f.path), path.join(path.resolve(evArg), f.path)].find((x) => existsSync(x));
+      if (e) { readFileSync(e).equals(buf) ? console.log(`OK   ${f.path} (증거 사본과 같음)`) : (fail++, console.log(`FAIL ${f.path} — 증거 사본과 다르다`)); continue; }
+    }
+    // 예전 백업은 sha256 이 LF 정규화 해시였다 — sha256Lf 가 없으면 그쪽으로 본다
+    const ok = f.sha256Lf ? rawSha(buf) === f.sha256 : sha256(buf.toString('utf8')) === f.sha256;
+    ok ? console.log(`OK   ${f.path}`) : (fail++, console.log(`FAIL ${f.path} — 백업과 다르다`));
+  }
+  console.log(`대조 ${idx.files.length}개 · failures=${fail}${fail ? '' : ' — 백업 때와 같다. 하네스 훅이 되살아났으니 새 세션을 연다'}`);
   process.exit(fail ? 1 : 0);
 }
 
@@ -583,9 +771,9 @@ function finish() {
   const s = loadState();
   if (!s) { console.log('체크포인트 없음'); return; }
   rmSync(statePath);
-  console.log(`체크포인트를 지웠다. 백업은 남는다: ${s.backup ? s.backup.dir : '(없음)'}${s.backup && s.backup.evidence ? `\n증거: ${s.backup.evidence}` : ''}`);
+  console.log(`체크포인트를 지웠다. 백업은 남는다: ${s.backup ? path.resolve(s.backup.dir) : '(없음)'}${s.backup && s.backup.evidence ? `\n증거: ${path.resolve(s.backup.evidence)}` : ''}`);
 }
 
-const table = { scan, status: () => printPlan(need(loadState())), answer, backup, apply, plugin, verify, finish };
+const table = { scan, status: () => printPlan(need(loadState())), answer, backup, apply, plugin, verify, finish, 'restore-check': restoreCheck };
 if (!table[cmd]) { console.error(`모르는 명령: ${cmd}`); process.exit(2); }
 await table[cmd]();
