@@ -3,6 +3,11 @@
 매니페스트에 `version` 필드를 두지 않는다 — 판은 main 커밋 SHA 로 갈린다. 절은 병합 단위로 적는다.
 (0.1.0 까지는 `plugin.json` 과 `marketplace.json` 의 명시 버전을 함께 올렸다.)
 
+## 미발행 — 문서 셋업 스킬
+
+- 스킬 추가: `docs-setup`(SKILL·DECISIONS·TEMPLATES·`scripts/` observe·refs·links) — 레포에 아카이브 폴더·`docs/README.md` 성격표·`CLAUDE.md` 작업 라우팅·문서 규약 표를 세우고, 「아직 일을 시키는가」로 판정한 끝난 문서를 배너와 함께 옮긴다. `project.docs.archiveDir`·`pathValidator`·`autoloaded`·`project.memory.slugs` 를 채우고 harness-agent `docs.always`·`docs.archive` 를 맞춰 `archive-cycle` 이 바로 돌게 하며, 메모리 규약(인덱스 한 줄 형식·연표 접기·핸드오프 보관 수·정리 시점 — 수치는 판단값)을 `CLAUDE.md` 에 넣는다. 결정은 하나씩 묻고 관찰에서 계산한 권장을 보인다. 이동은 `git mv` 없이 백업 → 이동 → 참조 고침(지시 문서는 따로 묻는다) → 기준선 대비 링크 검사 → 경로 지정 커밋 순이고, 체크포인트로 이어받는다
+- 「이관 후 접기」 문서는 옮기지 않고 archive-cycle 이관 대상으로 넘긴다. 아카이브가 아닌 이동은 권장하지 않는다
+
 ## 미발행 — 하네스 설치 시험 반영
 
 - `harness-install` 에 `scripts/install.mjs` 를 더한다 — `precheck`(트리 종류·worktree 여부·다른 세션을 timestamp 있는 마지막 user·assistant 기록으로 동시·최근·오래됨으로 가름) · `settings-snap`·`settings-eol`·`after-cli`(settings 의 줄끝·BOM·끝 개행을 손대기 전 판대로 되살리고, CLI 가 다시 쓴 파일을 손본 직후 스냅숏으로 되덮음) · `test-select`(테스트 제외 패턴을 소스 트리에 대어 빠지는 것을 펼치고 실행 결과와 대조 — 디렉토리 일치로 하위 패키지까지 빠지는 것을 잡는다) · `slots`(kit 자산이 읽는 슬롯을 모아 빈 키와 이유 없는 `null` 을 실패로 셈) · `plugin-hooks`(끌 플러그인의 훅 목록). CHECKS §6 안에 있던 `answer-trace.mjs` 를 `scripts/` 로 꺼낸다

@@ -20,6 +20,7 @@
 | 스킬 | `plugin-sync` | 플러그인(이 플러그인 또는 프로젝트 오버레이) 최신화 사이클 — 명시 호출 전용 |
 | 스킬 | `harness-install` | "하네스 설치해줘" — 지금 레포에 harness-agent 게이트(`.harness/` 훅)와 이 플러그인(project scope)을 함께 설치. 결정은 하나씩 묻는다. 끝에 영수증 `harness.install.json` 을 남긴다 |
 | 스킬 | `harness-uninstall` | "하네스 제거해줘" · "하네스 재설치" — harness-install 이 넣은 것만 블록·키 단위로 걷어 낸다. 영수증이 있으면 영수증 기준, 없으면 알려진 구조로 후보를 뽑아 항목마다 확인. 재설치는 이 스킬 → 새 세션 → `harness-install` |
+| 스킬 | `docs-setup` | "문서 구조 잡아줘" — 아카이브 폴더·성격표·`CLAUDE.md` 라우팅·문서 규약 표를 세우고, 끝난 문서를 배너와 함께 옮기며, `project.docs.*`·`memory.slugs` 를 채워 `archive-cycle` 이 바로 돌게 한다. 메모리 규약을 `CLAUDE.md` 에 넣는다. 설치된 레포에도 다시 돌릴 수 있다 |
 | 에이전트 | `backend-engineer` | BE 구현 위임 기본 대상 |
 | 에이전트 | `frontend-engineer` | FE 구현 · BE→FE 계약 동기화 |
 | 에이전트 | `unit-test-engineer` | 테스트 작성/유지 |
@@ -106,10 +107,10 @@
 | `contract` | `beGlobs`(계약 DTO·Controller glob) · `feDirs`(api·store) · `feMocks` · `rulesDoc`(계약 규율 문서) · `dataSourceRule`(데이터 소스 판별 문서) | coordinator · fe-be-trace · save · 에이전트 |
 | `data` | `schemaMgmt`(`'flyway'` \| `'liquibase'` \| `'init-sql'`) · `schemaHome` · `schemaProcedureSkill` · `migrationOverlaySkill` · `namingPlanDoc` | data-migration · coordinator |
 | `risk` | `sharedDbSuites`(공유 DB 에 실접속하는 테스트) · `sharedDbProfiles`(공유 DB 를 향하는 프로파일·설정 파일 **이름**) · `devServer`(기본 프록시가 원격을 향하는가 — 한 문장) · `destructive`(승인 필요 명령) | change-verifier · unit-test-engineer · save · data-migration |
-| `docs` | `domainIndex` · `screenMap` · `repoMap` · `testGuide` · `uiUxRules` · `archiveDir` · `pathValidator` · `autoloaded`(자동 로드 `CLAUDE.md` 목록) | 여러 자산 |
+| `docs` | `domainIndex` · `screenMap` · `repoMap` · `testGuide` · `uiUxRules` · `archiveDir` · `pathValidator` · `autoloaded`(자동 로드 `CLAUDE.md` 목록) | 여러 자산 · `archiveDir`·`pathValidator`·`autoloaded` 는 docs-setup 이 채운다 |
 | `git` | `protectedBranches` · `commitFormat`(한 문장) · `commitExecution`(`'auto'` \| `'message-only'`) · `push`(`'auto'` \| `'ask'` \| `'never'`) · `coAuthor`(trailer 허용 여부) · `reviewThreshold`(`{ files, lines }`) | save · frontend-engineer · plugin-sync·archive-cycle(`commitExecution`) |
 | `agents` | 역할 → 에이전트 이름 덮어쓰기. 역할: `schemaDesign` · `schemaApply` · `migration` · `backend` · `frontend` · `testAuthor` · `verifier` | coordinator · 에이전트 |
-| `memory` | `slugs`(`~/.claude/projects/` 아래 메모리 디렉토리 이름) · `policy`(백로그를 어디에 남기나 — 한 문장) | archive-cycle · qa-cycle |
+| `memory` | `slugs`(`~/.claude/projects/` 아래 메모리 디렉토리 이름) · `policy`(백로그를 어디에 남기나 — 한 문장) | archive-cycle · qa-cycle · docs-setup(채움) |
 | `plugin` | 플러그인 정본 레포에서만: `canonicalRepo` · `canonicalBranch` · `dir` · `marketplaceFile` · `readme` · `mirrorScript` · `hookTests` · `auditSources` | plugin-sync · plugin-curator |
 
 `agents` 기본값: `migration` = `harness-kit:data-migration-engineer`, `backend` = `harness-kit:backend-engineer`, `frontend` = `harness-kit:frontend-engineer`, `testAuthor` = `harness-kit:unit-test-engineer`, `verifier` = `harness-kit:change-verifier`. `schemaDesign`·`schemaApply` 는 기본값이 없다 — 프로젝트 오버레이가 제공한다.
