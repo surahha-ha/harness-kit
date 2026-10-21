@@ -1,11 +1,11 @@
-# 정적 확인 · 발동 확인 안내 · 설치 진행 판정 · 영수증
+# 정적 확인 · 발동 확인 안내 · 설치 진행 판정 · 영수증 · 테스트 제외 확인
 
-스크립트는 **scratchpad 에 둔다**(대상 레포에 파일을 만들지 않는다). 셸 인자에는 레포 경로만 넘기고, 판정할 명령 문자열은 파일 안에 둔다 — 셸 인자로 넘기면 실행 전 훅이 그 문자열을 보고 막는다.
+스크립트는 **scratchpad 에 둔다**(대상 레포에 파일을 만들지 않는다). 케이스를 이 레포 값으로 채워야 하는 판정(§1·§4)은 아래 꼴을 scratchpad 에 Write 해 쓰고, 고정된 판정은 스킬의 `scripts/` 를 그대로 부른다(`install.mjs` · `answer-trace.mjs` · `write-manifest.mjs`). 셸 인자에는 레포 경로만 넘기고, 판정할 명령 문자열은 파일 안에 둔다 — 셸 인자로 넘기면 실행 전 훅이 그 문자열을 보고 막는다.
 
 ## §1 settings.json — 파싱 · 키 중복 · 경로 · 대조
 
 `settings-check.mjs` — 사용: `node settings-check.mjs <레포 루트> [--before <백업>] [--parents <부모1 settings> <부모2 settings>]`
-(부모 판은 `git show <커밋>:.claude/settings.json` 을 리다이렉션으로 scratchpad 에 받아 둔다.)
+(부모 판은 `git show <커밋>:.claude/settings.json` 을 리다이렉션으로 scratchpad 에 받아 둔다. `--before` 에는 5단계 before 스냅숏 `$(git rev-parse --git-path harness-install-settings/before)/files/.claude/settings.json` 을 준다 — 훅·최상위 키에 더해 줄끝·BOM 도 편집 전과 대조한다.)
 
 ```js
 import { readFileSync, existsSync } from 'node:fs';
@@ -44,7 +44,9 @@ function entries(json) {
     for (const g of groups) for (const h of g.hooks || []) out.push(`${ev} | ${g.matcher || '*'} | ${h.command}`);
   return out;
 }
-const load = (p) => { const t = readFileSync(p, 'utf8'); return { text: t, json: JSON.parse(t) }; };
+const load = (p) => { const t = readFileSync(p, 'utf8'); return { text: t, json: JSON.parse(t.replace(/^\uFEFF/, '')) }; };
+const shape = (p) => { const b = readFileSync(p), s = b.toString('utf8'), crlf = (s.match(/\r\n/g) || []).length, lf = (s.match(/\n/g) || []).length - crlf;
+  return `${crlf && lf ? 'MIXED' : crlf ? 'CRLF' : 'LF'}${b[0] === 0xef && b[1] === 0xbb && b[2] === 0xbf ? '+BOM' : ''}`; };
 
 const cur = load(path.join(root, '.claude/settings.json'));
 const d = dupKeys(cur.text);
@@ -73,6 +75,8 @@ for (const [ev, tail] of want) {
 const before = opt('--before');
 if (before) {
   const b = load(before[0]);
+  const sb = shape(before[0]), sc = shape(path.join(root, '.claude/settings.json'));
+  sb === sc ? console.log(`OK   줄끝·BOM ${sc} 이 편집 전과 같다`) : bad(`줄끝·BOM 이 바뀜 ${sb} → ${sc} — install.mjs settings-eol 로 되돌린다`);
   for (const e of entries(b.json)) if (!list.includes(e)) bad(`기존 훅 사라짐 :: ${e}`);
   const skip = new Set(['hooks', 'enabledPlugins', 'extraKnownMarketplaces']);
   for (const k of new Set([...Object.keys(b.json), ...Object.keys(cur.json)]))
@@ -117,9 +121,18 @@ config 를 채우기 **전**(3단계 끝, example 복사 직후)의 danger-guard
 > 4. `/plugin` 에서 harness-kit 이 켜져 있고, 이 레포에서 끄기로 한 플러그인이 꺼져 있는지 봅니다.
 > 5. 헤드리스(`claude -p`)나 `!` 로 직접 친 명령은 훅을 타지 않으므로 확인으로 치지 않습니다.
 
-## §4 패턴 판정 — `evaluate` import
+## §4 패턴 판정 — `evaluate` import · 래퍼 · 와일드카드
 
 `pattern-check.mjs` — 사용: `node pattern-check.mjs <레포 루트>`
+
+케이스는 규칙마다 아래 넷을 채운다. 시험 설치의 전체 테스트 규칙은 맨 명령만 케이스로 두어, 와일드카드 `--tests` 와 `bash -c "…"` 래퍼가 통과하는 것을 6단계가 잡지 못했다.
+
+1. **차단 기대 · 통과 기대** — 규칙마다 1건 이상. 통과 기대에는 그 규칙 `recover` 에 적은 명령을 넣는다.
+2. **도구 경로 변형** — 같은 도구를 부르는 꼴마다 하나: `./gradlew` · `gradlew` · `gradlew.bat` · `.\gradlew.bat` · `<하위>/gradlew` · `"./gradlew"`(따옴표) · `cd <하위> && ./gradlew …` · `npx <도구>` ↔ `./node_modules/.bin/<도구>` · `npm run <스크립트>`. 레포 문서·스크립트에 실제로 나오는 꼴은 원문 그대로.
+3. **와일드카드 · glob** — 인자에 `*` 가 뜻을 갖는 규칙이면: `--tests '*'` · `--tests '<패키지>.*'` · `--tests *<클래스 일부>*` · 정확한 공유 테스트 이름(좁힌 것처럼 보이는 차단 대상) · `rm -rf build/*` · `docker volume rm $(docker volume ls -q)`. 「좁힌 실행은 통과」 예외가 있는 규칙은 `*` 가 든 꼴이 그 예외를 타지 않는지 본다.
+4. **래퍼 변형** — 스크립트가 차단 기대 케이스마다 자동으로 만든다(아래 `WRAPS`). 감싼 판이 다른 판정이면 `HOLE` 로 세고 실패다. 고치려면 규칙의 머리를 래퍼 뒤에서도 시작되게(`\b(?:bash|sh|cmd|powershell|pwsh)(?:\.exe)?\s+(?:[-\/]\w+\s+)*["']{0,2}`), 끝 조건에 따옴표를 넣는다(`(?=[\s;&|)"']|$)`). 고치지 않고 남기면 그 구멍을 사용자에게 보이고 답을 보고에 적는다.
+
+D6-2 에서 다룬 명령(끈 플러그인이 막던 것)도 같은 표에 넣는다 — 답이 deny·ask 면 그 규칙 id, 「막지 않음」이면 `null`(보고의 빈자리 목록과 같아야 한다).
 
 ```js
 import { pathToFileURL } from 'node:url';
@@ -130,18 +143,42 @@ const config = (await import(pathToFileURL(`${root}/harness.config.mjs`).href)).
 // [명령, 기대 규칙 id(차단·확인) 또는 null(통과)] — 레포 문서의 실제 명령 줄은 원문 그대로 넣는다.
 const cases = [
   // 프로브: [`echo ${config.dangerGuard.probe.token}`, 'probe'],
-  // deny 규칙마다: 차단 기대 1건 이상 + 그 규칙 recover 에 적은 명령(통과 기대)
+  // deny·ask 규칙마다: 차단 기대 1건 이상 + 그 규칙 recover 에 적은 명령(통과 기대)
+  // 도구 경로 변형: './gradlew …' · 'gradlew.bat …' · '.\\gradlew.bat …' · '"./gradlew" …' · 'cd <하위> && ./gradlew …' · 'npx <도구> …'
+  // 와일드카드: "<명령> --tests '*'" · "<명령> --tests '<패키지>.*'" · '<명령> --tests *<일부>*' · '<명령> --tests <공유 테스트 FQN>'
   // 출력 파이프: '<명령> | tail' · '<명령> 2>&1 | tail' · '<명령> 2>&1 | Select-Object -Last 20' → 차단 / '<명령> > out.txt 2>&1' → null
   // 공유 자원: 공유 호스트 + 쓰기 구문 → 'shared' / 같은 호스트 조회 → null / 로컬 호스트 쓰기 → null
+  // 서버 기동(D2-2): '<기동 명령>' · 'cd <하위> && <기동 명령>' · '<시작 스크립트>' · 'cmd /c <시작 스크립트>' · '& .\\<시작 스크립트>'
+  // D6-2: 끈 플러그인이 막던 명령마다 → 답대로 규칙 id 또는 null
   // 오탐 방지: 커밋 메시지·grep 인자 속 차단 문구 → null
 ];
 
+// 래퍼 변형 — 막혀야 하는 케이스마다 셸·실행기로 감싼 판도 같은 판정이어야 한다. 감싼 판이 통과하면 그것이 구멍이다.
+const WRAPS = [
+  ['bash -c "…"', (c) => !c.includes('"') && `bash -c "${c}"`],
+  ["bash -lc '…'", (c) => !c.includes("'") && `bash -lc '${c}'`],
+  ['sh -c "…"', (c) => !c.includes('"') && `sh -c "${c}"`],
+  ['cmd /c …', (c) => `cmd /c ${c}`],
+  ['cmd.exe /c "…"', (c) => !c.includes('"') && `cmd.exe /c "${c}"`],
+  ['powershell -Command "…"', (c) => !c.includes('"') && `powershell -Command "${c}"`],
+  ['pwsh -c "…"', (c) => !c.includes('"') && `pwsh -c "${c}"`],
+  ['( … )', (c) => `(${c})`],
+  ['앞 줄 + 개행', (c) => `echo start\n${c}`],
+];
+
 let fail = 0;
+const judge = (cmd) => { const hit = evaluate(cmd, config); return hit ? hit.rule : null; };
 for (const [cmd, want] of cases) {
-  const hit = evaluate(cmd, config);
-  const got = hit ? hit.rule : null;
+  const got = judge(cmd);
   if (got !== want) fail++;
   console.log(`${got === want ? 'OK  ' : 'FAIL'} want=${want} got=${got} :: ${cmd}`);
+  if (!want || want === 'probe') continue;
+  for (const [name, wrap] of WRAPS) {
+    const w = wrap(cmd);
+    if (!w) continue;
+    const g = judge(w);
+    if (g !== want) { fail++; console.log(`HOLE want=${want} got=${g} [${name}] :: ${w.replace(/\n/g, '\\n')}`); }
+  }
 }
 
 // 증거 슬롯을 채웠으면: [유형 id, 명령, 기대 true/false] — 인정해야 할 실행과 인정하면 안 되는 실행(테스트 제외 빌드·watch·파이프)
@@ -155,6 +192,9 @@ for (const [id, cmd, want] of evidenceCases) {
 console.log(`failures=${fail}`);
 process.exit(fail ? 1 : 0);
 ```
+
+- `OK`·`FAIL` 은 케이스 표 그대로의 판정이고, `HOLE` 은 래퍼 변형의 구멍이다. 래퍼 안에 같은 따옴표가 든 케이스는 그 변형을 건너뛴다(셸에서도 그대로는 안 되는 꼴이다).
+- 실행 전 가드는 이 스크립트를 셸 인자로 부르지 않으므로 스스로 막히지 않는다. 케이스 문자열은 이 파일 안에만 둔다.
 
 ## §5 설치 진행 판정 · `.harness/` 비교 — 0·3·4단계
 
@@ -191,6 +231,23 @@ git -C "$R" status --short -- .harness harness.config.mjs
 - **재개** — 0·1단계는 다시 한다. `done` 의 각 단계는 완료 기준을 한 번 더 확인하고(끊긴 쪽이 기록 뒤에 파일을 바꿨을 수 있다), 틀린 첫 단계부터 잇는다.
 - **초기화** — 설치가 만든 것만 지운다: 체크포인트 `created`·`edits`·`settings` 에 적힌 것(`.harness/` · `harness.config.mjs` · `.gitignore` 표시 블록 · 보조 파일 · 5단계를 지났으면 settings.json 의 하네스 훅·플러그인 키 · 8단계를 지났으면 `CLAUDE.md` 표시 블록·줄과 고친 줄) · 체크포인트. 지울 목록을 먼저 보이고 승인받는다. 블록·키 단위로 지우고 `git restore`·`git checkout` 으로 되돌리지 않는다. 설치 전부터 있던 미커밋 변경은 건드리지 않는다.
 
+## §6 답을 바꾼 흔적 — 6단계
+
+답을 여러 번 바꾼 설치에서는 옛 답의 값·주석이 남는다. 아래 1~4 를 보고 항목마다 「고침 / 의도(근거)」를 적고, 5·6 은 보고에 옮긴다.
+
+1. **체크포인트 답 ↔ config·settings 값** — 스크립트 ①. 다르면 어느 쪽이 최종 답인지 사용자에게 묻는다.
+2. **같은 규칙 중복** — deny·ask 안에서 같은 `id` 나 같은 패턴. 스크립트 ②.
+3. **example 기본값이 남은 슬롯** — example 과 값이 같은 칸. 스크립트 ③ 이 목록만 낸다(실패로 세지 않음). 각 칸이 「답이 기본 유지」인지 「옛 답에서 못 바꾼 것」인지 가린다.
+4. **주석 ↔ 값** — 「미확정」 주석인데 값이 있는 줄은 스크립트 ④ 가 잡는다. 그 밖(「끔」이라 적고 `true`, ask 라 적힌 규칙이 deny 배열에 있음 등)은 `diff --strip-trailing-cr "$T/example.mjs" harness.config.mjs` 의 바뀐 덩어리마다 바로 위 주석을 읽어 본다.
+5. **권장과 다른 답** — 스크립트 ⑤ 가 체크포인트 `recs` 의 「권장과 다름」·「권장 없음」을 목록으로 낸다(실패로 세지 않음). 보고의 결정 표 「권장」 열과 같아야 한다. `recs` 가 없는 답은 2단계 기록 누락이라 실패로 센다.
+6. **질문 형식** — 2단계에서 낸 질문마다 아래를 눈으로 본다(TEMPLATES.md §8, 스크립트 밖). 어긋난 질문은 D 번호와 함께 보고에 적는다. 이전 세션에서 물어 이 세션 대화에 질문이 남아 있지 않으면 「확인 불가」로 적는다.
+   - **header** — 12자 이하 · D 번호가 없고 대상 명사가 들어 있다(`테스트DB 볼륨삭제` ○ · `D4-3 볼륨삭제` ×) · 동작만 있는 header(`범위`·`제외`·`데몬`) 없음 · 한 번에 낸 질문끼리 겹치지 않음.
+   - **선택지 라벨** — 질문을 보지 않고 라벨만 읽어도 뜻이 통한다(`막지 않음`·`차단 (deny)` ○ · `넣지 않음`·`deny` ×).
+   - **권장 표시** — 권장이 있으면 첫 선택지 라벨 끝에 「(권장)」, 그 설명 첫 줄에 「권장 이유: …」(규칙표 인용이 아니라 이 레포의 관찰). 권장이 없으면 질문에 「권장 없음 — …」이 있고 「(권장)」이 어디에도 없다.
+   - **쉬운 말** — 질문 첫 문장에 풀이표 왼쪽의 말(`deny`·`trailer`·`간접`·`빈자리`·`--stop`)이 풀이 없이 나오지 않는다. 사용자가 되물은 질문은 그 용어와 함께 적는다.
+
+`node "${CLAUDE_SKILL_DIR}/scripts/answer-trace.mjs" <레포 루트> <example 사본>` — ①~⑤ 를 돈다. example 사본은 §5 ② 에서 꺼낸 `$T/example.mjs` 다. 체크포인트는 대상 트리의 `git rev-parse --git-path harness-install-state.json` 에서 읽고, 대상 레포에는 아무것도 쓰지 않는다. 출력 줄: `OK`(답 = 값) · `FAIL`(①②④ 어긋남 · recs 누락) · `SAME`(③) · `NOREC`·`DIFF`(⑤). 종료코드는 FAIL 이 있을 때만 1.
+
 ## §7 영수증 — 9단계
 
 `node "${CLAUDE_SKILL_DIR}/scripts/write-manifest.mjs" <레포 루트> <초안>` 이 대조하는 것(하나라도 어긋나면 영수증을 쓰지 않고 종료코드 1):
@@ -203,78 +260,42 @@ git -C "$R" status --short -- .harness harness.config.mjs
 
 출력 `OK harness.install.json — 파일 N · 고친 곳 M · 훅 K · 키 L` 의 N 이 `.harness/`(런타임 산출물 제외)·config·보조 파일 수의 합과 같아야 한다.
 
-## §6 답을 바꾼 흔적 — 6단계
+## §8 테스트 제외 확인 — 「빠질 것만 빠지고, 돌 것은 돌았나」
 
-답을 여러 번 바꾼 설치에서는 옛 답의 값·주석이 남는다. 아래 1~4 를 보고 항목마다 「고침 / 의도(근거)」를 적고, 5·6 은 보고에 옮긴다.
+D3 에서 공유 자원 테스트를 명령줄 제외(init script·필터)로 뺐으면 두 번 본다. 「빼려던 것이 빠졌나」만 보면 제외가 넓은 것을 놓친다 — 시험 설치의 첫 init script 는 루트 패키지 직속 3개를 빼려다 하위 패키지까지 모두 빼, 결과 파일이 72개 대신 7개였는데 「공유 DB 테스트가 결과에 없음」만 보고 통과로 읽힐 뻔했다.
 
-1. **체크포인트 답 ↔ config·settings 값** — 스크립트 ①. 다르면 어느 쪽이 최종 답인지 사용자에게 묻는다.
-2. **같은 규칙 중복** — deny·ask 안에서 같은 `id` 나 같은 패턴. 스크립트 ②.
-3. **example 기본값이 남은 슬롯** — example 과 값이 같은 칸. 스크립트 ③ 이 목록만 낸다(실패로 세지 않음). 각 칸이 「답이 기본 유지」인지 「옛 답에서 못 바꾼 것」인지 가린다.
-4. **주석 ↔ 값** — 「미확정」 주석인데 값이 있는 줄은 스크립트 ④ 가 잡는다. 그 밖(「끔」이라 적고 `true`, ask 라 적힌 규칙이 deny 배열에 있음 등)은 `diff --strip-trailing-cr "$T/example.mjs" harness.config.mjs` 의 바뀐 덩어리마다 바로 위 주석을 읽어 본다.
-5. **권장과 다른 답** — 스크립트 ⑤ 가 체크포인트 `recs` 의 「권장과 다름」·「권장 없음」을 목록으로 낸다(실패로 세지 않음). 보고의 결정 표 「권장」 열과 같아야 한다. `recs` 가 없는 답은 2단계 기록 누락이라 실패로 센다.
-6. **질문 형식** — 2단계에서 낸 질문마다 두 가지를 눈으로 본다(TEMPLATES.md §8, 스크립트 밖). 어긋난 질문은 D 번호와 함께 보고에 적는다. 이전 세션에서 물어 이 세션 대화에 질문이 남아 있지 않으면 「확인 불가」로 적는다.
-   - **header** — D 번호가 없고 대상 명사가 들어 있다(`테스트DB 볼륨삭제` ○ · `D4-3 볼륨삭제` ×). 동작만 있는 header(`범위`·`제외`·`데몬`)는 어긋남이다.
-   - **선택지 라벨** — 질문을 보지 않고 라벨만 읽어도 뜻이 통한다(`막지 않음`·`차단 (deny)` ○ · `넣지 않음`·`deny` ×).
+`I=node "${CLAUDE_SKILL_DIR}/scripts/install.mjs"` 라 할 때:
 
-`answer-trace.mjs` — 사용: `node answer-trace.mjs <레포 루트> <example 사본>`
+**① 정적 — 6단계.** 실행 없이 소스 트리에 제외 규칙을 대어 무엇이 빠지는지 펼친다. 빌드 도구는 제외 패턴을 디렉토리에도 맞추므로(디렉토리가 맞으면 그 아래 전체가 빠진다) 스크립트도 그렇게 본다.
 
-```js
-import { readFileSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
-import path from 'node:path';
-import { pathToFileURL } from 'node:url';
-
-const root = path.resolve(process.argv[2]);
-const load = async (p) => (await import(pathToFileURL(p).href)).default;
-const config = await load(path.join(root, 'harness.config.mjs'));
-const example = await load(path.resolve(process.argv[3]));
-const settings = JSON.parse(readFileSync(path.join(root, '.claude/settings.json'), 'utf8'));
-const statePath = path.resolve(root, execFileSync('git', ['-C', root, 'rev-parse', '--git-path', 'harness-install-state.json'], { encoding: 'utf8' }).trim());
-const state = JSON.parse(readFileSync(statePath, 'utf8'));
-let fail = 0;
-const bad = (m) => { fail++; console.log(`FAIL ${m}`); };
-const canon = (v) => JSON.stringify(v, (_, x) => (x instanceof RegExp ? String(x) : x));
-const pick = (o, [k, ...rest]) => k === undefined ? o
-  : k === '*' ? (Array.isArray(o) ? o.map((x) => pick(x, rest)) : undefined)
-  : o == null ? undefined : pick(o[k], rest);
-
-// ① 체크포인트 답 ↔ 값 (정규식 값은 체크포인트에 String(re) 꼴로 적혀 있다)
-for (const d of state.decisions || []) for (const s of d.slots || []) {
-  const got = pick(s.file === 'settings' ? settings : config, s.path);
-  canon(got) === canon(s.value) ? console.log(`OK   ${d.id} ${s.path.join('.')}`)
-    : bad(`${d.id} ${s.path.join('.')} 답=${canon(s.value)} 값=${canon(got)}`);
-}
-
-// ② 같은 규칙 중복
-const g = config.dangerGuard || {};
-const seen = new Map();
-for (const [kind, r] of [...(g.deny || []).map((r) => ['deny', r]), ...(g.ask || []).map((r) => ['ask', r])]) {
-  for (const key of [r.id && `id ${r.id}`, `pattern ${String(r.pattern)}`].filter(Boolean)) {
-    seen.has(key) ? bad(`규칙 중복 ${key} — ${seen.get(key)} · ${kind}`) : seen.set(key, kind);
-  }
-}
-
-// ③ example 과 값이 같은 칸 — 배열·정규식은 한 칸으로 본다
-const walk = (v, p, out) => {
-  if (v && typeof v === 'object' && !Array.isArray(v) && !(v instanceof RegExp)) for (const k of Object.keys(v)) walk(v[k], [...p, k], out);
-  else out.push([p, v]);
-  return out;
-};
-for (const [p, v] of walk(example, [], [])) if (v != null && canon(pick(config, p)) === canon(v)) console.log(`SAME ${p.join('.')} = ${canon(v).slice(0, 60)}`);
-
-// ④ 「미확정」 주석인데 값이 있는 줄
-readFileSync(path.join(root, 'harness.config.mjs'), 'utf8').split(/\r?\n/).forEach((l, i) => {
-  if (/미확정/.test(l) && /:\s*(?!null\b)\S/.test(l.split('//')[0])) bad(`미확정인데 값이 있음 :${i + 1} ${l.trim()}`);
-});
-
-// ⑤ 권장과 다른 답 · 권장 없음 — 목록만(recs 누락은 실패)
-for (const d of state.decisions || []) {
-  if (!Array.isArray(d.recs) || !d.recs.length) { bad(`${d.id} recs 없음 — 권장·따름 여부 미기록`); continue; }
-  for (const r of d.recs) {
-    if (r.recommended == null) console.log(`NOREC ${d.id} ${r.item} — ${r.basis}`);
-    else if (r.followed === false) console.log(`DIFF ${d.id} ${r.item} 권장=${canon(r.recommended)} 답=${d.answer} — ${r.basis}`);
-  }
-}
-console.log(`failures=${fail}`);
-process.exit(fail ? 1 : 0);
+```bash
+$I test-select <레포 루트> --src <테스트 소스 루트> --exclude '<init script 의 exclude 패턴>' \
+   --expect-excluded <빼려던 FQN> [--expect-excluded <FQN>…]
+# 필터(excludeTestsMatching · --tests 제외)를 썼으면 --exclude 대신 --filter-exclude '<패턴>' — 이 * 는 점을 넘어 하위 패키지까지 맞는다
 ```
+
+- `빠짐` 목록이 빼려던 것과 같고 `failures=0` 이어야 한다. `의도 밖 제외` 가 나오면 패턴을 좁힌다(`<패키지 경로>/*` → `<패키지 경로>/*.class` 또는 클래스 이름).
+- `--expect-excluded` 없이 돌리면 대조는 하지 않고 목록만 낸다 — 그 목록을 사용자에게 보이고 의도와 같은지 묻는다.
+- 추상 클래스(`abstract class`)는 원래 돌지 않으므로 「돌아야 할 것」에서 뺀다.
+
+**② 실행 — 7단계, 사용자가 직접.** 판정용 테스트 명령은 공유 자원 경로를 막아도 로컬 컨테이너 등에 쓸 수 있어, 대상 환경을 확인한 사람이 돌린다. 아래 안내문을 이 레포의 값으로 채워 건넨다.
+
+> 1. 테스트가 쓸 로컬 컨테이너를 띄웁니다({컨테이너 기동 명령}). 공유 DB 가 아닌지 한 번 더 봅니다.
+> 2. 지난 결과가 섞이지 않게 결과를 비우고 판정용 명령을 돌립니다(파이프 없이): `{결과 비우기 작업} {commands.unitTest 명령}` — 예: Gradle 은 `cleanTest test --init-script <경로>`.
+> 3. 끝나면 결과 디렉토리({JUnit XML 디렉토리})를 알려 주세요. BUILD FAILED 여도 괜찮습니다 — 결과 파일은 남습니다.
+
+결과를 받으면:
+
+```bash
+$I test-select <레포 루트> --src <테스트 소스 루트> --exclude '<패턴>' --expect-excluded <FQN>… --results <JUnit XML 디렉토리>
+```
+
+| 출력 | 판정 |
+| - | - |
+| `failures=0` · 결과 없음 0 · 빠져야 할 것 중 돈 것 0 | 성공 — 빠질 것만 빠지고 나머지는 돌았다 |
+| `결과 없음 N` | 제외가 넓거나 결과가 이전 실행 판이다. 패턴을 고치거나 결과를 비우고 다시 |
+| `빠져야 할 … 가 돌았다` | 제외 실패 — 공유 자원에 닿았을 수 있다. 바로 사용자에게 알리고 그 테스트가 무엇을 바꿨는지 함께 본다 |
+| `결과 파일이 0개` | 실행이 안 됐거나 디렉토리가 틀렸다 |
+
+- 결과 파일 이름은 JUnit XML 관례(`TEST-<FQN>.xml`)를 따른다고 본다 — Gradle·Maven 은 그렇다. 다른 러너면 클래스 목록을 손으로 뽑아 같은 대조를 한다.
+- 보고에는 「테스트 클래스 N · 빠짐 M(이름) · 실행 결과 K」 세 수를 적는다.
