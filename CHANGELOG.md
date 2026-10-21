@@ -11,6 +11,7 @@
 - CHECKS §4 에 도구 경로·와일드카드 케이스와 래퍼 변형 자동 생성(`HOLE`)을, §8 에 「빠질 것만 빠지고 돌 것은 돌았나」 확인을 더한다. 5단계는 settings 를 Write 로 쓰지 않고 Edit 만 쓴다
 - 프로젝트 고유 플러그인은 파일이 바뀌면 버전을 올리고, harness-kit 은 버전 없이 SHA 로 추적한다는 관례를 8단계에 적는다
 - `/save` 를 경로 지정 커밋으로 바꾼다 — 신규 파일만 `git add -N`, `git commit -F <메시지> -- <경로>` 를 브랜치·toplevel 조건과 한 명령으로, 게이트의 diff 는 `--cached` 대신 `git diff HEAD -- <경로>`, 푸시는 `git push origin <브랜치>`. `git.commitExecution: message-only` 면 명령만 건넨다. 남이 stage 해 둔 변경은 커밋에 들어가지 않고 index 에 남는다
+- `plugin-sync` 7단계와 `archive-cycle` ⑤-3 도 같은 꼴로 바꾼다 — `git add` + 경로 없는 `git commit` 을 신규 파일만 `git add -N` + 조건을 붙인 `git commit -F <메시지> -- <경로>` 로, plugin-sync 푸시는 `HEAD:` 대신 작업 브랜치 이름을 적는다. 두 스킬의 읽는 슬롯에 `git.commitExecution` 을 더한다(README 프로필 표 · harness-install D5 설명 함께)
 
 ## 미발행 — 하네스 걷어내기
 

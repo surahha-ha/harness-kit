@@ -134,7 +134,7 @@
 
 - 선택지 — 바뀌는 것
   - **설치 커밋 실행 / 커밋 메시지만 건넴** — 9단계가 경로 지정 커밋을 하거나 메시지 파일만 건넨다.
-  - `project.git.commitExecution` — `'auto'` 면 kit save 가 커밋까지 실행하고, `'message-only'` 면 메시지만 낸다. 이 둘뿐이다.
+  - `project.git.commitExecution` — `'auto'` 면 kit save·plugin-sync·archive-cycle 이 경로 지정 커밋까지 실행하고, `'message-only'` 면 메시지와 명령만 낸다. 이 둘뿐이다.
   - `project.git.push` — `'auto'` | `'ask'` | `'never'`. kit save 가 push 를 바로 하나, 묻나, 하지 않나.
   - `coAuthor` — kit 커밋 메시지와 이번 설치 커밋에 trailer 가 붙는지.
   - `reviewThreshold` — `{ files, lines }` 를 넘는 diff 에 kit save 가 리뷰 게이트를 연다. 미정(`null`)이면 그 게이트를 건너뛴다는 것을 알린다.

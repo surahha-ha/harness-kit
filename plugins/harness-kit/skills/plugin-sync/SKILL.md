@@ -14,7 +14,7 @@ description: Claude Code 플러그인(이 공용 플러그인 자신, 또는 프
 
 이 스킬은 프로젝트 고유값을 본문에 갖지 않는다. 정본 레포 루트 `harness.config.mjs` 의 `project` 블록에서 읽는다(슬롯 정의는 harness-kit README 「프로젝트 프로필」).
 
-- 이 스킬이 읽는 슬롯: `plugin.canonicalRepo` · `plugin.canonicalBranch` · `plugin.dir` · `plugin.marketplaceFile` · `plugin.readme` · `plugin.mirrorScript` · `plugin.hookTests` · `plugin.auditSources`
+- 이 스킬이 읽는 슬롯: `plugin.canonicalRepo` · `plugin.canonicalBranch` · `plugin.dir` · `plugin.marketplaceFile` · `plugin.readme` · `plugin.mirrorScript` · `plugin.hookTests` · `plugin.auditSources` · `git.commitExecution`
 - **값이 없으면 지어내지 않는다.** 파일이 없거나 슬롯 키가 없으면 그 자리에서 멈추고 사용자에게 묻는다 — 정본 브랜치를 `main`·`develop` 같은 흔한 이름으로 추측하지 않는다. `null` 은 "해당 없음으로 판단됨"이므로 그 단계를 건너뛰고 보고에 적는다(예: `plugin.mirrorScript: null` → 생성물 미러가 없다).
 
 ## 1. 정본 작업공간 확보
@@ -90,15 +90,43 @@ git worktree add ../<플러그인명>-wt origin/<canonicalBranch> --detach
 
 ## 7. 배포·정리
 
-커밋·푸시는 **사용자 확인 후**에 합니다.
+커밋·푸시는 **사용자 확인 후**에 합니다. 커밋은 **고른 경로만 경로 지정으로** 한다.
+
+> 🔴 **`git add <경로>` + 경로 없는 `git commit` 을 쓰지 않는다.** 경로 없는 커밋은 index 전체를 커밋해, 같은 트리에 다른 세션이 stage 해 둔 변경까지 딸려 들어간다. `git add -A`·`git add .` 도 금지다.
+
+1. **커밋 경로**(`<PATHS>`)를 정한다 — 6단계 `git status` 에서 의도한 파일로 확인한 `plugin.dir` 아래 변경 파일과 `plugin.marketplaceFile`. 디렉토리를 통째로 넘기지 말고 파일로 편다(그 아래 남의 변경이 섞인다).
+2. 메시지를 임시 파일로 쓰고 사용자에게 확인받는다.
+3. `git.commitExecution` 에 따라:
+   - `'auto'` — 아래 명령을 **한 번에** 실행한다. 브랜치·toplevel 조건과 커밋이 같은 명령에 있어야 확인과 커밋 사이에 브랜치가 바뀌어도 엉뚱한 곳에 커밋하지 않는다.
+   - `'message-only'` — 메시지와 아래 명령을 건네고 실행하지 않는다(푸시도 하지 않는다). 여기서 보고로 간다.
+   - 키가 없거나 두 값 밖이면 지어내지 않고 멈추고 묻는다.
 
 ```bash
-cd ../<플러그인명>-wt
-git add <plugin.dir> <plugin.marketplaceFile> && git commit
-git push origin HEAD:<canonicalBranch>   # 작은 수정. non-fast-forward 면 force 말고 fetch 후 다시 얹는다
-# 큰 수정은 작업 브랜치를 push 하고 정본 반영(MR/PR)은 사용자가 한다
-cd <plugin.canonicalRepo> && git worktree remove ../<플러그인명>-wt
+# <WT>=작업 worktree 절대경로(../<플러그인명>-wt) · <BRANCH>=그 worktree 의 작업 브랜치 · <MSG>=메시지 파일
+# <NEW…>=커밋 경로 중 미추적 파일(없으면 그 줄을 뺀다) · <PATHS…>=커밋 경로 전부
+R="<WT>"; B="<BRANCH>"
+[ "$(git -C "$R" rev-parse --show-toplevel)" = "$R" ] \
+  && [ "$(git -C "$R" rev-parse --abbrev-ref HEAD)" = "$B" ] \
+  && [ ! -e "$(git -C "$R" rev-parse --path-format=absolute --git-path index.lock)" ] \
+  && git -C "$R" add -N -- <NEW…> \
+  && git -C "$R" commit -F "<MSG>" -- <PATHS…>
 ```
+
+- 커밋 직후 `git -C "$R" show --stat HEAD` 의 파일 목록이 `<PATHS>` 와 같은지 본다.
+- 경로 중 하나라도 git 이 모르는 경로면 커밋 전체가 실패한다 — 실패 메시지의 경로를 고쳐 다시 돌린다(일부만 커밋되지 않는다).
+
+4. 푸시 — 원격과 브랜치를 늘 명시한다. 맨 `git push` 는 upstream 설정에 따라 다른 브랜치를 밀 수 있다.
+
+```bash
+# 작은 수정: 작업 브랜치를 정본 브랜치로 바로. non-fast-forward 면 force 말고 fetch 후 다시 얹는다
+[ "$(git -C "$R" rev-parse --abbrev-ref HEAD)" = "$B" ] && git -C "$R" push origin "$B:<plugin.canonicalBranch>"
+# 큰 수정: 작업 브랜치만 push 하고 정본 반영(MR/PR)은 사용자가 한다
+[ "$(git -C "$R" rev-parse --abbrev-ref HEAD)" = "$B" ] && git -C "$R" push -u origin "$B"
+```
+
+- `--force` 류는 이 스킬이 쓰지 않는다. `HEAD:` 대신 브랜치 이름을 적는 것은, 조건을 지난 뒤 HEAD 가 바뀌어도 미는 대상이 달라지지 않게 하려는 것이다.
+
+5. 정리 — `git -C <plugin.canonicalRepo> worktree remove <WT>`
 
 설치본 갱신은 사용자가 실행: `/plugin marketplace update <마켓플레이스명>` → `/plugin install <플러그인명>@<마켓플레이스명>` 또는 `/reload-plugins`.
 

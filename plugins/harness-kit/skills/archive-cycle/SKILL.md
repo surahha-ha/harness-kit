@@ -14,7 +14,7 @@ description: 쌓인 메모리·레포 문서를 계측→판정→이관→연�
 이 스킬은 프로젝트 고유값을 본문에 갖지 않는다. 레포 루트 `harness.config.mjs` 의 `project` 블록에서 읽는다(슬롯 정의는 harness-kit README 「프로젝트 프로필」).
 
 - 읽는 순서: 현재 레포 config → `project.pairOwner` 가 가리키는 주 레포 config. 짝 레포면 양쪽 config 를 다 읽는다.
-- 이 스킬이 읽는 슬롯: `memory.slugs` · `docs.archiveDir` · `docs.pathValidator` · `docs.autoloaded`
+- 이 스킬이 읽는 슬롯: `memory.slugs` · `docs.archiveDir` · `docs.pathValidator` · `docs.autoloaded` · `git.commitExecution`
 - **값이 없으면 지어내지 않는다.** 파일이 없거나 슬롯 키가 없으면 그 자리에서 멈추고 사용자에게 묻는다. `null` 은 "해당 없음으로 판단됨"이므로 그 단계를 건너뛰고 보고에 적는다(예: `docs.pathValidator: null` → ⑤-2 는 grep 만).
 
 ## ① 계측 — 무엇이 큰가, 그리고 무엇이 매 세션 실리는가
@@ -84,7 +84,19 @@ $f | Sort-Object Length -Descending | Select-Object -First 10 |
 
 1. **링크** — 이동 **전**에 참조를 grep 해 두고, 이동 **후** 같은 grep 을 재실행한다. 잔여 참조가 0 이거나 전부 새 경로로 갱신돼야 한다.
 2. **경로 검사기** — `docs.pathValidator` 가 있는 레포에서만 쓴다. 짝 레포라도 한쪽에만 검사기가 있을 수 있다 — **없는 쪽은 1번 grep 이 유일한 수단이다.**
-3. **스테이징 범위** — `git add` 는 **pathspec 하나가 없으면 전체가 실패**한다. 스테이징 직후 `git diff --cached --name-only` 로 의도한 파일이 전부 올라갔는지 확인한다. (이 확인을 건너뛰어 이관분이 빠진 채 이동만 커밋된 적이 있다.)
+3. **커밋 범위** — 커밋 경로는 ②~④ 에서 배정한 파일 전부다: 옮긴 문서의 **옛 경로와 새 경로**, 이관받은 SSOT 문서, 연표·참조를 고친 파일. `git add` + 경로 없는 `git commit` 은 쓰지 않는다 — 같은 트리에 다른 세션이 stage 해 둔 변경까지 딸려 들어간다. `git add -A`·`git add .` 도 금지다. `git.commitExecution` 이 `'message-only'` 면 메시지와 아래 명령을 건네고 끝내고, 키가 없으면 묻는다.
+
+```bash
+# <ROOT>=레포 루트 · <BRANCH>=현재 브랜치 · <MSG>=메시지 파일 · <NEW…>=새 경로 중 미추적 파일(mv 로 옮긴 것) · <PATHS…>=커밋 경로 전부(추적 중이던 옛 경로 포함 · mv 로 옮긴 미추적 파일의 옛 경로는 넣지 않는다)
+R="<ROOT>"; B="<BRANCH>"
+[ "$(git -C "$R" rev-parse --show-toplevel)" = "$R" ] \
+  && [ "$(git -C "$R" rev-parse --abbrev-ref HEAD)" = "$B" ] \
+  && [ ! -e "$(git -C "$R" rev-parse --path-format=absolute --git-path index.lock)" ] \
+  && git -C "$R" add -N -- <NEW…> \
+  && git -C "$R" commit -F "<MSG>" -- <PATHS…>
+```
+
+   경로 하나라도 git 이 모르면 커밋 전체가 실패한다. 커밋 직후 `git -C "$R" show --stat --name-status HEAD` 로 배정한 파일이 전부 들어갔는지(옛 경로는 `D`·`R`, 새 경로는 `A`·`R`) 확인한다. (경로 하나가 빠져 이관분 없이 이동만 커밋된 적이 있다.) 푸시는 하지 않는다 — 하려면 `git push origin <브랜치>` 로 브랜치를 적는다.
 
 **완료기준**: 위 세 확인의 출력이 있고, 커밋에 담긴 파일 목록이 ②~④ 의 배정과 일치한다.
 
@@ -94,7 +106,7 @@ $f | Sort-Object Length -Descending | Select-Object -First 10 |
 | - | - | - |
 | 상태 표기 신뢰 | "완료" 로 적힌 트랙에 회신 대기·컷오버가 살아 있었다 | ② 에서 본문을 연다 |
 | 이관 없이 이동 | archive 로 옮기면서 현행 판정 규칙이 같이 사라질 뻔했다 | ③ 을 ④ 보다 먼저 |
-| `git add` 부분 실패 | pathspec 하나가 없어 전체 실패 → 이관분이 빠진 채 커밋 | `git diff --cached --name-only` |
+| 커밋 경로 누락 | pathspec 하나가 없어 스테이징이 실패했는데 그대로 커밋 → 이관분이 빠진 채 이동만 커밋 | 경로 지정 커밋 뒤 `git show --stat --name-status HEAD` 를 배정과 대조 |
 | `git mv` 실패 | 미추적 파일엔 동작하지 않는다 | `mv` 로 옮긴다 |
 | 링크 파손 | 문서 이동 후 참조가 깨졌고, 검사기가 없는 레포에선 드러나지 않았다 | 이동 전 grep · 이동 후 재실행 |
 | 진행 중 런북 접기 | 크기만 보고 대형 런북을 대상에 넣으면 배포 중인 절차가 사라진다 | 완료 전 런북은 손대지 않는다 |
