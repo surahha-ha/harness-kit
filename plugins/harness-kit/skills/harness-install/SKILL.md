@@ -1,6 +1,6 @@
 ---
 name: harness-install
-description: 지금 레포에 harness-agent 게이트(.harness/ 훅)와 harness-kit 플러그인(project scope)을 함께 설치한다 — 사전 확인 → 정적 분석 → 결정 질문 → 골격 복사 → config → settings.json → 정적 확인 → 발동 확인 안내 → CLAUDE.md 절 → 경로 지정 커밋. Triggers on "하네스 설치해줘", "이 레포에 하네스 적용", "harness-agent 설치", "harness-kit 설치", "하네스 설치 이어서". 끝난 설치의 업그레이드에는 쓰지 않는다.
+description: 지금 레포에 harness-agent 게이트(.harness/ 훅)와 harness-kit 플러그인(project scope)을 함께 설치한다 — 사전 확인 → 정적 분석 → 결정 질문 → 골격 복사 → config → settings.json → 정적 확인 → 발동 확인 안내 → CLAUDE.md 절 → 영수증 · 경로 지정 커밋. Triggers on "하네스 설치해줘", "이 레포에 하네스 적용", "harness-agent 설치", "harness-kit 설치", "하네스 설치 이어서". 끝난 설치의 업그레이드에는 쓰지 않는다 — 다시 설치하려면 harness-uninstall 뒤 새 세션에서.
 ---
 
 # harness-install — 게이트와 플러그인을 한 번에, 결정은 하나씩
@@ -12,13 +12,14 @@ description: 지금 레포에 harness-agent 게이트(.harness/ 훅)와 harness-
 
 다른 레포의 고유 지식을 담은 **프로젝트 전용 플러그인은 설치하지 않는다.** 이 레포의 고유 지식은 레포 안(`CLAUDE.md`·`docs/`·`.claude/skills`)에 둔다.
 
-설치를 끝까지 지배하는 말 다섯 개:
+설치를 끝까지 지배하는 말 여섯 개:
 
 - **정적** — 0~6단계는 읽기·`git` 조회·정적 판정만 한다. 빌드·테스트·DB 접속·앱 기동은 하지 않는다. 판정에 실행이 필요하면 사용자에게 넘긴다.
 - **묻는다** — 결정은 근거와 함께 하나씩 묻는다([DECISIONS.md](DECISIONS.md)). 권장은 1단계 관찰에서 계산해 표시할 뿐이고, 고르는 것은 사용자다. 다른 레포의 값이나 흔한 기본값으로 채우지 않는다. 근거 없는 칸은 `null` 로 두고 보고에 적는다.
 - **통째로** — 골격은 디렉토리째 복사한다. 일부만 옮기면 정적 import 가 깨져 가드가 **조용히** 꺼진다.
 - **반출** — 커밋되는 파일(config·settings·`CLAUDE.md`)에는 개인 경로·개인 설정·비밀번호를 넣지 않는다. 사내 호스트·계정 이름 같은 레포 고유값은 이 레포의 config 안에만 둔다.
-- **체크포인트** — 2단계부터 단계가 완료 기준을 통과할 때마다(2단계는 답 하나마다) 대상 트리의 `git rev-parse --git-path harness-install-state.json` 파일에 완료 단계·결정 답·원본 SHA 를 적는다(꼴은 [TEMPLATES.md](TEMPLATES.md) §7). git 디렉토리 안이라 커밋·`.harness/` 비교에 섞이지 않고, 세션이 끊겨도 다음 세션의 0단계가 이어받는다. 단계를 서브에이전트에 맡겨도 완료 기준을 확인하고 체크포인트를 쓰는 것은 메인이다.
+- **체크포인트** — 2단계부터 단계가 완료 기준을 통과할 때마다(2단계는 답 하나마다) 대상 트리의 `git rev-parse --git-path harness-install-state.json` 파일에 완료 단계·결정 답·원본 SHA·만든 파일·고친 곳을 적는다(꼴은 [TEMPLATES.md](TEMPLATES.md) §7). git 디렉토리 안이라 커밋·`.harness/` 비교에 섞이지 않고, 세션이 끊겨도 다음 세션의 0단계가 이어받는다. 단계를 서브에이전트에 맡겨도 완료 기준을 확인하고 체크포인트를 쓰는 것은 메인이다.
+- **영수증** — 기존 파일에 넣는 것은 시작·끝 표시로 감싸고(TEMPLATES.md §3·§4), 9단계에서 만든 파일·고친 곳·훅·키를 레포 루트 `harness.install.json` 에 남긴다(§9). harness-uninstall 이 이 영수증을 기준으로 넣은 것만 걷어 낸다.
 
 각 단계를 시작할 때 [PITFALLS.md](PITFALLS.md) 의 같은 번호 절을 먼저 읽는다 — 실제 설치에서 터진 함정이 단계별로 모여 있다.
 
@@ -32,13 +33,13 @@ description: 지금 레포에 harness-agent 게이트(.harness/ 훅)와 harness-
 - **같은 트리의 살아 있는 다른 Claude 세션** — `~/.claude/projects/<트리 경로 슬러그>/*.jsonl` 의 최근 수정 시각(자기 세션 파일은 뺀다). 슬러그는 경로의 `:`·`\`·`/` 를 `-` 로 바꾼 꼴이고, 드라이브 문자의 대소문자가 섞여 있을 수 있다.
 - 기존 `.claude/settings.json`·`settings.local.json` 의 `hooks`(이벤트·matcher·명령)와 `enabledPlugins`
 - 기존 게이트 — git 훅(`core.hooksPath`), 셸 래퍼, 플러그인 훅. 같은 위험을 이미 막는 가드가 있으면 그 축은 켜지 않는다(겹침)
-- **설치 흔적 — 재개 판정**([CHECKS.md](CHECKS.md) §5): 체크포인트 · `.harness/`·`harness.config.mjs` 의 유무 · config 가 example 그대로인가 · HEAD 에는 있는데 작업본에서 지워졌는가
+- **설치 흔적 — 재개 판정**([CHECKS.md](CHECKS.md) §5): 체크포인트 · 영수증(`harness.install.json`) · `.harness/`·`harness.config.mjs` 의 유무 · config 가 example 그대로인가 · HEAD 에는 있는데 작업본에서 지워졌는가
 - 한글이 든 파일의 인코딩 표본(UTF-8 여부·BOM·줄끝), `.bat`/`.cmd` 의 비 ASCII 여부, `core.autocrlf`·`.gitattributes`
 
 판정:
 
 - 미커밋 변경이 `.claude/settings.json`·`.gitignore`·`CLAUDE.md` 에 있거나 다른 세션이 살아 있으면 **worktree 에서 설치하자고 제안한다**(2단계 설치 위치 질문으로 넘긴다).
-- 설치 흔적은 CHECKS.md §5 의 표로 가른다. **중단된 설치**면 남은 상태(완료 단계·답)를 보이고 「재개 / 초기화」를 묻는다. **끝난 설치**면 멈추고 보고한다(업그레이드는 범위 밖). **HEAD 에 하네스가 있는데 작업본에서 지워졌으면** 멈추고 보고한 뒤 「의도적 재설치인가」를 묻고, 그렇다는 답이 있을 때만 새 설치로 진행한다.
+- 설치 흔적은 CHECKS.md §5 의 표로 가른다. **중단된 설치**면 남은 상태(완료 단계·답)를 보이고 「재개 / 초기화」를 묻는다. **끝난 설치**면 멈추고 보고한다(업그레이드는 범위 밖). 다시 설치하려면 **`harness-uninstall` 로 걷어 낸 뒤 새 세션에서 이 스킬을 돌리라고** 안내한다 — 끝난 설치 위에 덮어 설치하지 않는다. **HEAD 에 하네스가 있는데 작업본에서 지워졌으면** 멈추고 보고한 뒤 「의도적 재설치인가」를 묻고, 그렇다는 답이 있을 때만 새 설치로 진행한다.
 
 **완료 기준:** 위 항목마다 관찰값이 한 줄씩 적혀 있고, 「중단」 · 「진행 — 새 설치(현 트리 / worktree 후보)」 · 「재개 — N단계부터」 중 하나로 판정돼 있다.
 
@@ -74,11 +75,11 @@ description: 지금 레포에 harness-agent 게이트(.harness/ 훅)와 harness-
 1. harness-agent 원본을 정한다 — 사용자에게 로컬 클론 위치를 묻는다. 없으면 공개 저장소 `https://github.com/surahha-ha/harness-agent.git` 를 **임시 디렉토리**(대상 레포 밖)에 clone 한다.
 2. 원본의 **커밋 SHA 를 기록한다**(`git -C <원본> rev-parse HEAD`, 미커밋 변경이 있으면 그 사실도) — 체크포인트에 먼저, 이어 6번의 config 머리 줄에. 보고와 커밋 메시지에도 넣는다.
 3. `skeletons/` 를 `.harness/` 로 **통째로** 복사한다(`lib/`·`*.test.mjs` 포함). 같음은 줄끝을 무시하고 본다([CHECKS.md](CHECKS.md) §5).
-4. `.gitignore` 에 `.harness/log.jsonl` · `.harness/promotions.jsonl` 두 줄을 넣는다(사본은 커밋, 로그는 커밋하지 않음). 포매터 대상이면 `.harness/` 를 제외 목록에 넣는다.
-5. 레포 고유 보조 파일(빌드 도구용 init script 등)은 **`.harness/` 밖**(예: 빌드 디렉토리 아래)에 둔다.
+4. `.gitignore` 에 `.harness/log.jsonl` · `.harness/promotions.jsonl` 두 줄을 **시작·끝 표시로 감싸** 넣는다(사본은 커밋, 로그는 커밋하지 않음, 꼴은 [TEMPLATES.md](TEMPLATES.md) §3). 포매터 대상이면 `.harness/` 를 제외 목록에 넣고, 그 줄도 표시로 감싼다. 넣은 곳을 체크포인트 `edits` 에 적는다.
+5. 레포 고유 보조 파일(빌드 도구용 init script 등)은 **`.harness/` 밖**(예: 빌드 디렉토리 아래)에 둔다. 만들 때마다 체크포인트 `created` 에 경로와 용도(어느 config 명령이 쓰는가)를 적는다.
 6. 원본의 **최신** `harness.config.example.mjs` 를 `harness.config.mjs` 로 복사하고(옛 설치처 config 를 복사하면 새 슬롯이 빠진다), 첫 줄에 원본·SHA 머리 줄을 넣는다([TEMPLATES.md](TEMPLATES.md) §6).
 
-**완료 기준:** `.harness/` 비교 출력 0줄 · `.harness/` 안에 원본에 없는 파일 0개 · `.gitignore` 두 줄 · config 첫 줄에 원본 SHA · `node .harness/danger-guard.mjs --status` 가 「설정됨 · 규칙 없음」(종료코드 1).
+**완료 기준:** `.harness/` 비교 출력 0줄 · `.harness/` 안에 원본에 없는 파일 0개 · `.gitignore` 두 줄이 표시 안에 있음 · config 첫 줄에 원본 SHA · `node .harness/danger-guard.mjs --status` 가 「설정됨 · 규칙 없음」(종료코드 1).
 
 ## 4. config 작성 — `harness.config.mjs`
 
@@ -99,6 +100,7 @@ description: 지금 레포에 harness-agent 게이트(.harness/ 훅)와 harness-
 2. 훅 5개와 플러그인 키를 **Edit 로 직접** 넣는다(꼴은 [TEMPLATES.md](TEMPLATES.md) §1·§2). 같은 이벤트 키가 이미 있으면 그 배열에 항목을 더하고, 이벤트 키를 하나 더 만들지 않는다.
 3. 이 PC 에 플러그인 설치 기록을 남긴다(사용자 확인 뒤): `claude plugin marketplace list` 로 마켓 등록을 보고, 없으면 `claude plugin marketplace add surahha-ha/harness-kit --scope project`, 이어서 `claude plugin install harness-kit@harness-kit --scope project`. 대상 트리에서 `claude plugin list` 가 harness-kit 을 「not installed」 없이 enabled 로 보이면 이 줄은 건너뛴다.
 4. **CLI 실행 직후 백업(2번까지 반영된 판)과 대조한다.** CLI 는 settings.json 을 통째로 다시 써 키 순서를 바꾸고 다른 키 값을 지울 수 있다 — 달라졌으면 백업으로 되돌린다(설치 기록은 남는다).
+5. 넣은 훅(이벤트·matcher·명령, 이벤트 키를 새로 만들었는지)과 키(경로·값, 부모 객체를 새로 만들었는지, 어느 결정인지)와 3번의 설치 기록(scope · 건너뜀 여부)을 체크포인트 `edits` 에 적는다.
 
 **완료 기준:** JSON 파싱 OK · 이벤트 키 중복 0 · 하네스 훅 5개가 각 이벤트에 정확히 1번 · 기존 훅이 편집 전과 같은 수·같은 명령 · `git diff` 에 의도한 추가만 있음.
 
@@ -122,24 +124,26 @@ description: 지금 레포에 harness-agent 게이트(.harness/ 훅)와 harness-
 
 ## 8. 레포 지식 초안 — CLAUDE.md 「개발 하네스」 절
 
-- [TEMPLATES.md](TEMPLATES.md) §4 꼴로 「개발 하네스」 절 초안을 만든다: 무엇이 막히고 무엇이 관찰만 되는가, 바뀐 테스트 명령, 상태 확인 명령, 첫 사용자 설치 절차.
-- 레포 `CLAUDE.md`·커맨드·에이전트 문서에서 **새 deny 에 걸리게 된 명령 줄**(맨 테스트 명령, 출력 파이프)을 찾아 목록으로 보이고, 고칠지 묻는다. 서술 문서가 차단될 명령을 권하는 모순이 남지 않게 한다.
+- [TEMPLATES.md](TEMPLATES.md) §4 꼴로 「개발 하네스」 절 초안을 만든다: 무엇이 막히고 무엇이 관찰만 되는가, 바뀐 테스트 명령, 상태 확인 명령, 첫 사용자 설치 절차. 절은 **시작·끝 표시로 감싸고**, 절을 가리키는 라우팅 한 줄에는 한 줄 표시를 붙인다.
+- 레포 `CLAUDE.md`·커맨드·에이전트 문서에서 **새 deny 에 걸리게 된 명령 줄**(맨 테스트 명령, 출력 파이프)을 찾아 목록으로 보이고, 고칠지 묻는다. 서술 문서가 차단될 명령을 권하는 모순이 남지 않게 한다. 고친 줄마다 바꾸기 전·뒤 원문을 체크포인트 `edits` 에 `replace` 로 적는다(코드 블록 안이라 표시를 붙이지 않는 자리다).
 
-**완료 기준:** 초안이 반영됐거나 사용자가 보류했고, 걸리는 줄 목록의 각 줄에 「고침 / 그대로(사유)」가 표시돼 있다.
+**완료 기준:** 초안이 반영됐거나 사용자가 보류했고, 걸리는 줄 목록의 각 줄에 「고침 / 그대로(사유)」가 표시돼 있다. 넣은 블록·줄과 고친 줄이 체크포인트 `edits` 에 빠짐없이 있다.
 
-## 9. 커밋 — 경로 지정, 같은 명령에서 브랜치 조건
+## 9. 영수증과 커밋 — 경로 지정, 같은 명령에서 브랜치 조건
 
-- 2단계에서 정한 커밋 정책대로 한다. 레포 규칙이 「커밋하지 않고 메시지만」이면 메시지만 건넨다.
+- 커밋 전에 **영수증**을 쓴다: 체크포인트의 원본·결정 답·`created`·`edits` 를 초안 JSON 으로 옮겨 scratchpad 에 Write 하고(꼴은 [TEMPLATES.md](TEMPLATES.md) §9), `node "${CLAUDE_SKILL_DIR}/scripts/write-manifest.mjs" <레포 루트> <초안>` 을 돌린다. 스크립트가 파일·블록·줄의 sha256 을 채우고, 적힌 것이 실제로 있는지와 개인 경로가 없는지 대조한 뒤 레포 루트에 `harness.install.json` 을 쓴다. `FAIL` 이 있으면 쓰지 않는다 — 초안이나 작업본을 고쳐 다시 돌린다.
+- 영수증 뒤에 설치 파일을 고쳤으면 영수증을 다시 쓴다. 영수증의 sha256 과 다른 파일은 harness-uninstall 이 「설치 뒤 손댄 파일」로 따로 묻는다.
+- 2단계에서 정한 커밋 정책대로 한다. 레포 규칙이 「커밋하지 않고 메시지만」이면 메시지만 건넨다. 영수증도 커밋 대상이다.
 - 신규 파일은 `git add -N -- <경로>` 먼저, 커밋은 `git commit -F <메시지파일> -- <경로…>` 로만 한다. 같은 명령 안에서 브랜치·toplevel 을 조건으로 건다(꼴은 [TEMPLATES.md](TEMPLATES.md) §5).
 - 메시지는 레포 `git log` 관례(언어·접두어)를 따르고, 원본 SHA 를 본문에 넣는다. trailer 는 레포 규칙이 허용할 때만 넣는다.
 - push·MR 은 실행 직전에 따로 확인받는다.
 
-**완료 기준:** 커밋 직후 `git status --short` 에 설치 전부터 있던 변경만 남아 있고, `git show --stat HEAD` 의 파일 목록이 의도한 목록과 같다.
+**완료 기준:** `write-manifest.mjs` 가 `OK` 로 끝났고 영수증의 파일 수가 `.harness/`(런타임 산출물 제외)·config·보조 파일 수의 합과 같다. 커밋 직후 `git status --short` 에 설치 전부터 있던 변경만 남아 있고, `git show --stat HEAD` 의 파일 목록이 의도한 목록(영수증 포함)과 같다.
 
 ---
 
 ## 보고
 
-마지막 응답에 담는다: 원본 SHA · 변경 파일 목록 · 결정별 답 표(「권장」 열 — 권장대로 / 권장과 다름 / 권장 없음) · `null` 로 둔 칸과 그 이유 · 6단계 결과 · 7단계 상태 · 사용자가 할 일(발동 확인, 첫 사용자 설치, 미정 결정).
+마지막 응답에 담는다: 원본 SHA · 변경 파일 목록 · 영수증 경로 · 결정별 답 표(「권장」 열 — 권장대로 / 권장과 다름 / 권장 없음) · `null` 로 둔 칸과 그 이유 · 6단계 결과 · 7단계 상태 · 사용자가 할 일(발동 확인, 첫 사용자 설치, 미정 결정).
 
 보고를 건넨 뒤 체크포인트 파일을 지운다 — 원본 SHA 는 config 머리 줄에 남는다. 체크포인트가 남아 있으면 다음 0단계가 그 트리를 「중단된 설치」로 본다.
