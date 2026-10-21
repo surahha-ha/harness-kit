@@ -8,6 +8,7 @@
 - 스킬 추가: `docs-setup`(SKILL·DECISIONS·TEMPLATES·`scripts/` observe·refs·links) — 레포에 아카이브 폴더·`docs/README.md` 성격표·`CLAUDE.md` 작업 라우팅·문서 규약 표를 세우고, 「아직 일을 시키는가」로 판정한 끝난 문서를 배너와 함께 옮긴다. `project.docs.archiveDir`·`pathValidator`·`autoloaded`·`project.memory.slugs` 를 채우고 harness-agent `docs.always`·`docs.archive` 를 맞춰 `archive-cycle` 이 바로 돌게 하며, 메모리 규약(인덱스 한 줄 형식·연표 접기·핸드오프 보관 수·정리 시점 — 수치는 판단값)을 `CLAUDE.md` 에 넣는다. 결정은 하나씩 묻고 관찰에서 계산한 권장을 보인다. 이동은 `git mv` 없이 백업 → 이동 → 참조 고침(지시 문서는 따로 묻는다) → 기준선 대비 링크 검사 → 경로 지정 커밋 순이고, 체크포인트로 이어받는다
 - 「이관 후 접기」 문서는 옮기지 않고 archive-cycle 이관 대상으로 넘긴다. 아카이브가 아닌 이동은 권장하지 않는다
 - docs-setup 이 채운 config 칸이 재설치·설치 단계 변경 뒤에도 남게 한다 — 칸마다 줄 끝 `// harness-kit:docs-setup` 표시(문서 칸이 없는 config 에는 표시 붙은 블록째)와 영수증 `owners["docs-setup"]`(설치 칸은 그대로) · `scripts/config-slots.mjs`(list·record·backups·restore). harness-uninstall 은 그 칸을 후보와 따로 보고하고 백업 `index.json` 에 `docsSetup` 으로 적으며, harness-install D8-2 가 최신 백업에서 되살릴지 묻는다(가리키는 폴더·파일이 남아 있으면 권장 「되살림」). 옮긴 문서·배너·성격표·`CLAUDE.md` 표가 걷어내기 후보가 되지 않는지 `scripts/boundary.mjs`(uninstall 과 같은 판정 함수)로 보고, `scripts/boundary.test.mjs` 가 설치 → docs-setup → 걷어내기 → 새 설치(표준·라이트 꼴) → 되살리기를 시험한다
+- 옮긴 뒤 커밋 전에 `observe.mjs` 가 지워진 옛 경로를 읽다 멈추던 것(작업본에 없는 추적 파일을 목록에서 뺀다)과, `links.mjs` 가 아카이브 배너의 옛 경로 표기를 새 깨짐으로 세던 것(배너 줄의 경로는 출처 표기로 본다)을 고친다
 
 ## 미발행 — 하네스 설치 시험 반영
 
