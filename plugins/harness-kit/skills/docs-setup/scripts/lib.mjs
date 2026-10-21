@@ -1,11 +1,11 @@
 // docs-setup 보조 스크립트 공용 함수 — 읽기만 한다(쓰기는 refs.mjs --apply 한 곳).
-import { readFileSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 
 export const posix = (p) => p.split(path.sep).join('/');
 
-/** 레포 안 파일 목록(레포 기준 상대경로). 미추적은 무시 규칙(.gitignore)을 따른다. */
+/** 레포 안 파일 목록(레포 기준 상대경로). 미추적은 무시 규칙(.gitignore)을 따른다. 작업본에서 지워진 추적 파일(옮긴 뒤 커밋 전의 옛 경로)은 뺀다. */
 export function repoFiles(root, { untracked = true } = {}) {
   const args = ['-C', root, 'ls-files', '-z', '--cached'];
   if (untracked) args.push('--others', '--exclude-standard');
@@ -16,7 +16,7 @@ export function repoFiles(root, { untracked = true } = {}) {
     execFileSync('git', ['-C', root, 'ls-files', '-z', '--cached'], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
       .split('\0').filter(Boolean),
   );
-  return [...seen].sort().map((rel) => ({ rel, tracked: tracked.has(rel) }));
+  return [...seen].filter((rel) => existsSync(path.join(root, rel))).sort().map((rel) => ({ rel, tracked: tracked.has(rel) }));
 }
 
 const MAX = 2 * 1024 * 1024;

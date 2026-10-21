@@ -8,7 +8,7 @@ description: 지금 레포에 문서 구조와 아카이브 규약을 세운다 
 이 스킬이 레포에 남기는 것은 세 가지다.
 
 1. **문서 구조와 아카이브 규약** — 아카이브 폴더, 아카이브로 옮긴 문서와 그 배너, `docs/README.md` 성격표, `CLAUDE.md` 의 작업 라우팅·문서 규약 표
-2. **config 칸** — harness-kit `project.docs.archiveDir`·`pathValidator`·`autoloaded`·`project.memory.slugs`, 그리고 harness-agent `docs.always`·`docs.archive` 를 그 값과 맞춘다. archive-cycle 이 읽는 칸이 모두 채워지는 것이 목표다
+2. **config 칸** — harness-kit `project.docs.archiveDir`·`pathValidator`·`autoloaded`·`project.memory.slugs`, 그리고 harness-agent `docs.always`·`docs.archive` 를 그 값과 맞춘다. archive-cycle 이 읽는 칸이 모두 채워지는 것이 목표다. 설치 단계(tier)와 무관하게 돈다 — 문서 칸이 없는 config 에는 자기 블록을 넣는다. 채운 칸마다 줄 끝에 `// harness-kit:docs-setup` 표시를 달고, 영수증(`harness.install.json`)이 있으면 `owners["docs-setup"]` 에 적는다. config 는 harness-install 이 만든 파일이라 걷어내기와 함께 지워지지만, 표시가 있으면 걷어내기가 따로 보고하고 백업에 남기며 재설치가 되살린다(harness-install D8-2)
 3. **메모리 규약** — 레포 `CLAUDE.md` 의 한 절. 메모리 폴더는 레포 밖이라 구조를 만들지 않고, Claude 가 런타임에 따를 규칙만 둔다
 
 프로젝트 고유 지식은 레포 안(`CLAUDE.md`·`docs/`)에 둔다. 메모리에는 레포 문서로 가는 포인터와 세션 사이의 진행 상태만 둔다.
@@ -28,6 +28,8 @@ description: 지금 레포에 문서 구조와 아카이브 규약을 세운다 
 | `observe.mjs <레포>` | `docs/` 문서별 표지·참조 수, `CLAUDE.md` 의 표 유무, config 칸과 그 어긋남, 메모리 크기 | 1 · 4 |
 | `refs.mjs <레포> <문서>…` · `--prefix` · `--plan` | 옮길 문서의 참조(링크·경로·이름만)와 패턴 참조, 이동 계획의 참조 고침 목록. 파일을 바꾸는 것은 `--apply --backup` 일 때뿐이다 | 2 · 3 |
 | `links.mjs <레포>` | 깨진 상대 링크·경로 참조. `--baseline` 으로 이번에 새로 깨진 것만 센다 | 3 · 4 |
+| `config-slots.mjs list·record·backups·restore <레포>` | 표시 붙은 config 칸 읽기 · 영수증 `owners["docs-setup"]` 기록 · 걷어내기 백업에 남은 칸과 가리키는 경로 · 백업에서 칸 되살리기(harness-install D8-2 도 쓴다) | 0 · 3 · 4 |
+| `boundary.mjs <레포> --base <rev>` | 이번에 쓴 줄이 harness-uninstall 의 후보 꼴(설치 표시 · 표시 블록 안 · 「개발 하네스」 절)에 걸리는지 — uninstall 과 같은 판정 함수로 본다 | 4 |
 
 ---
 
@@ -38,7 +40,8 @@ description: 지금 레포에 문서 구조와 아카이브 규약을 세운다 
 - `git status --short` · 현재 브랜치 · `git worktree list` — 특히 `docs/`·`CLAUDE.md`·`README.md`·`harness.config.mjs`·`.claude/` 의 미커밋 변경
 - **같은 트리의 살아 있는 다른 Claude 세션** — `~/.claude/projects/<트리 경로 슬러그>/*.jsonl` 의 최근 수정 시각(자기 세션 파일은 뺀다)
 - 체크포인트 파일 — 있으면 남은 상태(완료 단계·답·이동 계획·백업 위치)를 보이고 「재개 / 처음부터」를 묻는다
-- `harness.config.mjs` 의 유무 — 없으면 config 칸 결정은 「harness-install 먼저」로 보고하고, 나머지 결정만 진행한다
+- `harness.config.mjs` 의 유무 — 없으면 config 칸 결정은 「harness-install 먼저」로 보고하고, 나머지 결정만 진행한다. 있는데 문서 칸 블록이 없으면(문서 칸이 없는 설치 단계) 그대로 진행한다
+- 앞선 걷어내기 백업에 남은 docs-setup 칸 — `config-slots.mjs backups <레포>`. 있으면 A6 의 근거로 쓴다
 - 한글이 든 문서의 인코딩 — `observe.mjs` 가 UTF-8 이 아닌 문서를 낸다. 변환 전에는 판정 근거로 쓰지 않고, 이동·고침 대상에서도 뺀다
 
 판정: 문서·`CLAUDE.md` 에 미커밋 변경이 있거나 다른 세션이 살아 있으면 **worktree 에서 돌리자고 제안한다.** 이동과 참조 고침이 남의 작업과 한 파일에 섞인다.
@@ -87,8 +90,8 @@ node <스킬>/scripts/observe.mjs <레포> --json <scratchpad>/observe.json [--u
    - **확인을 받은 뒤에만** 4번으로 간다.
 4. **백업 · 이동 · 자동 고침** — `node <스킬>/scripts/refs.mjs <레포> --plan <plan.json> --apply --backup "$(git -C <레포> rev-parse --git-path docs-setup-backup)"`. 옮길 파일과 고칠 파일을 먼저 백업하고, 원본이 없거나 대상이 이미 있거나 UTF-8 이 아닌 파일이 끼면 아무것도 하지 않고 멈춘다. git 디렉토리 안의 백업은 커밋에 섞이지 않고 세션이 끊겨도 남는다. 지시 문서 줄·이름만 줄·패턴 참조는 3번에서 받은 답대로 Edit 로 고친다.
 5. **배너** — 옮긴 문서마다 첫 제목 줄 바로 아래(제목이 없으면 맨 위)에 [TEMPLATES.md](TEMPLATES.md) §1 의 배너를 Edit 로 단다. archive-cycle ④ 와 같은 꼴이다: 시점 · 「현행 아님」 · 접은 판정 근거 · 현행이 있는 곳.
-6. **성격표 · `CLAUDE.md` 표 · 메모리 규약 절** — 2단계 답대로 [TEMPLATES.md](TEMPLATES.md) §2~§4 꼴로 Edit/Write 한다. 행은 이 레포의 관찰에서만 만든다. 없는 문서·스킬을 행으로 지어내지 않는다.
-7. **config** — 2단계 답대로 `harness.config.mjs` 를 Edit 로 고친다(§5). 값만 바꾸고 주석에 근거를 한 구절 단다. 열거형·경로 규칙은 harness-kit README 「프로젝트 프로필」을 따른다(상대경로, 개인 경로 금지).
+6. **성격표 · `CLAUDE.md` 표 · 메모리 규약 절** — 2단계 답대로 [TEMPLATES.md](TEMPLATES.md) §2~§4 꼴로 Edit/Write 한다. 행은 이 레포의 관찰에서만 만든다. 없는 문서·스킬을 행으로 지어내지 않는다. **설치가 넣은 것 밖에 둔다** — `<!-- harness-kit:begin -->`~`end` 블록 안, 「개발 하네스」 절 안에 쓰지 않고, `harness-kit:line` 표시 줄과 「개발 하네스」 절을 가리키는 줄은 옮기거나 고치지 않는다. 그 안에 쓴 줄은 걷어내기가 설치와 함께 지운다.
+7. **config** — 2단계 답대로 `harness.config.mjs` 를 Edit 로 고친다(§5). 값만 바꾸고, 칸마다 한 줄에 줄 끝 주석 `// harness-kit:docs-setup — <근거>` 를 단다. 문서 칸 블록이 없으면 그 블록을 열고 여는 줄에도 표시를 단다. 열거형·경로 규칙은 harness-kit README 「프로젝트 프로필」을 따른다(상대경로, 개인 경로 금지). 고친 뒤 `config-slots.mjs list <레포>` 가 `failures=0`, 영수증이 있으면 `config-slots.mjs record <레포>`.
 
 한글은 Write/Edit 로만 쓴다. 쓴 직후 그 부분을 다시 읽어 오타와 깨진 음절을 확인한다.
 
@@ -99,10 +102,11 @@ node <스킬>/scripts/observe.mjs <레포> --json <scratchpad>/observe.json [--u
 1. **링크** — `node <스킬>/scripts/links.mjs <레포> --baseline <links-before.json> --plan <plan.json>`. 새 깨짐 0 이어야 한다(종료코드 0). 기준선에서 고쳐진 것도 함께 보고한다.
 2. **남은 옛 경로** — `node <스킬>/scripts/refs.mjs <레포> <옛 경로>…` 를 다시 돌린다. 남은 줄은 3번에서 「그대로」로 받은 것뿐이어야 한다.
 3. **경로 검사기** — `pathValidator` 가 있으면 그것도 돌린다. 없으면 1번이 유일한 수단이라고 보고에 적는다.
-4. **config** — `node --check harness.config.mjs` 통과, `observe.mjs` 를 다시 돌려 archive-cycle 이 읽는 네 칸(`docs.archiveDir`·`docs.pathValidator`·`docs.autoloaded`·`memory.slugs`)에 「키 없음」이 0 이고, 「어긋남?」 줄이 2단계에서 받은 답으로 설명된다.
-5. **한글** — 이번에 쓴 배너·표·절을 다시 읽어 깨진 음절·오타가 없다.
+4. **config** — `node --check harness.config.mjs` 통과, `observe.mjs` 를 다시 돌려 archive-cycle 이 읽는 네 칸(`docs.archiveDir`·`docs.pathValidator`·`docs.autoloaded`·`memory.slugs`)에 「키 없음」이 0 이고, 「어긋남?」 줄이 2단계에서 받은 답으로 설명된다. `config-slots.mjs list` 가 채운 칸마다 `SLOT` 줄을 내고(영수증이 있으면 「owners 가 표시 칸과 같다」), 설치가 끝난 레포면 harness-install 의 `install.mjs slots <레포>` 도 `failures=0` 이다.
+5. **걷어내기 경계** — `node <스킬>/scripts/boundary.mjs <레포> --base <시작 HEAD>` 가 `failures=0`. 옮긴 문서·배너·성격표·`CLAUDE.md` 표가 harness-uninstall 의 후보 꼴에 걸리지 않는다.
+6. **한글** — 이번에 쓴 배너·표·절을 다시 읽어 깨진 음절·오타가 없다.
 
-**완료 기준:** 다섯 확인의 출력이 있고, 실패가 있으면 고쳤거나 「남은 문제」로 보고에 있다.
+**완료 기준:** 여섯 확인의 출력이 있고, 실패가 있으면 고쳤거나 「남은 문제」로 보고에 있다.
 
 ## 5. 커밋 — 경로 지정, 같은 명령에서 브랜치 조건
 
@@ -135,3 +139,5 @@ node <스킬>/scripts/observe.mjs <레포> --json <scratchpad>/observe.json [--u
 | `git mv`·`git add` | 남의 스테이징까지 커밋에 섞인다 | 일반 이동 + `add -N` + 경로 지정 커밋 |
 | 이관 없이 이동 | 끝난 문서에만 있던 현행 규칙이 「현행 아님」 폴더로 사라진다 | 「이관 후 접기」는 옮기지 않고 archive-cycle 로 넘긴다 |
 | 성격표가 색인 복제 | 루트 README 의 문서 표와 `docs/README.md` 가 따로 낡는다 | 성격표는 규칙과 분류만, 파일 목록은 기존 색인을 링크한다 |
+| 표시 없이 config 칸 채움 | 재설치가 config 를 새로 만들며 값이 사라지고, 설치 값과 구별되지 않아 되살릴 근거도 없다 | 칸마다 줄 끝 `// harness-kit:docs-setup` · `config-slots.mjs list` |
+| 설치 블록 안에 표 추가 | 걷어내기가 「개발 하네스」 블록·절과 함께 docs-setup 표를 지운다 | 블록·절 밖에 둔다 · `boundary.mjs` |

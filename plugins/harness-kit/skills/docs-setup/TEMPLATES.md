@@ -88,24 +88,44 @@
 
 값만 바꾸고 주석에 근거를 한 구절 단다. 경로는 레포 기준 상대경로다.
 
+**표시** — 채운 칸마다 한 줄에 쓰고, 줄 끝 주석을 `// harness-kit:docs-setup — <근거>` 로 시작한다. 값이 여러 줄이거나 한 줄 객체(`memory: { slugs: …, policy: … }`) 안에 있으면 표시가 읽히지 않는다 — 칸을 제 줄로 나눈다. 설치가 쓴 주석(「docs-setup 에서 정함」)은 이 주석으로 바꾼다. harness-uninstall 의 표시(`harness-kit:begin`·`harness-kit:line`)는 쓰지 않는다 — 그 표시가 붙은 것은 걷어내기 후보다.
+
 ```js
     docs: {
       // …기존 칸 유지
-      archiveDir: 'docs/archive', // docs-setup — 끝난 문서는 배너와 함께 여기로
-      pathValidator: null, // 문서 경로 검사기 없음 — 검증은 링크 검사와 grep
-      autoloaded: ['CLAUDE.md'], // 실제 자동 로드 CLAUDE.md 목록
+      archiveDir: 'docs/archive', // harness-kit:docs-setup — 끝난 문서는 배너와 함께 여기로
+      pathValidator: null, // harness-kit:docs-setup — 문서 경로 검사기 없음, 검증은 링크 검사와 grep
+      autoloaded: ['CLAUDE.md'], // harness-kit:docs-setup — 실제 자동 로드 CLAUDE.md 목록
     },
-    memory: { slugs: ['<슬러그>'], policy: '<기존 값 유지>' },
+    memory: {
+      slugs: ['<슬러그>'], // harness-kit:docs-setup — 메모리 디렉토리 이름
+      policy: '<기존 값 유지>',
+    },
 ```
 
 harness-agent 게이트 칸(같은 파일의 최상위 `docs`):
 
 ```js
   docs: {
-    always: [/* 기존 항목 */ 'docs/README.md'], // A4 에서 만들었으면
-    archive: ['docs/archive/'], // 아카이브 폴더 하나 — 접두 경로로 살아 있는 문서를 빼지 않는다
+    always: [/* 기존 항목 */ 'docs/README.md'], // harness-kit:docs-setup — A4 에서 만들었으면
+    archive: ['docs/archive/'], // harness-kit:docs-setup — 아카이브 폴더 하나, 접두 경로로 살아 있는 문서를 빼지 않는다
   },
 ```
+
+**문서 칸이 없는 config**(설치 단계에 `project.docs`·`project.memory`·게이트 `docs` 가 없다) — 없는 블록만 새로 열고, 여는 줄에도 같은 표시를 단다. 있는 블록은 칸만 더한다.
+
+```js
+  project: {
+    // …설치가 쓴 칸 유지
+    docs: { // harness-kit:docs-setup
+      archiveDir: 'docs/archive', // harness-kit:docs-setup — 끝난 문서는 배너와 함께 여기로
+      pathValidator: null, // harness-kit:docs-setup — 문서 경로 검사기 없음
+      autoloaded: ['CLAUDE.md'], // harness-kit:docs-setup — 실제 자동 로드 CLAUDE.md 목록
+    },
+  },
+```
+
+쓴 뒤 `node <스킬>/scripts/config-slots.mjs list <레포>` 가 칸마다 `SLOT` 줄을 내고 `failures=0` 이어야 한다. 영수증(`harness.install.json`)이 있으면 이어서 `config-slots.mjs record <레포>` 로 `owners["docs-setup"]` 에 칸과 값을 적는다 — 설치가 쓴 칸(`files`·`edits`·`settings`)은 바꾸지 않는다.
 
 ## §6 커밋 명령 (5단계)
 

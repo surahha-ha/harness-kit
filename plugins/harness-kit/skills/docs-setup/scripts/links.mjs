@@ -34,6 +34,7 @@ for (const f of files) {
   t.text.split('\n').forEach((line, i) => {
     if (/^\s*(```|~~~)/.test(line)) { fence = !fence; return; }
     if (fence) return;
+    if (/^\s*>/.test(line) && /현행 아님/.test(line)) return; // 아카이브 배너의 옛 경로는 출처 표기다 — 없는 것이 맞다
     for (const m of line.matchAll(/`([^`\s*?<>{}]+\/[^`\s*?<>{}]+\.[A-Za-z0-9]{1,5})`/g)) {
       const p = m[1].replace(/^\.\//, '').replace(/[#:].*$/, '');
       if (!topDirs.has(p.split('/')[0])) continue;
