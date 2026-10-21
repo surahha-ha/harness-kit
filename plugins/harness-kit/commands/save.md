@@ -27,7 +27,7 @@ description: 테스트 → 커밋 → 푸시. 테스트 명령·보호 브랜치
 
 > 🔴 **「파일 수정 중」·「외부 부수효과(사용자 판단 대기)」 작업이 남아 있으면 커밋·푸시하지 않는다.**
 > 반쯤 고친 파일이 커밋되거나, 서브에이전트가 바꾸는 중인 파일이 함께 stage 되는 것을 막기 위해서다.
-> **강제 정지한 파일 수정 작업의 변경 파일은 사용자 확인 없이 stage 하지 않는다.**
+> **강제 정지한 파일 수정 작업의 변경 파일은 사용자 확인 없이 커밋 경로에 넣지 않는다.**
 
 ## Step 1: 브랜치 확인 + 테스트 실행
 
@@ -63,9 +63,10 @@ tail -30 "$LOG"
 
 ```bash
 echo "=== Modified ===" && git diff --name-only HEAD && echo "=== Untracked ===" && git ls-files --others --exclude-standard
+echo "=== Staged (이 커맨드가 넣지 않음) ===" && git diff --cached --name-only
 ```
 
-**파일 목록을 사용자에게 보여주고, 커밋 대상 파일 선택을 요청한다.**
+**파일 목록을 사용자에게 보여주고, 커밋 대상 파일 선택을 요청한다.** 이미 stage 된 파일이 있으면 그것도 함께 알린다 — 다른 세션이 넣었을 수 있으므로 고르지 않으면 커밋에 들어가지 않고 index 에 그대로 남는다.
 
 ### ⚠️ 계약 커플링 체크 (`layout: 'paired'` 일 때)
 변경 목록에 `contract.beGlobs` 에 걸리는 파일(요청/응답 DTO·Controller·endpoint)이 있으면,
@@ -76,21 +77,40 @@ echo "=== Modified ===" && git diff --name-only HEAD && echo "=== Untracked ==="
 echo "=== 짝 레포 미커밋 변경 ===" && git -C "<PEER>" status --porcelain || echo "(짝 레포를 찾지 못함 — 계약 변경 시 동반 반영 확인 필요)"
 ```
 
-## Step 3: 커밋
+## Step 3: 커밋 — 고른 경로만, 경로 지정 커밋으로
 
-사용자가 커밋 대상 파일을 선택하면:
-1. 선택된 파일만 `git add` (**`git add -A` 금지** — 의도적으로 워킹트리에 남겨둔 파일이 딸려 들어간다)
+사용자가 커밋 대상 파일을 선택하면 그 목록을 **커밋 경로**(`<PATHS>`)로 고정한다. 이후 게이트·메시지·커밋은 모두 이 경로만 본다.
+
+> 🔴 **`git add <파일>` + 경로 없는 `git commit` 을 쓰지 않는다.** 경로 없는 커밋은 **index 전체**를 커밋한다 — 같은 트리의 다른 세션·사용자가 미리 stage 해 둔 변경까지 딸려 들어간다(실제 사고 이력 있음). index 는 남의 것일 수 있다고 보고, 이 커맨드는 index 에 내용을 쌓지 않는다. `git add -A`·`git add .` 도 금지다.
+
+1. **신규 파일만 의도 표시** — 커밋 경로 중 미추적 파일은 `git add -N -- <신규 파일…>` 로 「추가할 예정」만 index 에 적는다(내용은 넣지 않는다). 이것이 있어야 아래 diff 와 경로 지정 커밋이 신규 파일을 본다.
 2. **검출력 게이트** — 아래 소절. 발동 조건 미해당이면 건너뛴다
 3. **diff 리뷰 게이트** — 아래 소절. 임계 미만이면 건너뛴다
-4. 변경 내용 분석 후 `git.commitFormat` 대로 커밋 메시지 생성. trailer 는 `git.coAuthor` 가 허용할 때만
+4. 변경 내용(`git diff HEAD -- <PATHS>`) 분석 후 `git.commitFormat` 대로 커밋 메시지 생성. trailer 는 `git.coAuthor` 가 허용할 때만
 5. 사용자에게 메시지 확인 요청
 6. `git.commitExecution` 에 따라:
-   - `'auto'` — `git commit` 실행
-   - `'message-only'` — 메시지 텍스트만 제시하고 **커밋·푸시를 실행하지 않는다.** 여기서 끝낸다
+   - `'auto'` — 메시지를 임시 파일로 쓰고 아래 명령을 **한 번에** 실행한다. 브랜치·toplevel 조건과 커밋이 같은 명령에 있어야, 확인과 커밋 사이에 브랜치가 바뀌어도 엉뚱한 곳에 커밋하지 않는다.
+   - `'message-only'` — 메시지 텍스트와 **사용자가 칠 아래 명령**을 제시하고, 커밋·푸시를 실행하지 않는다. 1번의 `git add -N` 도 하지 않고 명령에 넣어 건넨다. 여기서 끝낸다
+   - 키가 없거나 두 값 밖이면 지어내지 않고 멈추고 묻는다(프로필 규칙)
+
+```bash
+# <ROOT>=레포 루트(git rev-parse --show-toplevel) · <BRANCH>=Step 1 에서 확인한 현재 브랜치 · <MSG>=메시지 파일
+# <NEW…>=커밋 경로 중 미추적 파일 · <PATHS…>=커밋 경로 전부
+R="<ROOT>"; B="<BRANCH>"
+[ "$(git -C "$R" rev-parse --show-toplevel)" = "$R" ] \
+  && [ "$(git -C "$R" rev-parse --abbrev-ref HEAD)" = "$B" ] \
+  && [ ! -e "$(git -C "$R" rev-parse --path-format=absolute --git-path index.lock)" ] \
+  && git -C "$R" add -N -- <NEW…> \
+  && git -C "$R" commit -F "<MSG>" -- <PATHS…>
+```
+
+- 신규 파일이 없으면 `add -N` 줄을 뺀다.
+- `git commit -- <PATHS>` 는 그 경로의 **작업본 내용 전체**를 커밋한다. 경로 안에서 일부 줄만 커밋하려던 것(`git add -p` 로 고른 부분 스테이징)은 무시된다 — 부분 커밋이 필요하면 멈추고 사용자에게 묻는다.
+- 커밋 직후 `git -C "$R" show --stat HEAD` 의 파일 목록이 `<PATHS>` 와 같은지, `git -C "$R" status --short` 에 커밋 전부터 있던 남의 변경(stage 된 것 포함)이 그대로 남았는지 본다.
 
 ### 검출력 게이트 — 새 단위테스트가 실제로 잡는지 확인
 
-발동: 스테이징에 단위 테스트 파일이 추가·수정됐고, 추가된 줄에 테스트 선언·단언(`it(`·`@Test`·`expect(`·`assertThat(` 류)이 있을 때.
+발동: 커밋 경로에 단위 테스트 파일이 추가·수정됐고, 추가된 줄에 테스트 선언·단언(`it(`·`@Test`·`expect(`·`assertThat(` 류)이 있을 때.
 
 제외: 문서만 · e2e · `risk.sharedDbSuites`(공유 DB 실접속) · 훅 테스트 · 되돌릴 이전 버전이 없는 신규 파일 · 경계표 밖 배선 코드.
 
@@ -98,7 +118,7 @@ echo "=== 짝 레포 미커밋 변경 ===" && git -C "<PEER>" status --porcelain
 2. `git restore --source=<rev> --worktree -- <파일>` 로 분기·가드·바인딩 하나를 되돌린다.
    🔴 `git checkout <rev> -- <파일>` 금지 — 인덱스까지 덮어 스테이징된 수정이 사라진다.
 3. 대상 테스트만 좁게 돌린다. 변형 1~3개, 5분 상한.
-4. 원복 후 `git status --porcelain` 과 `git diff --cached --stat` 이 전과 같은지 확인한다.
+4. 원복 후 `git status --porcelain` 과 `git diff HEAD --stat -- <PATHS>` 가 전과 같은지 확인한다.
 5. 변형이 살아남으면(테스트가 그대로 통과하면) 사용자에게 알리고 **묻는다. 막지 않는다.**
 6. 커밋 메시지에 `검출력: 변형 N · 생존 M · 케이스 K` 한 줄과 되돌림 방법을 남긴다.
 
@@ -106,13 +126,15 @@ echo "=== 짝 레포 미커밋 변경 ===" && git -C "<PEER>" status --porcelain
 
 ### diff 리뷰 게이트
 
-`git add` 직후, 스테이징된 diff 가 **임계를 넘을 때만** `harness-kit:change-verifier` 에게 코드리뷰를 맡긴다.
+커밋 경로가 정해진 직후, 그 경로의 diff 가 **임계를 넘을 때만** `harness-kit:change-verifier` 에게 코드리뷰를 맡긴다.
 자리를 여기로 잡은 이유는 둘이다 — 커밋 대상이 확정된 뒤라 **미선택 변경을 리뷰하지 않고**,
 빈도가 **커밋당 1회**로 고정돼 턴마다 반복되지 않는다.
 
 ```bash
-git diff --cached --numstat | awk '{f++; a+=$1; d+=$2} END {print "files=" f+0, "lines=" a+d+0}'
+git diff HEAD --numstat -- <PATHS…> | awk '{f++; a+=$1; d+=$2} END {print "files=" f+0, "lines=" a+d+0}'
 ```
+
+(`git diff --cached` 를 쓰지 않는다 — index 에는 이 커맨드가 넣지 않은 남의 stage 가 있을 수 있다. 신규 파일은 Step 3 의 `add -N` 뒤라 이 diff 에 보인다. `message-only` 라 `add -N` 을 하지 않았으면 신규 파일은 `git diff --no-index --numstat /dev/null <신규 파일>` 로 따로 세어 더한다 — 차이가 있으면 종료코드 1 이 정상이다.)
 
 - **임계: `git.reviewThreshold`(파일 수 초과 또는 추가+삭제 줄 수 초과).** 둘 중 하나만 넘어도 태운다. 슬롯이 없으면 임계를 묻는다.
 - 임계 미만이면 리뷰 없이 다음 번호로 간다. **한 줄짜리 수정까지 리뷰를 돌리면 그 경고는 곧 무시된다** — 게이트를 두는 목적 자체가 사라진다.
@@ -120,7 +142,7 @@ git diff --cached --numstat | awk '{f++; a+=$1; d+=$2} END {print "files=" f+0, 
 
 호출 프롬프트에 반드시 담을 것:
 
-- 대상은 `git diff --cached` 뿐이다. 워킹트리에 남겨둔 미선택 변경은 리뷰 범위가 아니다.
+- 대상은 `git diff HEAD -- <PATHS…>` 뿐이다. 워킹트리에 남겨둔 미선택 변경과 남이 stage 해 둔 변경은 리뷰 범위가 아니다.
 - **고신뢰 결함 우선**, 불확실한 것은 "확인 필요" 라벨로 남기고 단정하지 않는다 (에이전트 절대원칙 4).
 - **스타일·포맷·네이밍 지적 금지.** 요청에 없는 변경을 부르고, 리뷰어도 테스트도 그 변경을 보고 있지 않게 된다.
 
@@ -134,9 +156,20 @@ git diff --cached --numstat | awk '{f++; a+=$1; d+=$2} END {print "files=" f+0, 
 ## Step 4: 푸시
 
 `git.push` 에 따라:
-- `'auto'` — 커밋 완료 후 `git push origin <현재브랜치>` 실행 (브랜치를 명시한다)
-- `'ask'` — 푸시 여부를 묻고, 승인되면 위와 같이 실행
-- `'never'` — 푸시하지 않고, 사용자가 실행할 명령만 제시
+- `'auto'` — 커밋 완료 후 아래 명령 실행
+- `'ask'` — 푸시 여부를 묻고, 승인되면 아래 명령 실행
+- `'never'` — 푸시하지 않고, 사용자가 실행할 아래 명령만 제시
+- `git.commitExecution: 'message-only'` 면 Step 3 에서 끝났으므로 이 단계는 없다
+
+```bash
+# 원격·브랜치를 늘 명시한다 — 맨 `git push` 는 push.default·upstream 설정에 따라 다른 브랜치를 밀 수 있다
+R="<ROOT>"; B="<BRANCH>"
+[ "$(git -C "$R" rev-parse --abbrev-ref HEAD)" = "$B" ] && git -C "$R" push origin "$B"
+# upstream 이 없는 새 브랜치면: git -C "$R" push -u origin "$B"
+```
+
+- `<BRANCH>` 가 `git.protectedBranches` 에 있으면 실행하지 않는다(Step 1 에서 이미 멈췄어야 한다).
+- `--force` 류는 이 커맨드가 쓰지 않는다. 필요하면 사용자가 직접 친다.
 
 ## 규칙
 

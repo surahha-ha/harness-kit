@@ -3,6 +3,15 @@
 매니페스트에 `version` 필드를 두지 않는다 — 판은 main 커밋 SHA 로 갈린다. 절은 병합 단위로 적는다.
 (0.1.0 까지는 `plugin.json` 과 `marketplace.json` 의 명시 버전을 함께 올렸다.)
 
+## 미발행 — 하네스 설치 시험 반영
+
+- `harness-install` 에 `scripts/install.mjs` 를 더한다 — `precheck`(트리 종류·worktree 여부·다른 세션을 timestamp 있는 마지막 user·assistant 기록으로 동시·최근·오래됨으로 가름) · `settings-snap`·`settings-eol`·`after-cli`(settings 의 줄끝·BOM·끝 개행을 손대기 전 판대로 되살리고, CLI 가 다시 쓴 파일을 손본 직후 스냅숏으로 되덮음) · `test-select`(테스트 제외 패턴을 소스 트리에 대어 빠지는 것을 펼치고 실행 결과와 대조 — 디렉토리 일치로 하위 패키지까지 빠지는 것을 잡는다) · `slots`(kit 자산이 읽는 슬롯을 모아 빈 키와 이유 없는 `null` 을 실패로 셈) · `plugin-hooks`(끌 플러그인의 훅 목록). CHECKS §6 안에 있던 `answer-trace.mjs` 를 `scripts/` 로 꺼낸다
+- 결정 순서를 D1→D2(D2-2)→D3→D6(D6-2)→D4→D5→D7→D8 로 바꾼다. D1 은 worktree 안에서 실행됐는지에 따라 권장과 문구가 바뀐다. D2-2(서버 기동 같은 간접 접속, 권장 ask)와 D6-2(끄는 플러그인이 막던 명령을 하나씩 deny·ask·막지 않음으로 물음)를 정식 결정으로 둔다. D7 에 e2e·testFirst·sharedDbProfiles·memory.slugs 규칙을, D8 에 kit 슬롯 표와 docs-setup 연결 문구를 둔다
+- 질문 꼴(TEMPLATES §8)에 쉬운 말 풀이표를 더하고 되물음이 났던 질문 본문을 고쳐 쓴다. 권장이 없을 때 「권장 없음 — 판단 근거 부족, 직접 골라 주세요」로 밝힌다. 첫 플러그인 설치 안내에 비공개 레포 접근 단계를 넣는다
+- CHECKS §4 에 도구 경로·와일드카드 케이스와 래퍼 변형 자동 생성(`HOLE`)을, §8 에 「빠질 것만 빠지고 돌 것은 돌았나」 확인을 더한다. 5단계는 settings 를 Write 로 쓰지 않고 Edit 만 쓴다
+- 프로젝트 고유 플러그인은 파일이 바뀌면 버전을 올리고, harness-kit 은 버전 없이 SHA 로 추적한다는 관례를 8단계에 적는다
+- `/save` 를 경로 지정 커밋으로 바꾼다 — 신규 파일만 `git add -N`, `git commit -F <메시지> -- <경로>` 를 브랜치·toplevel 조건과 한 명령으로, 게이트의 diff 는 `--cached` 대신 `git diff HEAD -- <경로>`, 푸시는 `git push origin <브랜치>`. `git.commitExecution: message-only` 면 명령만 건넨다. 남이 stage 해 둔 변경은 커밋에 들어가지 않고 index 에 남는다
+
 ## 미발행 — 하네스 걷어내기
 
 - 스킬 추가: `harness-uninstall`(SKILL·DECISIONS·PITFALLS · `scripts/uninstall.mjs`·`scripts/edit.mjs`) — harness-install 이 넣은 것만 블록·줄·치환·JSON 키 단위로 걷어 낸다. 영수증이 있으면 영수증 기준(sha256 이 다르면 「설치 뒤 손댄 것」으로 따로 묻는다), 없으면 알려진 구조로 후보를 뽑아 항목마다 묻는다. 손대기 전 `git-path harness-uninstall-backup/` 백업과 런타임 산출물의 `git-common-dir` 증거 사본, 체크포인트로 이어받기, 후보 밖 파일을 가리키는 참조는 보고만, settings 는 하네스가 아닌 훅을 이벤트별로 백업과 대조, `git restore`·`checkout` 금지, 커밋은 지우기 전에 읽어 둔 `commitExecution` 대로 경로 지정·직전 확인, 플러그인 키는 맨 마지막 결정. 재설치는 uninstall → 새 세션 → install
