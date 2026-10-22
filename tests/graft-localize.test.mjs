@@ -200,18 +200,54 @@ test('BOM 있는 settings.json — graft 가 {} 에서 다시 써 빠진 키는 
   const r = run(root, 'localize');
   assert.equal(r.code, 0, r.out);
   assert.equal(rd(root, '.claude/settings.json'), SETTINGS_BOM, 'init 전 바이트(BOM·CRLF·4칸)');
-  assert.match(r.out, /WARN settings\.json 에서 graft 밖 키가 빠졌다\(hooks\.PreToolUse · enabledPlugins\.a@b\)/);
+  assert.match(r.out, /WARN settings\.json 에서 graft 밖 키가 빠졌다\(hooks\.PreToolUse · enabledPlugins\.a@b\) — .* git index 판 바이트로 되살린다/);
   const l = json(root, '.claude/settings.local.json');
   assert.deepEqual(Object.keys(l.hooks).sort(), ['PostToolUse', 'SessionStart', 'Stop', 'UserPromptSubmit']);
   assert.equal(l.hooks.Stop[0].hooks[0].timeout, 8);
   assert.equal(git(root, 'status', '--porcelain', '--', '.claude'), '', 'settings.json 이 커밋본과 같다');
-  // 업그레이드 뒤 다시 — graft 가 또 {} 에서 다시 써도 같은 결과
+  // 팀원이 BOM 판 그대로 enabledPlugins 를 지워 커밋 → 업그레이드가 또 {} 에서 다시 씀 → 되살리는 기준은 index 판(S2)이지 init 전 판(S1)이 아니다
+  const S2 = '﻿{\r\n    "hooks": {\r\n        "PreToolUse": [\r\n            { "matcher": "Bash", "hooks": [{ "type": "command", "command": "node guard.mjs", "timeout": 10 }] }\r\n        ]\r\n    }\r\n}\r\n';
+  writeFileSync(path.join(root, '.claude', 'settings.json'), S2);
+  git(root, 'commit', '-qam', 'teammate');
   simulateGraft(root);
   assert.equal(run(root, 'localize').code, 0);
-  assert.equal(rd(root, '.claude/settings.json'), SETTINGS_BOM);
+  assert.equal(rd(root, '.claude/settings.json'), S2);
 });
 
-test('init 전 스냅숏에 없던 graft 밖 키가 settings.json 에 더해졌으면 localize 가 멈추고 아무것도 쓰지 않는다', () => {
+test('추적 settings.json — 첫 localize 뒤 팀원이 키를 지워 커밋(S2)하고 업그레이드가 다시 병합하면 S2 로 남고 init 전 판(S1)으로 돌아가지 않는다', () => {
+  const root = repo({ '.claude/settings.json': SETTINGS_CRLF });
+  run(root, 'prepare'); simulateGraft(root);
+  assert.equal(run(root, 'localize').code, 0);
+  const S2 = SETTINGS_CRLF.replace(',\r\n    "enabledPlugins": { "a@b": true }', '');
+  assert.notEqual(S2, SETTINGS_CRLF, '전제: 팀원 판이 다르다');
+  writeFileSync(path.join(root, '.claude', 'settings.json'), S2);
+  git(root, 'commit', '-qam', 'teammate removes enabledPlugins');
+  simulateGraft(root); // 업그레이드 뒤 reconcileWiring → runInit
+  const r = run(root, 'localize');
+  assert.equal(r.code, 0, r.out);
+  assert.equal(rd(root, '.claude/settings.json'), S2);
+  assert.match(r.out, /OK {3}settings\.json — graft 몫 \d+개 뗌 · git index 판 바이트로 되돌림/);
+  assert.equal(git(root, 'status', '--porcelain', '--', '.claude/settings.json'), '');
+});
+
+test('미추적 settings.json — localize 가 성공하면 스냅숏의 settings.json 을 그 결과 바이트로 갱신한다', () => {
+  const root = repo({ 'a.txt': 'a\n' });
+  mkdirSync(path.join(root, '.claude'), { recursive: true });
+  // init 전부터 graft 몫이 든 미추적 파일(손으로 graft init 을 했던 트리) — 결과가 init 전 판과 달라지는 경우
+  writeFileSync(path.join(root, '.claude', 'settings.json'), JSON.stringify(graftMerge({ model: 'x' }), null, 2) + '\n');
+  run(root, 'prepare'); simulateGraft(root);
+  assert.equal(run(root, 'localize').code, 0);
+  const out = rd(root, '.claude/settings.json');
+  assert.equal(JSON.parse(out).model, 'x');
+  assert.equal(stripGraft(JSON.parse(out), null).count, 0, 'graft 몫을 뗐다');
+  const snap = path.join(path.resolve(root, git(root, 'rev-parse', '--git-path', 'harness-kit-graft').trim()), 'before', '.claude', 'settings.json');
+  assert.equal(readFileSync(snap, 'utf8'), out);
+  simulateGraft(root);
+  assert.equal(run(root, 'localize').code, 0, '갱신된 기준으로 다시 돌려도 통과');
+  assert.equal(rd(root, '.claude/settings.json'), out);
+});
+
+test('git index 판에 없던 graft 밖 키가 추적 settings.json 에 더해졌으면(커밋 안 한 편집) localize 가 멈추고 아무것도 쓰지 않는다', () => {
   const root = repo({ '.claude/settings.json': SETTINGS_CRLF });
   run(root, 'prepare');
   simulateGraft(root);
@@ -220,7 +256,7 @@ test('init 전 스냅숏에 없던 graft 밖 키가 settings.json 에 더해졌�
   writeFileSync(sp, edited);
   const r = run(root, 'localize');
   assert.equal(r.code, 1, r.out);
-  assert.match(r.out, /FAIL settings\.json: init 전 스냅숏에 없던\(또는 값이 다른\) graft 밖 키 — model\./);
+  assert.match(r.out, /FAIL settings\.json: git index 판에 없던\(또는 값이 다른\) graft 밖 키 — model\. 커밋하지 않은 편집으로 보고 아무것도 쓰지 않는다/);
   assert.match(r.out, /failures=1 — 아무 파일도 쓰지 않았다/);
   assert.equal(rd(root, '.claude/settings.json'), edited);
   assert.equal(existsSync(path.join(root, '.claude', 'settings.local.json')), false);
