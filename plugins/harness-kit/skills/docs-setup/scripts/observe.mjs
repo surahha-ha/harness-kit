@@ -6,7 +6,7 @@ import { execFileSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { repoFiles, readText, mdLinks, resolveLink, parseArgs, list } from './lib.mjs';
+import { repoFiles, readText, mdLinks, resolveLink, parseArgs, list, fenceTracker } from './lib.mjs';
 
 const { pos, opt } = parseArgs(process.argv.slice(2));
 if (!pos[0]) { console.error('사용: node observe.mjs <레포 루트> [--slug <슬러그>] [--json <파일>]'); process.exit(2); }
@@ -37,8 +37,8 @@ const docs = docFiles.map(({ rel, tracked }) => {
   if (!t.utf8) return { ...d, utf8: false };
   const body = t.text;
   const lines = body.split('\n');
-  let fence = false;
-  const prose = lines.filter((l) => (/^\s*(```|~~~)/.test(l) ? (fence = !fence, false) : !fence));
+  const inFence = fenceTracker();
+  const prose = lines.filter((l) => !inFence(l));
   // 상태 줄: 「상태:」/「Status:」 로 시작하는 산문 줄(코드 펜스 밖). 첫 줄이 문서 전체의 상태인 경우가 많다.
   const statusLines = prose.filter((l) => /^\s*>?\s*\**\s*(상태|Status)\s*\**\s*[:：]/.test(l)).slice(0, 3).map((l) => l.trim().slice(0, 100));
   const d2 = {
@@ -141,12 +141,21 @@ const config = cfg ? {
 
 // 어긋남: archive 접두가 덮는 문서 · always 존재 · autoloaded ↔ 실제 CLAUDE.md
 const gaps = [];
+const notes = [];
 if (config) {
   const pref = Array.isArray(config.archive) ? config.archive : [];
+  const norm = (p) => String(p).replace(/\/+$/, '');
   for (const p of pref) {
     const hit = docs.filter((d) => d.path.startsWith(p));
     const live = hit.filter((d) => d.hint === '살아있음?');
-    gaps.push(`docs.archive '${p}' → ${hit.length}개${live.length ? ` · 살아있음? 표지 ${live.length}개(${live.map((d) => path.posix.basename(d.path)).join(', ')})` : ''}`);
+    const md = hit.filter((d) => /\.mdx?$/i.test(d.path) && d.text !== false && d.utf8 !== false);
+    const noBanner = md.filter((d) => !d.banner);
+    // 아카이브 폴더 하나를 가리키고 그 안 문서가 모두 배너를 달았으면 어긋남이 아니다
+    if (typeof config.archiveDir === 'string' && norm(p) === norm(config.archiveDir) && !live.length && !noBanner.length) {
+      notes.push(`docs.archive '${p}' → ${hit.length}개 · archiveDir 와 같고 모두 배너 있음`);
+      continue;
+    }
+    gaps.push(`docs.archive '${p}' → ${hit.length}개${noBanner.length ? ` · 배너 없음 ${noBanner.length}개` : ''}${live.length ? ` · 살아있음? 표지 ${live.length}개(${live.map((d) => path.posix.basename(d.path)).join(', ')})` : ''}`);
   }
   if (typeof config.archiveDir === 'string' && !pref.some((p) => config.archiveDir.startsWith(p) || p.startsWith(config.archiveDir))) gaps.push(`archiveDir '${config.archiveDir}' 가 docs.archive 접두에 없다`);
   if (typeof config.archiveDir === 'string' && !existsSync(path.join(root, config.archiveDir))) gaps.push(`archiveDir '${config.archiveDir}' 폴더 없음`);
@@ -188,11 +197,13 @@ const memory = [...uniq.values()].map((slug) => {
 
 // ── 출력 ──
 const out = { root, head: git('rev-parse', '--short', 'HEAD'), branch: git('rev-parse', '--abbrev-ref', 'HEAD'),
-  dirty: git('status', '--short', '--', 'docs', 'CLAUDE.md', 'README.md', 'harness.config.mjs').split('\n').filter(Boolean),
-  docs, claude, indexes, validators, config, cfgErr, gaps, memory, relatedSlugs: related };
+  // 문서와 지시 문서(하위 CLAUDE.md · .claude/ 의 에이전트·커맨드·스킬·설정) — 이 스킬이 고칠 수 있는 곳의 미커밋 변경
+  dirty: git('status', '--short', '--', 'docs', 'CLAUDE.md', ':(glob)**/CLAUDE.md', ':(glob)**/CLAUDE.local.md', 'README.md', 'harness.config.mjs', '.claude').split('\n').filter(Boolean),
+  docs, claude, indexes, validators, config, cfgErr, gaps, notes, memory, relatedSlugs: related };
 if (opt.json && opt.json !== true) writeFileSync(opt.json, JSON.stringify(out, null, 2));
 
-console.log(`레포 ${out.branch} @ ${out.head} · 문서 관련 미커밋 ${out.dirty.length}건${out.dirty.length ? ' — ' + out.dirty.slice(0, 5).join(' | ') : ''}`);
+const dirtyClaude = out.dirty.filter((l) => /(^|\s)"?\.claude\//.test(l)).length;
+console.log(`레포 ${out.branch} @ ${out.head} · 문서·지시 문서 미커밋 ${out.dirty.length}건${dirtyClaude ? `(그중 .claude/ ${dirtyClaude}건)` : ''}${out.dirty.length ? ' — ' + out.dirty.slice(0, 5).join(' | ') : ''}`);
 const dirs = {};
 for (const d of docs) { const k = path.posix.dirname(d.path); dirs[k] = (dirs[k] || 0) + 1; }
 console.log(`docs/ 파일 ${docs.length} · 폴더별 ${Object.entries(dirs).map(([k, v]) => `${k} ${v}`).join(' · ')}`);
@@ -209,6 +220,7 @@ else {
   console.log(`config 게이트: docs.always=${JSON.stringify(config.always)} docs.archive=${JSON.stringify(config.archive)}`);
 }
 for (const g of gaps) console.log(`어긋남? ${g}`);
+for (const n of notes) console.log(`맞음 ${n}`);
 for (const m of memory) {
   if (!m.exists) { console.log(`메모리 ${m.slug}: 디렉토리 없음`); continue; }
   const i = m.index;

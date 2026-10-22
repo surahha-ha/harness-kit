@@ -61,13 +61,29 @@ export function maskCodeSpans(line) {
   return out;
 }
 
+/**
+ * 코드 펜스 판정기 — 줄마다 부르면 그 줄이 펜스 줄이거나 펜스 안일 때 true.
+ * 연 글자(` · ~)와 같은 글자로, 연 길이 이상이고 뒤에 글이 없는 줄만 닫는다(``` 안의 ~~~ 는 닫지 않는다).
+ */
+export function fenceTracker() {
+  let open = null;
+  return (raw) => {
+    const m = /^\s*(`{3,}|~{3,})(.*)$/.exec(raw.replace(/\r$/, ''));
+    if (open) {
+      if (m && m[1][0] === open.ch && m[1].length >= open.n && !m[2].trim()) open = null;
+      return true;
+    }
+    if (m && !(m[1][0] === '`' && m[2].includes('`'))) { open = { ch: m[1][0], n: m[1].length }; return true; }
+    return false;
+  };
+}
+
 /** 마크다운 링크 대상: [글](대상) · [글](대상 "제목") · [이름]: 대상. 코드 펜스 안과 인라인 코드 스팬 안은 뺀다(예시로 적은 링크 꼴은 링크가 아니다). */
 export function* mdLinks(text) {
   const lines = text.split('\n');
-  let fence = false;
+  const inFence = fenceTracker();
   for (let i = 0; i < lines.length; i++) {
-    if (/^\s*(```|~~~)/.test(lines[i])) { fence = !fence; continue; }
-    if (fence) continue;
+    if (inFence(lines[i])) continue;
     const line = maskCodeSpans(lines[i]);
     for (const m of line.matchAll(/\]\(\s*<?([^)\s>]+)>?(?:\s+["'][^"']*["'])?\s*\)/g)) yield { line: i + 1, raw: m[1] };
     const ref = line.match(/^\s*\[[^\]]+\]:\s*<?(\S+?)>?(\s|$)/);

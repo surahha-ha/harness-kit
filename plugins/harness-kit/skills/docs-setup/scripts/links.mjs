@@ -5,7 +5,7 @@
 // 종료코드: 새 깨짐(또는 baseline 없이 깨짐)이 있으면 1.
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { repoFiles, readText, mdLinks, resolveLink, parseArgs, list } from './lib.mjs';
+import { repoFiles, readText, mdLinks, resolveLink, parseArgs, list, fenceTracker } from './lib.mjs';
 
 const { pos, opt } = parseArgs(process.argv.slice(2));
 if (!pos[0]) { console.error('사용: node links.mjs <레포 루트> [--only <접두>] [--skip <접두>] [--baseline <json>]'); process.exit(2); }
@@ -30,10 +30,9 @@ for (const f of files) {
     if (!existsSync(path.join(root, r.file))) broken.push({ file: f.rel, line: l.line, kind: 'link', ref: l.raw });
   }
   // 백틱 속 레포 기준 경로: 첫 마디가 레포 최상위 이름이고 확장자가 있는 것만(명령·예시와 섞이지 않게)
-  let fence = false;
+  const inFence = fenceTracker();
   t.text.split('\n').forEach((line, i) => {
-    if (/^\s*(```|~~~)/.test(line)) { fence = !fence; return; }
-    if (fence) return;
+    if (inFence(line)) return;
     if (/^\s*>/.test(line) && /현행 아님/.test(line)) return; // 아카이브 배너의 옛 경로는 출처 표기다 — 없는 것이 맞다
     for (const m of line.matchAll(/`([^`\s*?<>{}]+\/[^`\s*?<>{}]+\.[A-Za-z0-9]{1,5})`/g)) {
       const p = m[1].replace(/^\.\//, '').replace(/[#:].*$/, '');

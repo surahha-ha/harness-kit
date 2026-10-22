@@ -5,6 +5,7 @@
 //   ② 펜스 블록(``` · ~~~) 안의 링크 꼴도 링크로 세지 않는다
 //   ③ 본문의 깨진 링크는 그대로 깨짐이다(음성 대조)
 //   ④ 백틱 속 레포 기준 경로 문자열 판정은 그대로다(links 의 path · refs 의 경로)
+//   ⑤ 펜스는 연 글자와 같은 글자로만 닫힌다(``` 안의 ~~~ 줄은 펜스를 닫지 않는다)
 // 대상 레포 밖(작업 디렉토리)에만 쓴다. 실패가 하나라도 있으면 종료코드 1.
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
@@ -87,6 +88,13 @@ const rr = run(REFS, repo, 'docs/real.md', '--json', rjson);
 const hits = JSON.parse(readFileSync(rjson, 'utf8')).hits.filter((h) => h.rel === 'docs/ref-user.md').map((h) => `${h.kind}:${h.line}`);
 eq(rr.code, 0, 'refs 종료코드 0');
 eq(hits, ['path:3'], '코드 스팬 속 링크 꼴은 refs 도 링크로 세지 않고 레포 경로는 계속 경로로 센다');
+
+// ── 4. 펜스 글자 — ``` 안의 ~~~ 는 펜스를 닫지 않는다 ──
+eq([...mdLinks('```md\n~~~\n[a](x.md)\n```\n[b](y.md)\n')].map((l) => [l.line, l.raw]), [[5, 'y.md']], 'mdLinks — ``` 안의 ~~~ 줄로 펜스가 닫히지 않는다');
+w('docs/mixed.md', ['# 섞인 펜스', '', '```md', '~~~', '[a](없는.md)', '`docs/없는경로.md`', '```', '', '[b](없는2.md)', ''].join('\n'));
+const mjson = path.join(repo + '-mixed.json');
+run(LINKS, repo, '--only', 'docs/mixed', '--json', mjson);
+eq(JSON.parse(readFileSync(mjson, 'utf8')).broken.map((b) => `${b.kind} ${b.file}:${b.line} ${b.ref}`), ['link docs/mixed.md:9 없는2.md'], '``` 안의 ~~~ 뒤 링크·백틱 경로는 펜스 안이고, 펜스 밖 깨진 링크만 깨짐이다');
 
 console.log(`\n${pass}/${pass + fail} PASS · 작업 레포 ${repo}`);
 process.exit(fail ? 1 : 0);
