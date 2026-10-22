@@ -4,9 +4,13 @@
  *
  * 사용: node uninstall.mjs <명령> <레포 루트> [인자…]
  *   sessions [--self <id>] [--projects <디렉토리>]   같은 트리의 다른 Claude 세션 — 마지막 기록 시각(0단계, 체크포인트 없이 돈다)
- *   scan    [--refresh]            후보를 뽑아 체크포인트에 계획으로 적는다(영수증이 있으면 영수증 기준 · 앞선 걷어내기 백업도 본다)
+ *   scan    [--refresh] [--tier light|instrumented]
+ *                                   후보를 뽑아 체크포인트에 계획으로 적는다(영수증이 있으면 영수증 기준 · 앞선 걷어내기 백업도 본다).
+ *                                   설치 범위는 영수증 tier 에서 읽는다(schema 1 은 계측). --tier 가 지금 범위보다 낮으면
+ *                                   「범위 낮추기」 계획이다 — 범위 밖 훅 지우기 · config 칸 되돌리기 · 안내절 바꾸기 · 영수증 갱신만 후보다
+ *   block   <후보 id> <새 블록 파일>  범위 낮추기에서 안내절(표시 블록)을 바꿀 새 판을 넘긴다(표시 줄 포함, Write 로 쓴 파일)
  *   status                          계획·답·진행을 보인다
- *   answer  <id>=<값>… | --recommended   답을 적는다. purpose=reinstall|remove 도 여기서
+ *   answer  <id>=<값>… | --recommended   답을 적는다. purpose=reinstall|remove 도 여기서(범위 낮추기는 scan --tier 가 정한다)
  *   backup                          손댈 파일 전부를 git-path 아래로, 런타임 산출물을 git-common-dir 아래로 복사
  *   apply                           플러그인 키를 뺀 나머지를 걷어 낸다(다시 돌려도 안전)
  *   plugin                          플러그인 키 답(off|keep)을 반영하고 settings 스냅숏(after-plugin/)을 뜬다
@@ -33,9 +37,10 @@ import {
   sha256, normEol, splitLines, body, marksFor, MARKS, findMarked, findSection, findPointerLines, findIgnoreGroups,
   rangeSha, widen, countText, toFileEol, applyTextOps, deleteKey, deleteHook, hookEntries, dupKeys, findKey, parseSpans,
 } from './edit.mjs';
+import { HOOKS, LABEL, RANK, hookSpec, hooksFor, normTier, receiptTier, INSTRUMENTED_SLOTS } from '../../harness-install/scripts/tiers.mjs';
 
 const [cmd, rootArg, ...args] = process.argv.slice(2);
-if (!cmd || !rootArg) { console.error('사용: node uninstall.mjs <sessions|scan|status|answer|backup|apply|plugin|records|after-cli|verify|eol-fix|finish|restore-check> <레포 루트> [인자…]'); process.exit(2); }
+if (!cmd || !rootArg) { console.error('사용: node uninstall.mjs <sessions|scan|block|status|answer|backup|apply|plugin|records|after-cli|verify|eol-fix|finish|restore-check> <레포 루트> [인자…]'); process.exit(2); }
 const root = path.resolve(rootArg);
 /** 이 스크립트의 절대경로 — 되돌리기 줄을 그대로 복사해 돌릴 수 있게 출력에 넣는다. */
 const SELF = fileURLToPath(import.meta.url);
@@ -137,6 +142,9 @@ const HEADER_MAX = 12;
 /** header 의 조각 — pre + core + tail + ' ' + action. 12자를 넘으면 core 만 뒤에서 줄인다. */
 function headerParts(c) {
   const H = (core, action, pre = '', tail = '') => ({ pre, core, tail, action });
+  if (c.kind === 'slot') return H('설정칸', '되돌림');
+  if (c.kind === 'receipt') return H('영수증', '갱신');
+  if (c.kind === 'text' && c.lower && c.data.op.op === 'block') return H('안내절', '교체');
   if (['modified', 'extra'].includes(c.status) && ['file', 'text', 'hook'].includes(c.kind)) return H('손댄파일', '처리');
   if (c.kind === 'files') return H('하네스파일', '삭제');
   if (c.kind === 'runtime') return H('계측로그', '보관');
@@ -172,8 +180,20 @@ function configStrings(cfg) {
   const out = [];
   const walk = (v) => { if (typeof v === 'string') out.push(v); else if (v && typeof v === 'object' && !(v instanceof RegExp)) Object.values(v).forEach(walk); };
   if (cfg && !cfg.__error) { walk(cfg.commands); walk(cfg.project && cfg.project.commands); }
-  else if (exists(CONFIG)) for (const m of read(CONFIG).split('\n').filter((l) => !DOCS_SETUP_MARK.test(l)).join('\n').matchAll(/'([^'\n]*)'|"([^"\n]*)"|`([^`\n]*)`/g)) out.push(m[1] ?? m[2] ?? m[3]);
+  else if (exists(CONFIG)) for (const m of withoutDocsSetup(read(CONFIG)).matchAll(/'([^'\n]*)'|"([^"\n]*)"|`([^`\n]*)`/g)) out.push(m[1] ?? m[2] ?? m[3]);
   return out;
+}
+/**
+ * docs-setup 칸 줄을 뺀 config 글 — 문서 경로가 보조 파일 후보로 잡히지 않게. 여러 줄 배열 칸(`always: [` … `],`)은
+ * 표시가 한 줄에만 붙으므로 칸이 걸친 줄 전체를 뺀다(config-slots 의 ownedSlots 가 그 범위를 낸다).
+ */
+function withoutDocsSetup(text) {
+  const lines = text.split('\n');
+  const drop = new Set(lines.map((l, i) => (DOCS_SETUP_MARK.test(l) ? i : -1)).filter((i) => i >= 0));
+  if (docsSetupLib) {
+    try { for (const s of docsSetupLib.ownedSlots(text).slots) for (let i = s.lines[0] - 1; i <= s.lines[1] - 1; i++) drop.add(i); } catch { /* 토큰기가 못 읽으면 표시 줄만 뺀다 */ }
+  }
+  return lines.filter((_, i) => !drop.has(i)).join('\n');
 }
 const loadJson = (rel) => { try { return JSON.parse(read(rel).replace(/^\uFEFF/, '')); } catch { return null; } };
 /** docs-setup 소유 칸 — 값은 import 한 config 에서, 경로는 표시 줄에서. 영수증 owners["docs-setup"] 도 함께 싣는다. */
@@ -204,6 +224,22 @@ async function scan() {
   if (cfg && cfg.__error) warnings.push(`config 를 import 하지 못했다(${cfg.__error}) — 문자열만 정규식으로 읽는다`);
   const g = (cfg && !cfg.__error && cfg.project && cfg.project.git) || {};
   const captured = { commitExecution: g.commitExecution ?? null, push: g.push ?? null, coAuthor: g.coAuthor ?? null };
+
+  // 설치 범위 — 영수증 tier(schema 1 은 계측) · --tier 가 그보다 낮으면 범위 낮추기 계획
+  const tierArg = opt('--tier');
+  const target = tierArg == null ? null : normTier(tierArg);
+  if (tierArg != null && !target) { console.error(`--tier 는 light(라이트)·instrumented(계측) 중 하나: ${tierArg}`); process.exit(2); }
+  const rt = receiptTier(manifest);
+  const tier = { current: rt ? rt.tier : null, from: rt ? rt.from : '영수증 없음 — 범위 미상', target, mode: 'remove' };
+  if (rt && rt.legacy) warnings.push(`영수증에 설치 범위가 없다 — ${rt.from}`);
+  const base = tier.current || 'instrumented';   // 영수증 없는 옛 설치는 모두 전체 설치(계측)였다
+  if (target && RANK[target] > RANK[base]) { console.error(`범위 올리기(${LABEL[base]} → ${LABEL[target]})는 이 스킬이 하지 않는다 — 걷어 낸 뒤 새 세션에서 harness-install 을 ${LABEL[target]} 범위로 돌린다`); process.exit(2); }
+  if (target && RANK[target] < RANK[base]) {
+    tier.mode = 'lower';
+    tier.current = base;
+    return scanLower({ prev, files, warnings, manifest, cfg, captured, tier });
+  }
+  const judge = tier.current || target;           // 이 범위로 「있어야 할 것 · 남은 것」을 가른다(영수증도 --tier 도 없으면 가르지 않는다)
 
   const installCommit = (tryGit('log', '--diff-filter=A', '--format=%H', '--', CONFIG) || '').trim().split('\n').filter(Boolean).pop() || null;
   const cands = [];
@@ -364,13 +400,18 @@ async function scan() {
     if (!json) { warnings.push(`${sf} 를 JSON 으로 읽지 못했다 — settings 후보를 뽑지 않는다. 손으로 고친 뒤 scan --refresh`); continue; }
     const dups = dupKeys(read(sf));
     if (dups.length) warnings.push(`${sf} 에 중복 키 ${dups.join(', ')} — JSON.parse 가 앞쪽을 버린다. 걷어내기는 이 파일을 건드리지 않는다(멈추고 보고)`);
-    hookEntries(json).filter((e) => /[\/\\]\.harness[\/\\]/.test(e.command || '')).forEach((e, k) => {
+    const harnessHooks = hookEntries(json).filter((e) => /[\/\\]\.harness[\/\\]/.test(e.command || ''));
+    harnessHooks.forEach((e, k) => {
       const m = sf === SETTINGS && mHooks.find((h) => h.event === e.event && h.command === e.command);
       const status = !manifest || sf !== SETTINGS ? 'unknown' : !m ? 'extra' : (m.matcher ?? null) === e.matcher ? 'clean' : 'modified';
+      const spec = hookSpec(e.event, e.command);
+      const outside = judge && spec && RANK[spec.tier] > RANK[judge] ? `${LABEL[judge]} 설치에 없는 ${spec.what} 훅(범위 밖 — 남은 것) · ` : '';
       add({ id: `hook:${sf}#${e.event}#${k + 1}`, kind: 'hook', group: 'settings', title: `${sf} 훅 ${e.event} | ${e.matcher ?? '*'} | ${e.command}`, status, recommend: 'remove',
-        basis: sf === SETTINGS_LOCAL ? '개인 설정 파일의 하네스 훅 — .harness/ 가 없어지면 실패한다' : status === 'modified' ? 'matcher 가 설치 때와 다르다 — 그래도 .harness/ 를 가리키므로 지운다' : '.harness/ 를 가리키는 훅',
+        basis: outside + (sf === SETTINGS_LOCAL ? '개인 설정 파일의 하네스 훅 — .harness/ 가 없어지면 실패한다' : status === 'modified' ? 'matcher 가 설치 때와 다르다 — 그래도 .harness/ 를 가리키므로 지운다' : '.harness/ 를 가리키는 훅'),
         data: { file: sf, event: e.event, matcher: e.matcher, command: e.command } });
     });
+    // 그 범위에 있어야 할 훅이 없다 — 걷어 낼 것은 없지만, 설치가 틀렸거나 손으로 뺀 것이다
+    if (judge && sf === SETTINGS) for (const spec of hooksFor(judge)) if (!harnessHooks.some((e) => hookSpec(e.event, e.command) === spec)) warnings.push(`설치 범위 ${LABEL[judge]}의 ${spec.what} 훅(${spec.event})이 ${SETTINGS} 에 없다 — 이미 빠졌거나 손으로 뺐다(걷어 낼 것 없음)`);
   }
   const settings = exists(SETTINGS) ? loadJson(SETTINGS) : null;
   if (settings) {
@@ -415,7 +456,7 @@ async function scan() {
   assignHeaders(cands);
   const head = git('rev-parse', 'HEAD').trim();
   const plan = { scannedAt: new Date().toISOString(), head, branch: git('rev-parse', '--abbrev-ref', 'HEAD').trim(), manifest: !!manifest,
-    installAtHead: installAt(head),
+    installAtHead: installAt(head), tier,
     source: mf.source || (exists(CONFIG) ? { headLine: body(splitLines(read(CONFIG))[0] || '').slice(0, 200) } : null), captured, candidates: cands, warnings,
     docsSetup: docsSetupSlots(cfg, manifest) };
   const cfgCand = cands.find((c) => c.id === `file:${CONFIG}`);
@@ -430,17 +471,117 @@ async function scan() {
   plan.prior = prior.map((r) => ({ dir: posix(r.dir), at: r.at, files: (r.idx.files || []).length }));
 
   // 5) 걷어내기 전 상태 — 후보 밖 파일이 바뀌지 않았는지 verify 가 대조한다
-  const candPaths = candidatePaths(plan);
-  const porcelain = git('status', '--porcelain=v1', '-z', '--untracked-files=all').split('\0').filter(Boolean);
-  const pre = {};
-  for (const e of porcelain) { const p = e.slice(3); if (!candPaths.has(p) && !p.startsWith('.harness/') && exists(p) && statSync(abs(p)).isFile()) pre[p] = { code: e.slice(0, 2), sha: sha256(readFileSync(abs(p), 'utf8')) }; }
-  plan.pre = pre;
+  plan.pre = preState(plan);
 
   const state = { skill: 'harness-uninstall', root: posix(root), plan, purpose: null, answers: {}, done: ['scan'], applied: [], backup: null };
   saveState(state);
   printPlan(state);
   console.log(`\n체크포인트: ${statePath}`);
   console.log('다음: 2단계 결정 질문(목적 → 계측로그 → 항목 → 손댄 것) → answer → backup');
+}
+
+/** 걷어내기 전 상태 — 후보 밖의 바뀐 파일(미커밋)마다 해시. verify 가 그대로인지 대조한다. */
+function preState(plan) {
+  const candPaths = candidatePaths(plan);
+  const porcelain = git('status', '--porcelain=v1', '-z', '--untracked-files=all').split('\0').filter(Boolean);
+  const pre = {};
+  for (const e of porcelain) { const p = e.slice(3); if (!candPaths.has(p) && !p.startsWith('.harness/') && exists(p) && statSync(abs(p)).isFile()) pre[p] = { code: e.slice(0, 2), sha: sha256(readFileSync(abs(p), 'utf8')) }; }
+  return pre;
+}
+
+/**
+ * 범위 낮추기(계측 → 라이트) 계획 — 골격 사본 · config 파일 · .gitignore · 보조 파일 · 계측 로그 · 플러그인 키는 남는다.
+ * 후보는 넷뿐이다: 범위 밖 하네스 훅(지움) · 범위 밖 config 칸(설치 전 값으로 되돌림 — 영수증 config.slots 기준) ·
+ * 안내절(표시 블록 — 새 범위 판으로 통째로 바꿈, 새 판은 `block` 으로 받는다) · 영수증(tier·해시 갱신).
+ * 칸을 되돌리지 않고 훅만 빼면 증거 슬롯이 채워진 채 턴 종료 훅이 없는 「설정 ≠ 연결」 상태가 된다 — 그래서 칸 되돌리기가 함께 간다.
+ */
+async function scanLower({ prev, files, warnings, manifest, cfg, captured, tier }) {
+  const { current, target } = tier;
+  const cands = [];
+  const add = (c) => cands.push({ options: ['remove', 'keep'], lower: true, ...c });
+  const mf = manifest || {};
+  if (!manifest) warnings.push('영수증이 없다 — 알려진 구조로 범위 밖 훅·안내절만 후보로 잡는다. 칸 되돌리기 기준과 범위 기록이 없다');
+
+  // 1) 범위 밖 하네스 훅 — 범위 안 훅은 남는다(tier.keep — verify 가 남았는지 본다)
+  const mHooks = (mf.settings && mf.settings.hooks) || [];
+  tier.keep = [];
+  for (const sf of [SETTINGS, SETTINGS_LOCAL]) {
+    if (!exists(sf)) continue;
+    const json = loadJson(sf);
+    if (!json) { warnings.push(`${sf} 를 JSON 으로 읽지 못했다 — settings 후보를 뽑지 않는다`); continue; }
+    const dups = dupKeys(read(sf));
+    if (dups.length) warnings.push(`${sf} 에 중복 키 ${dups.join(', ')} — 걷어내기는 이 파일을 건드리지 않는다(멈추고 보고)`);
+    hookEntries(json).filter((e) => /[\/\\]\.harness[\/\\]/.test(e.command || '')).forEach((e, k) => {
+      const spec = hookSpec(e.event, e.command);
+      if (!spec) { warnings.push(`표에 없는 하네스 훅 ${sf} ${e.event} | ${e.command} — 범위 낮추기 후보에서 뺀다. 손으로 본다`); return; }
+      if (RANK[spec.tier] <= RANK[target]) { tier.keep.push({ file: sf, event: e.event, matcher: e.matcher, command: e.command }); return; }
+      const m = sf === SETTINGS && mHooks.find((h) => h.event === e.event && h.command === e.command);
+      const status = !manifest || sf !== SETTINGS ? 'unknown' : !m ? 'extra' : (m.matcher ?? null) === e.matcher ? 'clean' : 'modified';
+      add({ id: `hook:${sf}#${e.event}#${k + 1}`, kind: 'hook', group: 'settings', title: `${sf} 훅 ${e.event} | ${e.matcher ?? '*'} | ${e.command}`, status, recommend: 'remove',
+        basis: `${LABEL[target]} 범위 밖 ${spec.what} 훅 — 범위를 낮추면 뺀다(관찰만 하던 훅이다. 골격 사본은 남는다)`, data: { file: sf, event: e.event, matcher: e.matcher, command: e.command } });
+    });
+  }
+  for (const spec of hooksFor(target)) if (!tier.keep.some((h) => h.file === SETTINGS && hookSpec(h.event, h.command) === spec)) warnings.push(`${LABEL[target]} 범위에 남아야 할 ${spec.what} 훅(${spec.event})이 ${SETTINGS} 에 없다 — 범위를 낮춘 뒤에도 가드가 돌지 않는다. 손으로 다시 건다(harness-install TEMPLATES §1)`);
+
+  // 2) 범위 밖 config 칸 — 영수증 config.slots 의 설치 전 값으로 되돌린다. docs-setup 표시가 든 칸은 남긴다
+  const rec = mf.config && Array.isArray(mf.config.slots) ? mf.config.slots : null;
+  const cfgText = exists(CONFIG) ? read(CONFIG) : null;
+  if (manifest && !rec) warnings.push(`영수증에 config.slots 가 없다(schema ${manifest.schema ?? 1}) — 칸을 설치 전 값으로 되돌릴 기준이 없다. 범위 밖 칸(${INSTRUMENTED_SLOTS.join(' · ')})은 손으로 example 값으로 되돌린다`);
+  else if (rec && !cfgText) warnings.push(`${CONFIG} 가 없다 — 되돌릴 칸이 없다`);
+  else if (rec && !docsSetupLib) warnings.push('docs-setup 의 config-slots.mjs 를 읽지 못해 칸을 되돌릴 수 없다 — 손으로 본다');
+  else if (rec) {
+    const lines = splitLines(cfgText);
+    for (const sl of rec.filter((x) => RANK[x.tier] > RANK[target])) {
+      const cur = docsSetupLib.slotValue(cfgText, sl.path);
+      const already = sl.before == null ? !cur : !!cur && normEol(cur.source).trim() === normEol(sl.before).trim();
+      if (already) continue;
+      if (!cur) { warnings.push(`${sl.path} 칸이 지금 ${CONFIG} 에 없다 — 되돌릴 것이 없다`); continue; }
+      const marked = lines.slice(cur.keyLine, cur.endLine + 1).some((l) => DOCS_SETUP_MARK.test(l));
+      const same = sha256(cur.source) === sl.afterSha;
+      const what = sl.before == null ? 'example 에 없던 칸 — 칸째 지운다' : `설치 전 값 ${normEol(sl.before).replace(/\s+/g, ' ').slice(0, 40)}`;
+      const base = { id: `slot:${sl.path}`, kind: 'slot', group: 'config', title: `${CONFIG} 칸 ${sl.path} — ${what}`, data: { path: CONFIG, slot: sl.path, before: sl.before, beforeNote: sl.beforeNote ?? null, afterSha: sl.afterSha } };
+      if (marked) add({ ...base, status: 'clean', options: ['keep'], recommend: 'keep', basis: 'docs-setup 표시 칸이 들어 있다 — 범위와 무관하게 남긴다(docs-setup 이 채운 값)' });
+      else if (same) add({ ...base, status: 'clean', options: ['revert', 'keep'], recommend: 'revert', basis: `${LABEL[target]} 범위 밖 칸 — 남기면 훅 없이 설정만 남는다(설정 ≠ 연결). 설치 전 값(example)으로 되돌린다` });
+      else add({ ...base, status: 'modified', options: ['revert', 'keep'], recommend: null, basis: '설치 뒤 값이 바뀌었다 — 되돌리면 그 값을 잃는다(백업에는 남는다). 남기면 훅 없이 설정만 남는다' });
+    }
+  }
+
+  // 3) 안내절 — Markdown 의 표시 블록을 새 범위 판으로 통째로 바꾼다
+  const blockSha = (p, i) => ((mf.edits || []).filter((e) => e.path === p && e.how === 'block')[i] || {}).sha256;
+  for (const p of files.all.filter((x) => /\.(md|markdown)$/i.test(x))) {
+    const text = textOf(p);
+    if (text === null || !text.includes(MARKS.md.begin)) continue;
+    const lines = splitLines(text);
+    const found = findMarked(lines, MARKS.md);
+    found.errors.forEach((e) => warnings.push(`${p}: ${e} — 그 표시는 후보에서 뺀다`));
+    if (found.errors.length) continue;
+    found.blocks.forEach((b, i) => {
+      const sha = rangeSha(lines, b), want = blockSha(p, i);
+      const status = !manifest ? 'unknown' : !want ? 'extra' : want === sha ? 'clean' : 'modified';
+      const first = lines.slice(b.start + 1, b.end).map(body).find((l) => l.trim()) || '';
+      add({ id: `text:${p}#block${i + 1}`, kind: 'text', group: 'text', title: `${p} 표시 블록 ${i + 1} (${b.end - b.start + 1}줄: ${first.slice(0, 40)}) — ${LABEL[target]} 판으로 바꾼다`, status,
+        options: ['replace', 'keep'], recommend: null,
+        basis: `범위마다 안내절의 판이 다르다(harness-install TEMPLATES §4) — ${LABEL[target]} 판을 Write 로 쓴 뒤 \`block\` 으로 넘기면 권장이 「바꿈」이 된다${status === 'modified' ? ' · 설치 뒤 블록 안을 고쳤다(백업에 남는다)' : ''}`,
+        data: { path: p, op: { op: 'block', sha } } });
+    });
+  }
+
+  // 4) 영수증 — 범위와 해시를 고쳐 다음 걷어내기의 기준으로 남긴다
+  if (manifest) add({ id: 'receipt:tier', kind: 'receipt', group: 'gate', title: `${MANIFEST} — 범위 ${LABEL[current]} → ${LABEL[target]} 로 고쳐 쓴다`, status: 'clean', options: ['update'], recommend: 'update',
+    basis: '걷어 낸 훅·되돌린 칸을 빼고 tier·config 해시·바꾼 블록 해시를 고친다 — 다음 걷어내기의 기준', data: { path: MANIFEST } });
+
+  assignHeaders(cands);
+  const head = git('rev-parse', 'HEAD').trim();
+  const prior = priorRuns(prev && prev.backup && prev.backup.dir);
+  const plan = { scannedAt: new Date().toISOString(), head, branch: git('rev-parse', '--abbrev-ref', 'HEAD').trim(), manifest: !!manifest,
+    installAtHead: installAt(head), tier, source: mf.source || null, captured, candidates: cands, warnings, docsSetup: docsSetupSlots(cfg, manifest), refs: [],
+    prior: prior.map((r) => ({ dir: posix(r.dir), at: r.at, files: (r.idx.files || []).length })) };
+  plan.pre = preState(plan);
+  const state = { skill: 'harness-uninstall', root: posix(root), plan, purpose: 'lower', answers: {}, done: ['scan'], applied: [], backup: null };
+  saveState(state);
+  printPlan(state);
+  console.log(`\n체크포인트: ${statePath}`);
+  console.log(`다음: 안내절을 ${LABEL[target]} 판으로 쓴 뒤 block <후보 id> <파일> → 항목 질문 → answer → backup (골격 사본·config 파일·로그·플러그인 키는 후보가 아니다 — 남는다)`);
 }
 
 function candidatePaths(plan) {
@@ -459,7 +600,7 @@ function findRefs(plan, answers, files = listFiles()) {
   const gone = new Set(), opsBy = new Map();
   for (const c of plan.candidates) {
     const a = answers[c.id];
-    if (c.kind === 'text' && (a === 'remove' || a === 'revert')) { const l = opsBy.get(c.data.path) || []; l.push({ id: c.id, ...c.data.op }); opsBy.set(c.data.path, l); }
+    if (c.kind === 'text' && (a === 'remove' || a === 'revert' || a === 'replace')) { const l = opsBy.get(c.data.path) || []; l.push({ id: c.id, ...c.data.op }); opsBy.set(c.data.path, l); }
     if (['file', 'manifest'].includes(c.kind) && a === 'remove') gone.add(c.data.path);
     if (['files', 'runtime'].includes(c.kind) && a === 'remove') c.data.paths.forEach((p) => gone.add(p));
   }
@@ -480,6 +621,7 @@ function findRefs(plan, answers, files = listFiles()) {
 // ── status · answer ──────────────────────────────────────────────────────────
 
 const recOf = (c, s) => {
+  if (c.lower && c.kind === 'text') return c.data.op.replacement ? 'replace' : null;   // 새 판을 받아야 권장이 선다
   if (c.recommendBy) return s.purpose ? c.recommendBy[s.purpose] : null;
   if (c.id.startsWith('text:.gitignore') && s.answers.runtime === 'keep') return 'keep';
   return c.recommend;
@@ -490,6 +632,8 @@ function printPlan(s) {
   if (p.candidates.some((c) => !c.header)) assignHeaders(p.candidates);
   console.log(`기준: ${p.manifest ? `영수증(${MANIFEST})` : '영수증 없음 — 알려진 구조로 뽑은 후보, 항목마다 확인'} · HEAD ${p.head.slice(0, 7)} (${p.branch}) · 설치: ${committedText(p.installAtHead)}`);
   console.log(`읽어 둔 커밋 정책: commitExecution=${p.captured.commitExecution} · push=${p.captured.push} · coAuthor=${p.captured.coAuthor}`);
+  const tr = p.tier;
+  if (tr) console.log(`설치 범위: ${tr.current ? LABEL[tr.current] : '미상'} (${tr.from})${tr.mode === 'lower' ? ` → ${LABEL[tr.target]} 로 낮춘다 — 남는 ${LABEL[tr.target]} 범위 훅 ${(tr.keep || []).length}개` : ''}`);
   console.log(`목적: ${s.purpose ?? '미정'} · 진행: ${s.done.join(' → ')} · 적용 ${s.applied.length}건`);
   console.log(`후보 ${p.candidates.length}개 (플러그인 키 ${p.candidates.filter((c) => c.kind === 'plugin').length}개 포함) · 답 ${Object.keys(s.answers).length}개 — 보고의 후보 수는 이 줄에서 옮긴다`);
   for (const w of p.warnings) console.log(`WARN ${w}`);
@@ -520,10 +664,14 @@ function answer() {
     if (a === '--recommended') continue;
     const i = a.indexOf('=');
     const id = a.slice(0, i), v = a.slice(i + 1);
-    if (id === 'purpose') { if (!['reinstall', 'remove'].includes(v)) { console.error('purpose 는 reinstall|remove'); process.exit(2); } s.purpose = v; continue; }
+    if (id === 'purpose') {
+      if (s.purpose === 'lower') { console.error('범위 낮추기 계획이다 — 목적은 scan --tier 가 정했다. 걷어내려면 scan --refresh 로 새로 뽑는다'); process.exit(2); }
+      if (!['reinstall', 'remove'].includes(v)) { console.error('purpose 는 reinstall|remove'); process.exit(2); } s.purpose = v; continue;
+    }
     const c = byId.get(id);
     if (!c) { console.error(`없는 후보: ${id}`); process.exit(2); }
     if (!c.options.includes(v)) { console.error(`${id} 의 답은 ${c.options.join('|')}`); process.exit(2); }
+    if (v === 'replace' && !(c.data.op && typeof c.data.op.replacement === 'string')) { console.error(`${id} — 바꿀 새 판이 없다. 먼저 block ${id} <파일>`); process.exit(2); }
     s.answers[id] = v;
   }
   if (args.includes('--recommended')) {
@@ -546,6 +694,32 @@ function answer() {
   console.log(`답 ${Object.keys(s.answers).length}/${s.plan.candidates.length} · 목적 ${s.purpose ?? '미정'}${left.length ? ` · 남은 질문: ${left.join(', ')}` : ''}`);
   const leftBeforeBackup = left.filter((id) => id !== 'plugin');
   if (!leftBeforeBackup.length && !s.backup) console.log(`다음: backup${left.includes('plugin') ? ' (kit 키 질문은 5단계)' : ''}`);
+}
+
+/**
+ * 범위 낮추기 — 안내절(표시 블록)을 바꿀 새 판을 받는다. 새 판은 첫 줄이 begin 표시, 끝 줄이 end 표시인 Markdown 이고
+ * 그 사이에 표시가 더 없어야 한다(harness-install TEMPLATES §4 의 새 범위 판을 Write 로 쓴 파일).
+ */
+function block() {
+  const s = need(loadState());
+  const [id, fileArg] = args;
+  if (!id || !fileArg) { console.error('사용: block <레포 루트> <후보 id> <새 블록 파일>'); process.exit(2); }
+  if (s.backup) { console.error('백업 뒤다 — 새 판은 백업 전에 넘긴다(scan --refresh 부터)'); process.exit(2); }
+  const c = s.plan.candidates.find((x) => x.id === id);
+  if (!c || c.kind !== 'text' || !c.lower || c.data.op.op !== 'block') { console.error(`범위 낮추기의 안내절 후보가 아니다: ${id}`); process.exit(2); }
+  const raw = readFileSync(path.resolve(fileArg), 'utf8').replace(/^\uFEFF/, '');
+  const lines = normEol(raw).replace(/\n+$/, '').split('\n');
+  const M = MARKS.md, inner = lines.slice(1, -1);
+  const errs = [];
+  if (lines[0].trim() !== M.begin) errs.push(`첫 줄이 ${M.begin} 가 아니다`);
+  if (lines.length < 2 || lines[lines.length - 1].trim() !== M.end) errs.push(`끝 줄이 ${M.end} 가 아니다`);
+  if (inner.some((l) => l.includes(M.begin) || l.includes(M.end))) errs.push('블록 안에 표시 줄이 또 있다');
+  if (!inner.some((l) => l.trim())) errs.push('블록 안이 비었다');
+  if (errs.length) { errs.forEach((e) => console.log(`FAIL ${e}`)); console.log(`failures=${errs.length} — 새 판을 받지 않았다`); process.exit(1); }
+  c.data.op.replacement = lines.join('\n');
+  c.data.replacementSha = sha256(lines.join('\n'));
+  saveState(s);
+  console.log(`OK   ${id} — 새 판 ${lines.length}줄 받음(sha256 ${c.data.replacementSha.slice(0, 12)}) · 권장 「바꿈」`);
 }
 
 // ── backup ───────────────────────────────────────────────────────────────────
@@ -662,13 +836,13 @@ function syncEvidence(s, c) {
   return ok;
 }
 
-function apply() {
+async function apply() {
   const s = need(loadState());
   if (!s.backup) { console.error('백업이 없다 — 먼저 backup'); process.exit(2); }
   const done = new Set(s.applied);
   let n0 = 0, skips = 0;
   const mark = (id, msg) => { if (!done.has(id)) { s.applied.push(id); done.add(id); n0++; } console.log(msg); saveState(s); };
-  const todo = (c) => !done.has(c.id) && ['remove', 'revert'].includes(s.answers[c.id]);
+  const todo = (c) => !done.has(c.id) && ['remove', 'revert', 'replace', 'update'].includes(s.answers[c.id]);
   const C = s.plan.candidates;
 
   // 1) 텍스트 — 파일마다 한 번에 쓴다
@@ -678,7 +852,7 @@ function apply() {
     const before = read(p);
     const { text, results } = applyTextOps(before, cs.map((c) => ({ id: c.id, ...c.data.op })), p);
     if (text !== before) writeKeep(p, text);
-    for (const c of cs) mark(c.id, `${results[c.id] === 'removed' || results[c.id] === 'reverted' ? 'OK  ' : 'SKIP'} ${results[c.id]} ${c.id}`);
+    for (const c of cs) mark(c.id, `${['removed', 'reverted', 'replaced'].includes(results[c.id]) ? 'OK  ' : 'SKIP'} ${results[c.id]} ${c.id}`);
   }
   // 2) settings — 훅 · false 키 (플러그인 키는 plugin 단계)
   for (const c of C.filter((x) => (x.kind === 'hook' || x.kind === 'key') && todo(x))) {
@@ -687,6 +861,22 @@ function apply() {
     const r = c.kind === 'hook' ? deleteHook(before, { event: c.data.event, command: c.data.command, matcher: c.data.matcher }) : deleteKey(before, c.data.keys);
     if (r.removed) { JSON.parse(r.text.replace(/^\uFEFF/, '')); writeKeep(c.data.file, r.text); }
     mark(c.id, `${r.removed ? 'OK  ' : 'SKIP'} ${r.removed ? 'removed' : 'not-found'} ${c.id}`);
+  }
+  // 2-1) config 칸 — 범위 낮추기: 설치 전 값으로 되돌린 뒤 import 해 본다. 못 읽으면 통째로 되돌려 놓는다
+  const slotCs = C.filter((x) => x.kind === 'slot' && todo(x));
+  if (slotCs.length) {
+    const before = read(CONFIG);
+    let text = before;
+    const acts = {};
+    try {
+      for (const c of slotCs) { const r = docsSetupLib.revertSlot(text, c.data.slot, c.data.before, c.data.beforeNote); text = r.text; acts[c.id] = r.action; }
+    } catch (e) { console.log(`SKIP 설정칸 되돌리기 — ${e.message}. ${CONFIG} 는 그대로다`); text = null; }
+    if (text !== null) {
+      if (text !== before) writeFileSync(abs(CONFIG), text, 'utf8');
+      let okImport = true;
+      try { await docsSetupLib.importConfig(abs(CONFIG)); } catch (e) { okImport = false; writeFileSync(abs(CONFIG), before, 'utf8'); console.log(`SKIP 설정칸 되돌리기 — 되돌린 ${CONFIG} 를 import 하지 못했다(${String(e.message || e).slice(0, 120)}). 원래 판으로 되돌려 놓았다`); }
+      if (okImport) for (const c of slotCs) mark(c.id, `${['reverted', 'removed'].includes(acts[c.id]) ? 'OK  ' : 'SKIP'} ${acts[c.id]} ${c.id}`);
+    }
   }
   // 3) 파일 — 보조 · config · 손댄/생긴 파일 · 골격 · 런타임
   const rmFile = (p) => { if (exists(p)) { rmSync(abs(p)); return true; } return false; };
@@ -701,7 +891,9 @@ function apply() {
   const prune = (dir) => { if (!exists(dir) || !statSync(abs(dir)).isDirectory()) return; for (const e of readdirSync(abs(dir))) prune(`${dir}/${e}`); if (!readdirSync(abs(dir)).length) rmdirSync(abs(dir)); };
   prune('.harness');
   for (const c of C.filter((x) => x.data && x.data.aux && s.answers[x.id] === 'remove')) { const d = path.posix.dirname(c.data.path); if (d !== '.' && exists(d) && !readdirSync(abs(d)).length && !inHead(d)) rmdirSync(abs(d)); }
-  // 4) 영수증 — 남긴 항목이 없을 때만
+  // 4) 영수증 — 남긴 항목이 없을 때만 지운다 · 범위 낮추기는 고쳐 쓴다(맨 끝 — 앞에서 적용된 것만 반영)
+  const rc = C.find((x) => x.kind === 'receipt');
+  if (rc && todo(rc)) { const r = updateReceipt(s); mark(rc.id, r.ok ? `OK   updated ${MANIFEST} — ${r.note}` : `SKIP ${rc.id} — ${r.note}`); if (!r.ok) { s.applied = s.applied.filter((x) => x !== rc.id); saveState(s); } }
   const mc = C.find((x) => x.kind === 'manifest');
   if (mc && todo(mc)) {
     const kept = C.filter((x) => !['plugin', 'manifest'].includes(x.kind) && s.answers[x.id] === 'keep' && x.status !== 'modified');
@@ -713,7 +905,43 @@ function apply() {
   skips = s.plan.candidates.filter((c) => c.kind !== 'plugin' && ['remove', 'revert'].includes(s.answers[c.id]) && !s.applied.includes(c.id)).length;
   console.log(n0 ? `적용 ${n0}건 (이번 실행 · 누계 ${s.applied.length}건)${skips ? ` · 적용 안 된 것 ${skips}개(위 SKIP·KEEP 줄)` : ''} — 플러그인 키는 5단계`
     : `적용 0건 (플러그인 키는 5단계)${skips ? ` · 적용 안 된 것 ${skips}개(위 SKIP·KEEP 줄)` : s.applied.length ? ` · 누계 ${s.applied.length}건은 앞선 실행에서 적용` : ' — 지우기·되돌리기로 답한 항목이 플러그인 키 말고는 없다'}`);
-  console.log('다음: 5단계 kit 키 질문 → answer plugin=off|keep → plugin');
+  console.log(s.purpose === 'lower' ? '다음: verify (범위 낮추기 — kit 키는 그대로 둔다)' : '다음: 5단계 kit 키 질문 → answer plugin=off|keep → plugin');
+}
+
+/**
+ * 범위 낮추기 뒤 영수증을 고쳐 쓴다 — tier·schema 2 · 걷어 낸 훅과 되돌린 칸을 빼고 · config 해시 · 바꾼 블록의 해시와 첫 줄 ·
+ * tierChanges 한 줄 · D0 답. 다음 걷어내기가 이 판을 기준으로 「있어야 할 것 · 남은 것」을 가른다. 줄끝은 원래 파일을 따른다.
+ */
+function updateReceipt(s) {
+  if (!exists(MANIFEST)) return { ok: false, note: `${MANIFEST} 가 없다` };
+  const raw = read(MANIFEST);
+  let m;
+  try { m = JSON.parse(raw.replace(/^\uFEFF/, '')); } catch (e) { return { ok: false, note: `JSON 으로 읽지 못했다(${e.message})` }; }
+  const { current, target } = s.plan.tier;
+  const applied = new Set(s.applied);
+  const done = s.plan.candidates.filter((c) => applied.has(c.id));
+  const goneHooks = done.filter((c) => c.kind === 'hook' && c.data.file === SETTINGS);
+  if (m.settings && Array.isArray(m.settings.hooks)) m.settings.hooks = m.settings.hooks.filter((h) => !goneHooks.some((c) => c.data.event === h.event && c.data.command === h.command));
+  const goneSlots = new Set(done.filter((c) => c.kind === 'slot').map((c) => c.data.slot));
+  if (m.config && Array.isArray(m.config.slots)) m.config.slots = m.config.slots.filter((x) => !goneSlots.has(x.path));
+  for (const f of m.files || []) if (f.path === CONFIG && exists(CONFIG)) f.sha256 = fileSha(CONFIG);
+  // 바꾼 블록 — 그 파일의 n 번째 블록 영수증 줄을 새 판으로
+  for (const c of done.filter((x) => x.kind === 'text' && x.data.op.op === 'block' && typeof x.data.op.replacement === 'string')) {
+    const n = Number((c.id.match(/#block(\d+)$/) || [])[1]) - 1;
+    const e = (m.edits || []).filter((x) => x.path === c.data.path && x.how === 'block')[n];
+    const lines = c.data.op.replacement.split('\n');
+    const upd = { sha256: sha256(lines.join('\n')), first: (lines.slice(1, -1).find((l) => l.trim()) || '').slice(0, 80) };
+    if (e) Object.assign(e, upd); else (m.edits ||= []).push({ path: c.data.path, how: 'block', ...upd });
+  }
+  const at = new Date().toISOString();
+  m.schema = 2;
+  m.tier = target;
+  (m.tierChanges ||= []).push({ at, from: current, to: target, by: 'harness-uninstall', hooks: goneHooks.length, slots: goneSlots.size });
+  const d0 = { id: 'D0', header: '하네스 설치범위', answer: target, at, why: `${LABEL[current]} → ${LABEL[target]} 범위 낮추기(harness-uninstall)` };
+  m.decisions = [...(m.decisions || []).filter((d) => d.id !== 'D0'), d0];
+  const eol = /\r\n/.test(raw) ? '\r\n' : '\n';
+  writeFileSync(abs(MANIFEST), (raw.startsWith('\uFEFF') ? '\uFEFF' : '') + (JSON.stringify(m, null, 2) + '\n').replace(/\n/g, eol), 'utf8');
+  return { ok: true, note: `범위 ${LABEL[current]} → ${LABEL[target]} · 훅 ${goneHooks.length}개 · 칸 ${goneSlots.size}개를 뺐다` };
 }
 
 function plugin() {
@@ -873,7 +1101,8 @@ function verify() {
   const bad = (m) => { fail++; console.log(`FAIL ${m}`); };
   const ok = (m) => console.log(`OK   ${m}`);
   const C = s.plan.candidates;
-  const removed = (c) => ['remove', 'revert', 'off'].includes(s.answers[c.id]);
+  const removed = (c) => ['remove', 'revert', 'off', 'replace', 'update'].includes(s.answers[c.id]);
+
 
   // ① 남아선 안 되는 것
   for (const c of C.filter(removed)) {
@@ -890,7 +1119,9 @@ function verify() {
     try { json = JSON.parse(text.replace(/^\uFEFF/, '')); ok(`${sf} JSON 파싱`); } catch (e) { bad(`${sf} JSON 파싱 실패 ${e.message}`); continue; }
     const d = dupKeys(text);
     d.length ? bad(`${sf} 중복 키 ${d.join(', ')}`) : ok(`${sf} 중복 키 0`);
-    const keptHooks = new Set(C.filter((c) => c.kind === 'hook' && c.data.file === sf && !removed(c)).map((c) => `${c.data.event}|${c.data.command}`));
+    const tierKept = ((s.plan.tier && s.plan.tier.keep) || []).filter((h) => h.file === sf);
+    const keptHooks = new Set([...C.filter((c) => c.kind === 'hook' && c.data.file === sf && !removed(c)).map((c) => `${c.data.event}|${c.data.command}`), ...tierKept.map((h) => `${h.event}|${h.command}`)]);
+    if (s.purpose === 'lower') for (const h of tierKept) hookEntries(json).some((e) => e.event === h.event && e.command === h.command) ? ok(`${sf} ${LABEL[s.plan.tier.target]} 범위 훅 남음 ${h.event}`) : bad(`${sf} ${LABEL[s.plan.tier.target]} 범위 훅이 사라짐 ${h.event} | ${h.command}`);
     const left = hookEntries(json).filter((e) => /[\/\\]\.harness[\/\\]/.test(e.command || '') && !keptHooks.has(`${e.event}|${e.command}`));
     left.length ? bad(`${sf} .harness 훅 ${left.length}개 남음`) : ok(`${sf} .harness 훅 0 (남기기로 한 것 ${keptHooks.size})`);
     const bf = bdir && path.join(bdir, 'files', sf);
@@ -935,6 +1166,8 @@ function verify() {
   const now = git('status', '--porcelain=v1', '-z', '--untracked-files=all').split('\0').filter(Boolean);
   const extra = now.map((e) => e.slice(3)).filter((p) => !candPaths.has(p) && !p.startsWith('.harness/') && !(p in (s.plan.pre || {})));
   extra.length ? bad(`후보 밖에서 새로 바뀐 파일 ${extra.join(', ')}`) : ok(`후보 밖 변경 없음 (걷어내기 전부터 있던 ${Object.keys(s.plan.pre || {}).length}개 그대로)`);
+  // ③-1 범위 낮추기 — 칸이 설치 전 값인가 · 바꾼 블록이 있는가 · 영수증 범위
+  if (s.purpose === 'lower') verifyLower(s, ok, bad);
   // ④ 남은 참조
   const refs = findRefs(s.plan, Object.fromEntries(C.map((c) => [c.id, 'keep'])));
   const by = {};
@@ -994,7 +1227,12 @@ function removalAtHead(s, p) {
   if (text === null) return { hit: false, why: 'HEAD 판을 읽지 못함' };
   let hit = false;
   const ops = C.filter((c) => c.kind === 'text' && c.data.path === p).map((c) => ({ id: c.id, ...c.data.op }));
-  if (ops.length) { const r = applyTextOps(text, ops, p); text = r.text; hit = Object.values(r.results).some((v) => v === 'removed' || v === 'reverted'); }
+  if (ops.length) { const r = applyTextOps(text, ops, p); text = r.text; hit = Object.values(r.results).some((v) => v === 'removed' || v === 'reverted' || v === 'replaced'); }
+  const slotCs = C.filter((c) => c.kind === 'slot' && c.data.path === p);
+  if (slotCs.length && docsSetupLib) {
+    try { for (const c of slotCs) { const r = docsSetupLib.revertSlot(text, c.data.slot, c.data.before, c.data.beforeNote); text = r.text; if (r.action === 'reverted' || r.action === 'removed') hit = true; } } catch { /* HEAD 판에서 그 칸을 못 찾으면 그 조각은 HEAD 에 없다 */ }
+  }
+  if (C.some((c) => c.kind === 'receipt' && c.data.path === p)) return { hit: true, mixed: false };   // 영수증 갱신 — HEAD 의 영수증을 고쳐 쓴 것
   for (const c of C.filter((x) => ['hook', 'key', 'plugin'].includes(x.kind) && x.data.file === p)) {
     try {
       const steps = c.kind === 'hook' ? [(t) => deleteHook(t, { event: c.data.event, command: c.data.command, matcher: c.data.matcher })]
@@ -1006,12 +1244,42 @@ function removalAtHead(s, p) {
   return { hit: true, mixed: normEol(text) !== normEol(read(p)) };
 }
 
+/** 범위 낮추기 검증 — 되돌린 칸 = 설치 전 값 · 바꾼 블록이 새 판 그대로 있다 · config 가 import 된다 · 영수증 tier 와 훅이 새 범위다. */
+function verifyLower(s, ok, bad) {
+  const C = s.plan.candidates, A = s.answers, applied = new Set(s.applied);
+  const { target } = s.plan.tier;
+  const cfgText = exists(CONFIG) ? read(CONFIG) : null;
+  for (const c of C.filter((x) => x.kind === 'slot' && A[x.id] === 'revert')) {
+    if (!applied.has(c.id)) { bad(`설정칸 ${c.data.slot} — 되돌리기로 했는데 적용되지 않았다`); continue; }
+    const cur = cfgText && docsSetupLib ? docsSetupLib.slotValue(cfgText, c.data.slot) : null;
+    if (c.data.before == null) cur ? bad(`설정칸 ${c.data.slot} 이 아직 있다(칸째 지워야 한다)`) : ok(`설정칸 ${c.data.slot} 지워짐(example 에 없던 칸)`);
+    else if (!cur) bad(`설정칸 ${c.data.slot} 이 없다`);
+    else normEol(cur.source).trim() === normEol(c.data.before).trim() ? ok(`설정칸 ${c.data.slot} = 설치 전 값`) : bad(`설정칸 ${c.data.slot} 이 설치 전 값과 다르다: ${normEol(cur.source).replace(/\s+/g, ' ').slice(0, 60)}`);
+  }
+  for (const c of C.filter((x) => x.kind === 'text' && A[x.id] === 'replace')) {
+    if (!applied.has(c.id)) { bad(`${c.id} — 바꾸기로 했는데 적용되지 않았다`); continue; }
+    const text = exists(c.data.path) ? normEol(read(c.data.path)) : '';
+    text.includes(c.data.op.replacement) ? ok(`${c.data.path} 안내절 = ${LABEL[target]} 판`) : bad(`${c.data.path} 에 바꾼 안내절이 그대로 없다`);
+  }
+  const rc = C.find((x) => x.kind === 'receipt');
+  if (rc && A[rc.id] === 'update') {
+    const m = exists(MANIFEST) ? loadJson(MANIFEST) : null;
+    if (!m) bad(`${MANIFEST} 를 읽지 못했다`);
+    else {
+      m.tier === target ? ok(`${MANIFEST} tier = ${target}`) : bad(`${MANIFEST} tier = ${m.tier ?? '(없음)'} — ${target} 이어야 한다`);
+      const over = ((m.settings && m.settings.hooks) || []).filter((h) => { const sp = hookSpec(h.event, h.command); return sp && RANK[sp.tier] > RANK[target]; });
+      const kept = C.filter((x) => x.kind === 'hook' && A[x.id] === 'keep');
+      over.length > kept.length ? bad(`${MANIFEST} 에 ${LABEL[target]} 범위 밖 훅이 ${over.length}개 남았다`) : ok(`${MANIFEST} 훅 = ${LABEL[target]} 범위${kept.length ? ` (남기기로 한 범위 밖 훅 ${kept.length}개 포함)` : ''}`);
+    }
+  }
+}
+
 function printSummary(s, refs = [], eolOnly = []) {
   const C = s.plan.candidates, A = s.answers;
   const count = (v) => C.filter((c) => A[c.id] === v).length;
-  const skipped = C.filter((c) => ['remove', 'revert', 'off'].includes(A[c.id]) && !s.applied.includes(c.id)).map((c) => c.id);
+  const skipped = C.filter((c) => ['remove', 'revert', 'off', 'replace', 'update'].includes(A[c.id]) && !s.applied.includes(c.id)).map((c) => c.id);
   console.log('\n요약 — 보고의 수·경로는 이 블록에서 옮긴다');
-  console.log(`  후보 ${C.length}개 (플러그인 키 포함) · 지움 ${count('remove')} · 되돌림 ${count('revert')} · 끔 ${count('off')} · 남김 ${count('keep')} · 미답 ${C.filter((c) => !(c.id in A)).length}`);
+  console.log(`  후보 ${C.length}개 (플러그인 키 포함) · 지움 ${count('remove')} · 되돌림 ${count('revert')} · 끔 ${count('off')} · 바꿈 ${count('replace')} · 갱신 ${count('update')} · 남김 ${count('keep')} · 미답 ${C.filter((c) => !(c.id in A)).length}`);
   console.log(`  적용 ${s.applied.length}건${skipped.length ? ` · 지우기로 했는데 적용 안 된 것 ${skipped.length}개: ${skipped.join(', ')}` : ''}`);
   if ((s.filledByDefault || []).length) console.log(`  권장이 없어 keep 으로 채운 칸 ${s.filledByDefault.length}개: ${s.filledByDefault.join(', ')}`);
   console.log(`  남은 참조 ${refs.length}줄 · ${new Set(refs.map((r) => r.path)).size}곳 (위 INFO 목록)`);
@@ -1044,6 +1312,8 @@ function printSummary(s, refs = [], eolOnly = []) {
     else if (c.kind === 'files' || c.kind === 'runtime') lines.push(`${c.id}: ${d.paths.length}개 파일 — ${again}${c.kind === 'runtime' ? '(지우기 전에 증거 사본을 뜬다)' : ''}`);
     else if (c.kind === 'text') lines.push(`${c.id}: ${d.path} 의 ${c.title.replace(/^\S+\s*/, '')} — ${again}(표시·절은 해시로 찾는다). 손으로는 그 줄만 Edit 로 지운다`);
     else if (c.kind === 'hook') lines.push(`${c.id}: ${d.file} 의 hooks.${d.event} 에서 command 가 ${d.command} 인 항목만 Edit 로 지운다(그룹·이벤트가 비면 그것도) — ${again}`);
+    else if (c.kind === 'slot') lines.push(`${c.id}: ${d.path} 의 ${d.slot} 칸을 Edit 로 ${d.before == null ? '칸째 지운다' : 'example 값으로 되돌린다'} — 남기면 그 칸을 읽는 훅 없이 설정만 남는다`);
+    else if (c.kind === 'receipt') lines.push(`${c.id}: 영수증의 tier 와 훅을 손으로 고친다 — 고치지 않으면 다음 걷어내기가 옛 범위로 가른다`);
     else if (c.kind === 'key') lines.push(`${c.id}: ${d.file} 의 ${d.keys.join('.')} 키를 Edit 로 지운다 — 그 플러그인이 이 레포에서 다시 켜진다`);
   }
   if (refs.length) lines.push(`남은 참조 ${refs.length}줄: 후보가 아니라 스크립트가 고치지 않는다 — 줄마다 Edit 로 고친다(설치 전 판이 HEAD 에 있으면 git diff -- <파일> 로 그 줄만 본다)`);
@@ -1155,6 +1425,6 @@ function finish() {
   console.log(`체크포인트를 지웠다. 백업은 남는다: ${s.backup ? path.resolve(s.backup.dir) : '(없음)'}${s.backup && s.backup.evidence ? `\n증거: ${path.resolve(s.backup.evidence)}` : ''}`);
 }
 
-const table = { sessions, scan, status: () => printPlan(need(loadState())), answer, backup, apply, plugin, records, 'after-cli': afterCli, verify, 'eol-fix': eolFix, finish, 'restore-check': restoreCheck };
+const table = { sessions, scan, status: () => printPlan(need(loadState())), answer, block, backup, apply, plugin, records, 'after-cli': afterCli, verify, 'eol-fix': eolFix, finish, 'restore-check': restoreCheck };
 if (!table[cmd]) { console.error(`모르는 명령: ${cmd}`); process.exit(2); }
 await table[cmd]();
