@@ -7,7 +7,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { fixTimeout, recommend, stripGraft, upsertBlock, removeBlock, addGitignoreBlock, checkNodeEngine, findGraftPackage, graftEngine } from '../plugins/harness-kit/scripts/graft-localize.mjs';
+import { fixTimeout, stripGraft, addBlock, removeBlock, addGitignoreBlock, checkNodeEngine, findGraftPackage, graftEngine } from '../plugins/harness-kit/scripts/graft-localize.mjs';
 
 // 이 PC 의 git 전역·시스템 설정(전역 ignore · autocrlf)이 판정에 섞이지 않게 비운다 — 스크립트를 띄우는 자식에도 물려준다
 const EMPTY_GITCONFIG = path.join(mkdtempSync(path.join(os.tmpdir(), 'hk-gitcfg-')), 'gitconfig');
@@ -158,6 +158,7 @@ test('remove — localize 가 만든 것을 걷어 내고 settings.json 은 건�
   for (const p of ['.claude/settings.local.json', '.claude/helpers', '.claude/skills', '.mcp.json', '.ignore', 'graft']) assert.ok(!existsSync(path.join(root, p)), `${p} 가 남았다`);
   assert.equal(rd(root, '.claude/settings.json'), SETTINGS_CRLF);
   assert.ok(!exclude(root).includes('graft-localize:begin'));
+  assert.match(r.out, /WARN info\/exclude 는 워크트리끼리 공유된다/);
 });
 
 test('remove — 원래 있던 settings.local.json 은 graft 몫만 떼고 남긴다', () => {
@@ -210,11 +211,11 @@ test('Node 조건 불충족 — graft 가 있어도 prepare 는 건너뛰고(종
   assert.equal(existsSync(stateDirOf(root)), false, '스냅숏을 뜨지 않는다');
 });
 
-test('Node 조건 불충족 — signal 도 건너뜀(종료코드 3)으로 낸다', () => {
+test('Node 조건 불충족 — check 도 건너뜀(종료코드 3)으로 낸다', () => {
   const root = repo({ 'a.js': '1\n' });
-  const r = runNode(root, 'signal', graftPkg({ name: '@nanonets/graft', engines: { node: '>=20' } }), 'v18.19.0');
+  const r = runNode(root, 'check', graftPkg({ name: '@nanonets/graft', engines: { node: '>=20' } }), 'v18.19.0');
   assert.equal(r.code, 3);
-  assert.match(r.out, /D9 권장: 권장 없음 — graft 0\.12\.1 가 있지만 Node >=20 필요, 현재 v18\.19\.0/);
+  assert.match(r.out, /SKIP graft 0\.12\.1 가 있지만 Node >=20 필요, 현재 v18\.19\.0/);
 });
 
 test('Node 조건 충족 — prepare 가 진행하고 OK 줄을 낸다', () => {
@@ -301,12 +302,11 @@ test('stripGraft — graft 가 아닌 statusLine·allow·훅은 남기고, init 
   assert.equal(count, 1 + 5 + 1 + 4, 'subagentStatusLine 1 · 훅 그룹 5 · footer 1 · allow 4');
 });
 
-test('exclude 블록 — 합집합으로 넓히고, 지우면 블록 밖 줄만 남는다', () => {
-  const a = upsertBlock('*.log\r\n', ['/graft/']);
-  assert.equal(upsertBlock(a, ['/graft/']), a);
-  const b = upsertBlock(a, ['/.mcp.json']);
-  assert.match(b, /\/graft\/\r\n\/\.mcp\.json\r\n# harness-kit graft-localize:end\r\n$/);
-  assert.equal(removeBlock(b).text, '*.log\r\n');
+test('exclude 블록 — 없으면 넣고 있으면 그대로 두며, 지우면 블록 밖 줄만 남는다', () => {
+  const a = addBlock('*.log\r\n', ['/graft/']);
+  assert.match(a, /^\*\.log\r\n# harness-kit graft-localize:begin\r\n# graft [^\r\n]*\r\n\/graft\/\r\n# harness-kit graft-localize:end\r\n$/);
+  assert.equal(addBlock(a, ['/graft/', '/.mcp.json']), a);
+  assert.equal(removeBlock(a).text, '*.log\r\n');
 });
 
 test('.gitignore — graft 가 인정하는 줄이 이미 있으면 블록을 더하지 않는다', () => {
@@ -316,12 +316,4 @@ test('.gitignore — graft 가 인정하는 줄이 이미 있으면 블록을 �
   const ls = t.split('\r\n');
   assert.deepEqual([ls[0], ls[1], ls[2], ls[4], ls[5], ls[6]], ['a', '', '# harness-kit:begin', '/graft/', '# harness-kit:end', '']);
   assert.match(ls[3], /^# graft /, '블록 안 첫 줄은 이유 주석');
-});
-
-test('recommend — 문턱', () => {
-  assert.equal(recommend({ codeFiles: 800, trackedFiles: 1000, commits30: 40, graftVersion: '0.12.1' }).rec, 'use');
-  assert.equal(recommend({ codeFiles: 800, trackedFiles: 1000, commits30: 5, graftVersion: '0.12.1' }).rec, null);
-  assert.equal(recommend({ codeFiles: 100, trackedFiles: 120, commits30: 90, graftVersion: '0.12.1' }).rec, 'skip');
-  assert.equal(recommend({ codeFiles: 300, trackedFiles: 2000, commits30: 90, graftVersion: '0.12.1' }).rec, 'skip', '문서 위주(코드 1/3 미만)');
-  assert.equal(recommend({ codeFiles: 800, trackedFiles: 1000, commits30: 40, graftVersion: null }).skip, true);
 });

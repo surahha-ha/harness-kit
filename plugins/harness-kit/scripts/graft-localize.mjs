@@ -3,7 +3,7 @@
  * harness-install D9 「graft 사용」 — graft 연결을 이 PC·이 트리 전용으로 옮긴다(커밋되는 파일에 개인 경로를 남기지 않는다).
  *
  * 사용: node graft-localize.mjs <명령> <레포 루트> [인자…]
- *   signal                        권장 계산용 관찰 — 추적 코드 파일 수 · 최근 30일 커밋 수 · graft 설치 여부와 권장 한 줄
+ *   check                         D9 를 묻기 전 사전 점검 — graft 설치 여부와 Node 조건만 본다(아무것도 쓰지 않는다)
  *   prepare                       graft init 전에 — graft 확인 · settings.json·.mcp.json·.gitignore·.ignore 스냅숏 · .gitignore 에 /graft/ 표시 블록
  *   localize [--statusline] [--home <디렉토리>]
  *                                 graft init·build 뒤에 — settings.json 의 graft 몫을 settings.local.json 으로 옮기고(timeout 은 초로),
@@ -13,7 +13,7 @@
  *   status                        settings.json 에 graft 몫이 다시 들어왔는가 · 로컬 쪽 상태
  *   remove [--keep-graph]         걷어내기 — settings.local.json 의 graft 몫 · helpers·skill · 새로 생긴 .mcp.json·.ignore · graft/ · exclude 블록
  *
- * signal·prepare 는 graft 가 있으면 설치본 package.json 의 engines.node 를 지금 Node 판과 대어 본다 — 못 미치면 graft 가 있어도
+ * check·prepare 는 graft 가 있으면 설치본 package.json 의 engines.node 를 지금 Node 판과 대어 본다 — 못 미치면 graft 가 있어도
  * 쓸 수 없다고 보고 종료코드 3. engines 를 못 읽거나 해석하지 못하면 WARN 만 내고 진행한다.
  * 설치본 찾기: `npm root -g` 아래 @nanonets/graft → 없으면 graft 실행 파일 위치(실경로의 위 디렉토리 · 옆 node_modules).
  *
@@ -42,10 +42,6 @@ export const EXCLUDE_BEGIN = '# harness-kit graft-localize:begin';
 export const EXCLUDE_END = '# harness-kit graft-localize:end';
 export const EXCLUDE_BASE = ['/graft/', '/.claude/helpers/graft-*.cjs', '/.claude/skills/graft/'];
 export const GITIGNORE_LINE = '/graft/';
-/** 권장 계산의 문턱 — 근거는 harness-install DECISIONS.md D9. */
-export const SIGNAL = { useFiles: 500, useCommits30: 20, skipFiles: 150, skipCodeRatio: 1 / 3 };
-const CODE_EXT = new Set(('js mjs cjs ts mts cts tsx jsx vue svelte java kt kts scala groovy py go rs rb php cs fs vb c h cc cpp cxx hpp hh m mm swift dart ' +
-  'sql sh bash ps1 lua ex exs erl hrl clj cljs hs ml r jl zig sol pl pm').split(' '));
 
 const clone = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)));
 const isObj = (v) => v && typeof v === 'object' && !Array.isArray(v);
@@ -174,18 +170,13 @@ export function jsonText(obj, like = '') {
   t = t.replace(/\n/g, eolOf(like || '\n'));
   return (like.startsWith(BOM) ? BOM : '') + t;
 }
-/** exclude 블록을 넣거나 넓힌다(줄 합집합). 같은 입력이면 같은 결과다. */
-export function upsertBlock(text, entries) {
+/** exclude 블록이 없으면 끝에 넣고, 있으면 그대로 둔다(멱등). */
+export function addBlock(text, entries) {
+  if (blockEntries(text)) return text;
   const eol = eolOf(text || '\n');
   const lines = (text || '').split(/\r?\n/);
   if (lines.length && lines[lines.length - 1] === '') lines.pop();
-  const b = lines.findIndex((l) => l.trim() === EXCLUDE_BEGIN);
-  const e = b >= 0 ? lines.findIndex((l, i) => i > b && l.trim() === EXCLUDE_END) : -1;
-  const prior = b >= 0 && e > b ? lines.slice(b + 1, e).map((l) => l.trim()).filter((l) => l && !l.startsWith('#')) : [];
-  const want = [...prior, ...entries.filter((x) => !prior.includes(x))];
-  const block = [EXCLUDE_BEGIN, '# graft 로컬 산출물 — 이 PC·이 트리 전용(harness-kit graft-localize)', ...want, EXCLUDE_END];
-  const out = b >= 0 && e > b ? [...lines.slice(0, b), ...block, ...lines.slice(e + 1)] : [...lines, ...block];
-  return out.join(eol) + eol;
+  return [...lines, EXCLUDE_BEGIN, '# graft 로컬 산출물 — 이 PC·이 트리 전용(harness-kit graft-localize)', ...entries, EXCLUDE_END].join(eol) + eol;
 }
 export function removeBlock(text) {
   const eol = eolOf(text || '\n');
@@ -209,16 +200,6 @@ export function addGitignoreBlock(text) {
   const block = ['# harness-kit:begin', '# graft 그래프 캐시 — 이 PC 에서 다시 만드는 로컬 산출물이라 커밋하지 않는다(graft build 는 이 줄이 없으면 매번 덧붙인다)', GITIGNORE_LINE, '# harness-kit:end'].join(eol);
   const gap = !t ? '' : /\r?\n\r?\n$/.test(t) ? '' : /\r?\n$/.test(t) ? eol : eol + eol;
   return { text: t + gap + block + eol, added: true };
-}
-
-/** 권장 계산 — DECISIONS.md D9 규칙표와 같은 순서. */
-export function recommend({ codeFiles, trackedFiles, commits30, graftVersion, engineIssue = null }) {
-  if (!graftVersion) return { rec: null, why: 'graft 가 이 PC 에 없다 — 이 항목은 설치 안내만 하고 건너뛴다(전역 npm 설치는 스킬이 하지 않는다)', skip: true };
-  if (engineIssue) return { rec: null, why: `graft ${graftVersion} 가 있지만 ${engineIssue} — 이 PC 에서는 쓸 수 없어 안내만 하고 건너뛴다(Node 업그레이드는 스킬이 하지 않는다)`, skip: true };
-  const ratio = trackedFiles ? codeFiles / trackedFiles : 0;
-  if (codeFiles < SIGNAL.skipFiles || ratio < SIGNAL.skipCodeRatio) return { rec: 'skip', why: `코드 파일 ${codeFiles}개(추적 파일의 ${Math.round(ratio * 100)}%) — 작거나 문서 위주라 매 프롬프트 주입이 잡음이 된다` };
-  if (codeFiles >= SIGNAL.useFiles && commits30 >= SIGNAL.useCommits30) return { rec: 'use', why: `코드 파일 ${codeFiles}개 · 최근 30일 커밋 ${commits30}개 — 크고 작업이 잦아 관련 노드 주입이 탐색 호출을 줄인다` };
-  return { rec: null, why: `코드 파일 ${codeFiles}개 · 최근 30일 커밋 ${commits30}개 — 사용 문턱(${SIGNAL.useFiles}개·${SIGNAL.useCommits30}커밋)과 안 씀 문턱(${SIGNAL.skipFiles}개 미만 또는 코드 비율 1/3 미만) 사이` };
 }
 
 // ── graft 의 Node 조건(engines.node) ─────────────────────────────────────────
@@ -277,7 +258,7 @@ export function graftEngine(pkgPath, nodeVersion) {
 const SELF = fileURLToPath(import.meta.url);
 function main(argv) {
   const [cmd, rootArg, ...args] = argv;
-  if (!cmd || !rootArg) { console.error('사용: node graft-localize.mjs <signal|prepare|localize|status|remove> <레포 루트> [인자…]'); return 2; }
+  if (!cmd || !rootArg) { console.error('사용: node graft-localize.mjs <check|prepare|localize|status|remove> <레포 루트> [인자…]'); return 2; }
   const root = path.resolve(rootArg);
   const opt = (n) => { const i = args.indexOf(n); return i >= 0 ? args[i + 1] : null; };
   const git = (...a) => execFileSync('git', ['-C', root, ...a], { encoding: 'utf8', maxBuffer: 256 << 20, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -313,35 +294,29 @@ function main(argv) {
       .split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
     return findGraftPackage({ exePaths });
   };
-  /** graft 가 있을 때 Node 조건 확인 — 못 읽으면 WARN 만. */
-  const engineCheck = (v) => {
+  /** graft 유무와 Node 조건 — 쓸 수 없으면 이유와 설치 안내를 찍고 null, 쓸 수 있으면 graft 판. Node 조건을 못 읽으면 WARN 만. */
+  const precheck = () => {
+    const v = graftVersion();
+    if (!v) { console.log(`SKIP graft 가 이 PC 에 없다(graft --version 실패) — 이 항목을 건너뛴다. ${INSTALL_HINT}`); return null; }
     const e = graftEngine(graftPkgPath(), nodeVersion);
     if (e.state === 'unknown') console.log(`WARN graft ${v} 의 Node 조건(engines.node)을 확인하지 못했다 — ${e.why}. 확인 없이 진행한다(직접 확인: npm view ${GRAFT_PKG} engines · node --version)`);
-    return e;
+    if (e.state === 'unmet') { console.log(`SKIP graft ${v} 가 있지만 ${e.why} — 이 PC 에서는 쓸 수 없어 이 항목을 건너뛴다. ${INSTALL_HINT}`); return null; }
+    if (e.state === 'ok') console.log(`OK   graft ${v} 의 ${e.why}`);
+    return v;
   };
   const loadJsonFile = (rel) => { try { return parseJsonText(read(rel)); } catch { return undefined; } };
   const homeDir = () => path.resolve(opt('--home') || os.homedir());
 
-  if (cmd === 'signal') {
-    const files = git('ls-files', '-z').split('\0').filter(Boolean);
-    const codeFiles = files.filter((f) => CODE_EXT.has(path.extname(f).slice(1).toLowerCase())).length;
-    const commits30 = Number((tryGit('rev-list', '--count', '--since=30.days', 'HEAD') || '0').trim()) || 0;
-    const v = graftVersion();
-    const e = v ? engineCheck(v) : null;
-    const unmet = e && e.state === 'unmet' ? e.why : null;
-    const r = recommend({ codeFiles, trackedFiles: files.length, commits30, graftVersion: v, engineIssue: unmet });
-    console.log(`D9 관찰: 추적 파일 ${files.length}개 · 코드 파일 ${codeFiles}개 · 최근 30일 커밋 ${commits30}개 · graft ${v ? (unmet ? `${v}(쓸 수 없음 — ${unmet})` : v) : '없음'}`);
-    console.log(`D9 권장: ${r.rec === 'use' ? '사용 (로컬 전용)' : r.rec === 'skip' ? '안 씀' : '권장 없음'} — ${r.why}`);
-    if (r.skip) { console.log(`INFO ${INSTALL_HINT}`); return 3; }
+  if (cmd === 'check') {
+    const v = precheck();
+    if (!v) return 3;
+    console.log(`graft ${v} — D9 를 묻는다`);
     return 0;
   }
 
   if (cmd === 'prepare') {
-    const v = graftVersion();
-    if (!v) { console.log(`SKIP graft 가 이 PC 에 없다(graft --version 실패) — 이 항목을 건너뛴다. ${INSTALL_HINT}`); return 3; }
-    const e = engineCheck(v);
-    if (e.state === 'unmet') { console.log(`SKIP graft ${v} 가 있지만 ${e.why} — 이 PC 에서는 쓸 수 없어 이 항목을 건너뛴다. ${INSTALL_HINT}`); return 3; }
-    if (e.state === 'ok') console.log(`OK   graft ${v} 의 ${e.why}`);
+    const v = precheck();
+    if (!v) return 3;
     if (tracked(LOCAL)) { bad(`${LOCAL} 이 추적 중이다 — graft 몫(개인 경로가 든 상태 줄 포함)을 옮기면 커밋된다. 이 레포에서는 로컬 전용 연결을 할 수 없다`); console.log(`failures=${fail}`); return 1; }
     let s = loadState();
     if (s && s.snapshot) console.log(`INFO 스냅숏이 이미 있다(${s.snapshot.at}) — 덮지 않는다(재실행·업그레이드 뒤에도 기준은 처음 판)`);
@@ -462,9 +437,9 @@ function main(argv) {
     const keep = exclude.filter((e) => { const t = tracked(e.replace(/^\//, '').replace(/\/$/, '')); if (t) console.log(`WARN exclude 에서 뺐다(추적 중인 경로): ${e}`); return !t; });
     const exPath = gitPath('info/exclude');
     const exText = existsSync(exPath) ? readFileSync(exPath, 'utf8') : '';
-    const exNew = upsertBlock(exText, keep);
+    const exNew = addBlock(exText, keep);
     if (exNew !== exText) { mkdirSync(path.dirname(exPath), { recursive: true }); writeFileSync(exPath, exNew, 'utf8'); }
-    console.log(`OK   info/exclude 블록 — ${blockEntries(exNew).join(' · ')}`);
+    console.log(`OK   info/exclude 블록${exNew === exText ? '(이미 있어 그대로 둠)' : ''} — ${blockEntries(exNew).join(' · ')}`);
     s.exclude = { path: exPath.split(path.sep).join('/'), entries: blockEntries(exNew) };
     s.localizedAt = new Date().toISOString();
     saveState(s);
@@ -533,13 +508,13 @@ function main(argv) {
       else if (tracked('graft')) console.log('WARN graft/ 에 추적 중인 파일이 있어 지우지 않는다');
       else { rmSync(abs('graft'), { recursive: true, force: true }); console.log('OK   graft/ 지움(다시 만드는 산출물이라 백업하지 않는다)'); }
     }
-    // exclude — 다른 worktree 가 아직 graft 를 쓰면 남긴다(info/exclude 는 worktree 끼리 함께 쓴다)
+    // exclude 블록
     const exPath = gitPath('info/exclude');
-    if (existsSync(exPath)) {
-      const others = (tryGit('worktree', 'list', '--porcelain') || '').split(/\r?\n/).filter((l) => l.startsWith('worktree ')).map((l) => l.slice(9))
-        .filter((w) => path.resolve(w).toLowerCase() !== root.toLowerCase() && existsSync(path.join(w, '.claude', 'helpers', 'graft-hooks.cjs')));
-      if (others.length) console.log(`KEEP info/exclude 블록 — 다른 worktree 가 graft 를 쓴다(${others.join(' · ')})`);
-      else { const r = removeBlock(readFileSync(exPath, 'utf8')); if (r.removed) { backup('info-exclude', exPath); writeFileSync(exPath, r.text, 'utf8'); console.log('OK   info/exclude 블록 지움'); } }
+    const ex = existsSync(exPath) ? removeBlock(readFileSync(exPath, 'utf8')) : { removed: false };
+    if (ex.removed) {
+      backup('info-exclude', exPath); writeFileSync(exPath, ex.text, 'utf8');
+      console.log('OK   info/exclude 블록 지움');
+      console.log('WARN info/exclude 는 워크트리끼리 공유된다 — 다른 워크트리에서 graft 를 쓰면 그쪽 graft 산출물(helpers 등)이 미추적으로 보일 수 있다. /graft/ 는 .gitignore 에 있어 영향 없음');
     }
     console.log('INFO .gitignore 의 /graft/ 표시 블록은 harness-uninstall 항목 질문(무시목록)에서 정한다');
     if (existsSync(bdir)) console.log(`백업: ${bdir.split(path.sep).join('/')}`);

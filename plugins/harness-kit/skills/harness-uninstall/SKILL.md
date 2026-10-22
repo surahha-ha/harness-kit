@@ -54,7 +54,7 @@ description: 지금 레포에서 harness-install 이 넣은 것만 걷어 낸다
 영수증에 `local` 이 있거나, 영수증이 없어도 `.claude/helpers/graft-hooks.cjs` 가 있거나 `git rev-parse --git-path harness-kit-graft/state.json` 이 있으면 graft 로컬 연결이 있다. `S=${CLAUDE_SKILL_DIR}/../../scripts` 라 할 때 상태는 `node "$S/graft-localize.mjs" status <루트>` 와 `node "$S/statusline-setup.mjs" status` 로 본다.
 
 - **scan 보다 먼저 한다.** graft 훅을 남긴 채 `.gitignore` 의 `/graft/` 블록을 지우면 다음 graft build 가 표시 없는 줄을 다시 덧붙인다. 또 graft 몫을 뺀 `settings.local.json` 을 백업·검증의 기준으로 삼아야 6단계 대조(하네스가 아닌 훅이 백업과 같은가)가 맞는다.
-- **graft 로컬 연결** — [DECISIONS.md](DECISIONS.md) 「graft 로컬 연결」을 묻는다. 「걷어 냄」이면 `node "$S/graft-localize.mjs" remove <루트>`(그래프 데이터를 남기려면 `--keep-graph`). 백업은 `git-path harness-kit-graft/backup-<시각>/` 에 남고(그래프 `graft/` 는 다시 만드는 산출물이라 백업하지 않는다), `failures=0` 이어야 다음으로 간다. 다른 worktree 가 graft 를 쓰면 info/exclude 블록은 남긴다(`KEEP` 줄). settings.json 에 graft 몫이 남아 있다는 `WARN` 은 커밋 파일이라 스크립트가 지우지 않는다 — 사용자에게 옮긴다.
+- **graft 로컬 연결** — [DECISIONS.md](DECISIONS.md) 「graft 로컬 연결」을 묻는다. 「걷어 냄」이면 `node "$S/graft-localize.mjs" remove <루트>`(그래프 데이터를 남기려면 `--keep-graph`). 백업은 `git-path harness-kit-graft/backup-<시각>/` 에 남고(그래프 `graft/` 는 다시 만드는 산출물이라 백업하지 않는다), `failures=0` 이어야 다음으로 간다. info/exclude 블록은 worktree 끼리 공유인데도 지운다 — 출력의 `WARN` 한 줄(다른 worktree 의 graft 산출물이 미추적으로 보일 수 있음)을 사용자에게 옮긴다. settings.json 에 graft 몫이 남아 있다는 `WARN` 은 커밋 파일이라 스크립트가 지우지 않는다 — 사용자에게 옮긴다.
 - **전역 상태 줄** — 전역 영수증(`~/.claude/harness-kit/receipt.json`)이 있을 때만 DECISIONS.md 「전역 상태 줄 되돌리기」를 따로 묻는다. 「되돌림」이면 `node "$S/statusline-setup.mjs" restore`. 지금 값이 우리가 쓴 값과 다르면 스크립트가 손대지 않고 종료코드 3 으로 멈춘다 — 그 사실만 보고한다. 이 PC 의 다른 레포도 같은 전역 줄을 쓰므로 레포 걷어내기가 저절로 되돌리지 않는다.
 - 이 세션에 이미 올라온 graft 훅은 helpers 가 지워진 뒤 도구 호출·턴 끝에 오류(파일 없음)를 낼 수 있다. 막지는 않는 오류다 — 새 세션에서는 나지 않는다.
 

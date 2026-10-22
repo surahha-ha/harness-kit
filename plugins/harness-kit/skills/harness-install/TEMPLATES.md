@@ -169,7 +169,7 @@ example 을 복사한 직후 **첫 줄 앞에** 한 줄을 넣는다(Edit). 정�
       "slots": [],
       "recs": [{ "item": "recursive-delete", "recommended": "ask", "basis": "플러그인이 ask · 정상 절차(빌드 산출물 정리)", "followed": true }] },
     { "id": "D9", "answer": "사용 — 이 PC 에서만 · graft 0.12.1", "slots": [],
-      "recs": [{ "item": "graft", "recommended": "use", "basis": "signal: 코드 파일 <N>개 · 최근 30일 커밋 <M>개", "followed": true }] },
+      "recs": [{ "item": "graft", "recommended": null, "basis": "권장을 계산하지 않는 항목 · check: graft 0.12.1", "followed": null }] },
     { "id": "D10", "answer": "합치기 사용", "slots": [],
       "recs": [{ "item": "statusline", "recommended": "combined", "basis": "D9 사용 · 전역 statusLine 은 보통 상태 줄", "followed": true }] }
   ],
@@ -317,13 +317,13 @@ D6-2. <플러그인> 을 이 레포에서 끄면, 폴더를 통째로 지우는 
 
 header: graft 사용
 D9. 이 레포의 코드 지도(graft)를 만들어, 질문할 때마다 관련 코드 위치를 자동으로 붙여 줄까? 이 PC·이 폴더에서만 켜지고 커밋되지 않습니다.
-근거: graft-localize signal — 추적 파일 <N>개 · 코드 파일 <C>개 · 최근 30일 커밋 <M>개 · graft <판>
+코드가 크고 작업이 잦은 레포에서 이득. 작은·문서 위주 레포에선 매 프롬프트 주입이 잡음이 된다
+근거: graft-localize check — graft <판> · Node 조건 충족
 
-1. 사용 — 이 PC 에서만 (권장)
-   권장 이유: 코드 파일 <C>개 · 최근 30일 커밋 <M>개 — 크고 작업이 잦아 관련 위치 주입이 탐색을 줄인다
-   바뀌는 것: .gitignore 에 /graft/ 블록 1개(커밋). graft 설정은 settings.local.json 으로, 로컬 산출물은 .git/info/exclude 로 — 커밋되는 settings.json 은 그대로
-2. 안 씀
+1. 안 씀 (기본)
    바뀌는 것: 아무것도 바뀌지 않는다
+2. 사용 — 이 PC 에서만
+   바뀌는 것: .gitignore 에 /graft/ 블록 1개(커밋). graft 설정은 settings.local.json 으로, 로컬 산출물은 .git/info/exclude 로 — 커밋되는 settings.json 은 그대로
 
 header: 전역 상태줄 합치기
 D10. Claude Code 아래 상태 줄에 지금 쓰는 줄과 graft 줄을 함께 보일까? 이 PC 의 사용자 전역 설정(~/.claude/settings.json)에서 상태 줄 명령 하나만 바꿉니다 — 모든 레포에 적용되고, graft 가 없는 레포에서는 원래 줄만 나옵니다.
