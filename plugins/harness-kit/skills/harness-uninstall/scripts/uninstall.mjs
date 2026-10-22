@@ -60,6 +60,9 @@ const KIT_MARKET = 'harness-kit';
 const RUNTIME = /^\.harness\/[^/]+\.jsonl$/;
 const REF_PATTERNS = [/\.harness(?![\w-])/, /harness\.config/, /harness\.install/, /harness-kit/];
 const statePath = gitPath('harness-uninstall-state.json');
+/** docs-setup 이 config 에 채운 칸(줄 끝 `// harness-kit:docs-setup`) — 걷어내기 후보가 아니라 따로 보고하고 백업 index.json 에 적는다. */
+const DOCS_SETUP_MARK = /\/\/\s*harness-kit:docs-setup\b/;
+const docsSetupLib = await import(new URL('../../docs-setup/scripts/config-slots.mjs', import.meta.url).href).catch(() => null);
 
 const loadState = () => (existsSync(statePath) ? JSON.parse(readFileSync(statePath, 'utf8')) : null);
 const saveState = (s) => { s.updated = new Date().toISOString(); writeFileSync(statePath, JSON.stringify(s, null, 2) + '\n', 'utf8'); };
@@ -169,10 +172,21 @@ function configStrings(cfg) {
   const out = [];
   const walk = (v) => { if (typeof v === 'string') out.push(v); else if (v && typeof v === 'object' && !(v instanceof RegExp)) Object.values(v).forEach(walk); };
   if (cfg && !cfg.__error) { walk(cfg.commands); walk(cfg.project && cfg.project.commands); }
-  else if (exists(CONFIG)) for (const m of read(CONFIG).matchAll(/'([^'\n]*)'|"([^"\n]*)"|`([^`\n]*)`/g)) out.push(m[1] ?? m[2] ?? m[3]);
+  else if (exists(CONFIG)) for (const m of read(CONFIG).split('\n').filter((l) => !DOCS_SETUP_MARK.test(l)).join('\n').matchAll(/'([^'\n]*)'|"([^"\n]*)"|`([^`\n]*)`/g)) out.push(m[1] ?? m[2] ?? m[3]);
   return out;
 }
 const loadJson = (rel) => { try { return JSON.parse(read(rel).replace(/^\uFEFF/, '')); } catch { return null; } };
+/** docs-setup 소유 칸 — 값은 import 한 config 에서, 경로는 표시 줄에서. 영수증 owners["docs-setup"] 도 함께 싣는다. */
+function docsSetupSlots(cfg, mf) {
+  if (!exists(CONFIG)) return null;
+  const text = read(CONFIG);
+  const manifest = (mf && mf.owners && mf.owners['docs-setup']) || null;
+  if (!DOCS_SETUP_MARK.test(text) && !manifest) return null;
+  const get = (p) => p.split('.').reduce((o, k) => (o == null ? undefined : o[k]), cfg && !cfg.__error ? cfg : undefined);
+  if (!docsSetupLib) return { slots: [], blocks: [], errors: ['docs-setup 의 config-slots.mjs 를 읽지 못했다 — 표시 줄은 백업 config 에만 남는다'], manifest };
+  const o = docsSetupLib.ownedSlots(text);
+  return { slots: o.slots.map((s) => ({ path: s.path, ...(cfg && !cfg.__error ? { value: get(s.path) ?? null } : {}), text: s.text.trim(), comment: s.comment })), blocks: o.blocks.map((b) => b.path), errors: o.errors, manifest };
+}
 
 // ── scan ─────────────────────────────────────────────────────────────────────
 
@@ -402,7 +416,10 @@ async function scan() {
   const head = git('rev-parse', 'HEAD').trim();
   const plan = { scannedAt: new Date().toISOString(), head, branch: git('rev-parse', '--abbrev-ref', 'HEAD').trim(), manifest: !!manifest,
     installAtHead: installAt(head),
-    source: mf.source || (exists(CONFIG) ? { headLine: body(splitLines(read(CONFIG))[0] || '').slice(0, 200) } : null), captured, candidates: cands, warnings };
+    source: mf.source || (exists(CONFIG) ? { headLine: body(splitLines(read(CONFIG))[0] || '').slice(0, 200) } : null), captured, candidates: cands, warnings,
+    docsSetup: docsSetupSlots(cfg, manifest) };
+  const cfgCand = cands.find((c) => c.id === `file:${CONFIG}`);
+  if (cfgCand && plan.docsSetup && plan.docsSetup.slots.length) cfgCand.basis += ` · docs-setup 칸 ${plan.docsSetup.slots.length}개가 함께 지워진다 — 값은 백업에 남고, 재설치 때 harness-install D8-2 가 되살릴지 묻는다`;
   plan.refs = findRefs(plan, Object.fromEntries(cands.map((c) => [c.id, c.recommend ?? 'keep'])), files);
   for (const c of cands.filter((x) => x.data && x.data.aux)) {
     const base = path.posix.basename(c.data.path);
@@ -477,12 +494,23 @@ function printPlan(s) {
   console.log(`후보 ${p.candidates.length}개 (플러그인 키 ${p.candidates.filter((c) => c.kind === 'plugin').length}개 포함) · 답 ${Object.keys(s.answers).length}개 — 보고의 후보 수는 이 줄에서 옮긴다`);
   for (const w of p.warnings) console.log(`WARN ${w}`);
   if ((p.prior || []).length) console.log(`앞선 걷어내기 백업 ${p.prior.length}개 (그때 남긴 보조 파일을 여기서 되찾는다): ${p.prior.map((r) => `${r.at} · 파일 ${r.files}개`).join(' / ')}`);
+  printDocsSetup(p.docsSetup, '');
   console.log('\nid | 질문 header | 상태 | 권장 | 답 | 항목 — 근거');
   for (const c of p.candidates) console.log(`${c.id} | ${c.header} | ${c.status} | ${recOf(c, s) ?? '권장 없음'} | ${s.answers[c.id] ?? '-'} | ${c.title} — ${c.basis}`);
   const by = {};
   for (const r of p.refs) (by[r.path] ||= []).push(r);
   console.log(`\n남을 참조 ${p.refs.length}줄 · ${Object.keys(by).length}곳 (지우지 않고 보고만 — 보고의 수는 이 줄에서 옮긴다):`);
   for (const [f, rs] of Object.entries(by)) console.log(`  ${f}: ${rs.map((r) => r.line).join(', ')}행 — ${rs[0].text.slice(0, 90)}`);
+}
+
+/** docs-setup 소유 칸 — 후보가 아니다. config 와 함께 백업에 남고, docs-setup 재실행이나 harness-install D8-2 가 되살린다. */
+function printDocsSetup(ds, indent, bdir = null) {
+  if (!ds) return;
+  const n = ds.slots.length;
+  console.log(`${indent}docs-setup 칸 ${n}개${(ds.blocks || []).length ? ` · 블록 ${ds.blocks.join(' · ')}` : ''} — 걷어내기 후보가 아니다(docs-setup 이 채운 값)${ds.manifest ? ` · 영수증 owners["docs-setup"] ${ds.manifest.slots.length}칸` : ''}`);
+  for (const sl of ds.slots) console.log(`${indent}  ${sl.path} = ${'value' in sl ? JSON.stringify(sl.value) : '(config 를 import 하지 못해 값은 백업 config 의 줄로만 남는다)'}`);
+  for (const e of ds.errors || []) console.log(`${indent}  WARN ${e}`);
+  if (bdir) console.log(`${indent}  값은 백업 ${posix(path.join(bdir, 'files', CONFIG))} 와 index.json 의 docsSetup 에 남았다. 되살리는 길: ① 새 설치 뒤 docs-setup 을 다시 돌린다 ② 재설치면 harness-install D8-2 가 최신 백업에서 되살릴지 묻는다(가리키는 폴더·파일이 남아 있으면 권장 「되살림」). 옮긴 문서·배너·docs/README.md·CLAUDE.md 표는 손대지 않았다`);
 }
 
 function answer() {
@@ -546,7 +574,7 @@ function backup() {
   }
   // candidates — 다음 걷어내기가 이 판의 후보와 답(특히 남긴 보조 파일)을 되찾는 근거다. config 가 지워진 뒤에는 이것뿐이다
   const candidates = s.plan.candidates.map((c) => ({ id: c.id, kind: c.kind, aux: !!(c.data && c.data.aux), paths: [...new Set([c.data && c.data.path, ...((c.data && c.data.paths) || []), c.data && c.data.file].filter(Boolean))], answer: s.answers[c.id] ?? null }));
-  writeFileSync(path.join(dir, 'index.json'), JSON.stringify({ root: posix(root), head: s.plan.head, at: stamp, purpose: s.purpose, hash: { sha256: '바이트 그대로', sha256Lf: '줄끝을 LF 로 맞춘 뒤' }, files: index, candidates }, null, 2) + '\n', 'utf8');
+  writeFileSync(path.join(dir, 'index.json'), JSON.stringify({ root: posix(root), head: s.plan.head, at: stamp, purpose: s.purpose, hash: { sha256: '바이트 그대로', sha256Lf: '줄끝을 LF 로 맞춘 뒤' }, files: index, candidates, ...(s.plan.docsSetup ? { docsSetup: s.plan.docsSetup } : {}) }, null, 2) + '\n', 'utf8');
   let evidence = null;
   const evFiles = [];
   const rt = s.plan.candidates.find((c) => c.kind === 'runtime');
@@ -988,8 +1016,11 @@ function printSummary(s, refs = [], eolOnly = []) {
   if ((s.filledByDefault || []).length) console.log(`  권장이 없어 keep 으로 채운 칸 ${s.filledByDefault.length}개: ${s.filledByDefault.join(', ')}`);
   console.log(`  남은 참조 ${refs.length}줄 · ${new Set(refs.map((r) => r.path)).size}곳 (위 INFO 목록)`);
   if (s.records) console.log(`  설치 기록: ${s.records.offer ? `이 트리 기록 ${s.records.mine.length}개 — CLI 질문 대상` : s.records.reason}${s.afterCli ? ` · CLI 뒤 되덮음 ${s.afterCli.restored}개` : ''}`);
-  if (!s.backup) { console.log('  백업 없음'); return; }
+  if (!s.backup) { console.log('  백업 없음'); printDocsSetup(s.plan.docsSetup, '  '); return; }
   const bdir = path.resolve(s.backup.dir), ev = s.backup.evidence && path.resolve(s.backup.evidence);
+  const cfgGone = s.plan.candidates.some((c) => c.id === `file:${CONFIG}` && s.answers[c.id] === 'remove');
+  printDocsSetup(s.plan.docsSetup, '  ', cfgGone ? bdir : null);
+  if (s.plan.docsSetup && !cfgGone) console.log(`  docs-setup 칸: ${CONFIG} 를 남겼다 — 칸도 그대로다`);
   console.log(`  백업 ${s.backup.files.length}개${s.backup.plannedFiles != null ? ` (후보 파일 ${s.backup.plannedFiles}개)` : ''}: ${bdir}`);
   if (s.afterPlugin) console.log(`  after-plugin 스냅숏(kit 키 반영 뒤 settings) ${s.afterPlugin.files.length}개: ${path.resolve(s.afterPlugin.dir)}`);
   if (ev) console.log(`  증거 사본(계측 로그) ${(s.backup.evidenceFiles || []).length}개: ${ev}`);

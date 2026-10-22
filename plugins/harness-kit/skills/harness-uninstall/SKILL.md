@@ -12,6 +12,8 @@ description: 지금 레포에서 harness-install 이 넣은 것만 걷어 낸다
 3. **harness-kit 플러그인 키** — `enabledPlugins` 의 `harness-kit@harness-kit` · `extraKnownMarketplaces.harness-kit`(맨 마지막 결정)
 4. **로컬 전용 선택 항목**(harness-install D9·D10 을 켰을 때) — graft 로컬 연결(`settings.local.json` 의 graft 몫 · `.claude/helpers/graft-*.cjs` · `.claude/skills/graft/` · `graft/` · 새로 생긴 `.mcp.json`·`.ignore` · info/exclude 블록)과 사용자 전역 상태 줄 합치기. 커밋되지 않는 것이라 영수증 해시 대신 각 스크립트의 체크포인트가 기준이고, 0-2단계에서 따로 묻는다. 전역 상태 줄은 이 레포를 걷어 내도 저절로 되돌리지 않는다
 
+**docs-setup 이 만든 것은 걷어 내지 않는다** — 옮긴 문서와 배너 · `docs/README.md` 성격표 · `CLAUDE.md` 의 작업 라우팅·문서 규약·메모리 규약 절은 설치 표시가 없어 후보가 되지 않는다(시험: docs-setup `scripts/boundary.test.mjs`). config 안의 docs-setup 칸(줄 끝 `// harness-kit:docs-setup`)은 config 와 함께 지워지지만 후보가 아니라 **따로 보고**한다 — scan 표 위 「docs-setup 칸 N개」 줄과 verify 요약. 값은 백업 `files/harness.config.mjs` 와 `index.json` 의 `docsSetup` 에 남고, 새 설치 뒤 docs-setup 을 다시 돌리거나 harness-install D8-2 가 최신 백업에서 되살린다.
+
 기준은 둘 중 하나다. 레포 루트에 **영수증**(`harness.install.json`, harness-install 9단계가 쓴다)이 있으면 영수증이 기준이다. 없으면 **알려진 구조**로 후보를 뽑고 항목마다 확인받는다.
 
 걷어내기를 끝까지 지배하는 말 여섯 개:
@@ -169,6 +171,7 @@ R=<레포 루트>; B=<브랜치>
 - 남은 참조 목록 · 검증 결과 · 커밋(SHA, 메시지 파일, 또는 verify 가 낸 「커밋하지 않음」 이유) · 플러그인 키 상태 · 설치 기록(요약의 「설치 기록:」 줄 — 다른 트리 기록은 건드리지 않았다는 것)
 - 0-2단계 로컬 항목 — graft 로컬 연결(걷어 냄 / 남김 · 백업 경로 · 남긴 exclude 블록과 이유) · 전역 상태 줄(되돌림 / 남김 / 값이 달라 손대지 않음). 남겼으면 나중에 걷어 내는 명령(`graft-localize.mjs remove` · `statusline-setup.mjs restore`)을 적는다
 - **백업과 증거 사본 — 두 절대경로와 수명.** 백업은 `git-path` 아래라 worktree 면 `.git/worktrees/<이름>/` 안에 있어 `git worktree remove` 가 함께 지운다. 증거 사본은 `git-common-dir/harness-evidence/` 아래라 worktree 를 지워도 남고, 필요 없어지면 손으로 지운다. 재설치할 수 있으면 백업을 레포 밖으로 옮겨 두라고 적는다. **앞선 걷어내기의 백업·증거 사본**(요약의 「앞선 백업」·「앞선 증거 사본」 줄)도 함께 적고, 증거 사본은 손으로 지워야 남지 않는다고 적는다
+- **docs-setup 칸** — 요약의 「docs-setup 칸 N개」 줄을 지운 항목과 따로 옮긴다: 칸과 값, 백업 config 경로, 되살리는 길(docs-setup 다시 돌리기 · 재설치면 harness-install D8-2). 설치 단계를 바꾸는 재설치(낮은 단계로 내리기 등)에서도 같다 — 문서 칸이 없는 단계에서도 docs-setup 은 자기 블록을 다시 넣는다
 - **되돌리는 법** — 요약의 「되돌리기:」 줄(그대로 복사해 돌린다)과 「되돌리기(스크립트가 없을 때)」 줄. 되돌리면 하네스 훅도 돌아오니 새 세션을 연다는 말을 붙인다
 - **남긴 것을 나중에 지우려면** — 요약의 같은 이름 절을 항목마다 옮긴다(다시 걷어내기 · 정확한 손 편집 · 줄끝 명령). `git restore`·`git checkout -- <파일>` 로 한꺼번에 되돌리지 않는다고 적는다 — 파일 단위라 다른 변경까지 되돌리고, 자동 모드의 권한 분류기가 막을 수 있다. 막히면 우회하지 않고 줄 단위 Edit 나 걷어내기 재실행으로 한다(PITFALLS §8)
 

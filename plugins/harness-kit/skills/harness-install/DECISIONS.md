@@ -2,7 +2,7 @@
 
 질문마다 **1단계 근거(파일:행)** 를 먼저 보이고, 선택지와 각 선택이 바꾸는 것을 함께 제시한다. 사용자가 답하지 않은 칸은 내가 고르지 않는다 — `null` + 「미확정」 주석으로 두고 보고에 적는다. 답을 바꾸면 체크포인트의 그 항목도 덮어쓴다(TEMPLATES.md §7) — 6단계가 체크포인트 답과 config 값을 대조한다.
 
-묻는 순서는 D1 → D2(D2-2) → D3 → D6(D6-2) → D4 → D5 → D7 → D8 → D9 → D10 이다. 앞 답이 뒤 질문의 선택지를 바꾼다. D9·D10 은 선택 항목이라 기본은 끔이고, 커밋되는 파일을 바꾸지 않는다(D9 의 `.gitignore` 한 줄만 예외). 번호는 체크포인트·영수증의 id 라 그대로 두고, D6 만 D4 앞으로 당겨 묻는다 — 플러그인을 끄면 사라지는 가드(D6-2)가 D4 의 후보가 되기 때문이다.
+묻는 순서는 D1 → D2(D2-2) → D3 → D6(D6-2) → D4 → D5 → D7 → D8(D8-2) → D9 → D10 이다. 앞 답이 뒤 질문의 선택지를 바꾼다. D9·D10 은 선택 항목이라 기본은 끔이고, 커밋되는 파일을 바꾸지 않는다(D9 의 `.gitignore` 한 줄만 예외). 번호는 체크포인트·영수증의 id 라 그대로 두고, D6 만 D4 앞으로 당겨 묻는다 — 플러그인을 끄면 사라지는 가드(D6-2)가 D4 의 후보가 되기 때문이다.
 
 ## 권장 — 관찰에서 계산하고, 고르는 것은 사용자다
 
@@ -246,8 +246,26 @@ harness-kit 의 스킬·커맨드·에이전트는 config `project` 블록의 �
 | `agents` | coordinator · 에이전트 | 역할 덮어쓰기 — 기본값으로 돈다 | 레포에 같은 역할 에이전트가 있을 때만 채운다 |
 | `plugin` | plugin-sync · plugin-curator | 플러그인 정본 작업 | D7 규칙대로 |
 
-- **docs-setup 과의 연결** — `docs.archiveDir`·`pathValidator`·`autoloaded`·`memory.slugs` 와 게이트 `docs.always`·`docs.archive` 는 harness-kit 의 docs-setup 스킬이 정하는 칸이다. 그 스킬은 아직 이 판에 들어 있지 않다 — 지금은 근거 없는 칸을 위 주석과 함께 `null` 로 두고 보고에 「docs-setup 에서 정함」으로 적는다. 스킬이 들어오면 보고의 이 줄이 다음 할 일이 된다.
+- **docs-setup 과의 연결** — `docs.archiveDir`·`pathValidator`·`autoloaded`·`memory.slugs` 와 게이트 `docs.always`·`docs.archive` 는 harness-kit 의 docs-setup 스킬이 정하는 칸이다. 설치는 근거 없는 칸을 위 주석과 함께 `null` 로 두고 보고에 「docs-setup 에서 정함」으로 적는다 — 보고의 이 줄이 다음 할 일이다. 앞선 걷어내기 백업에 docs-setup 이 채운 값이 있으면 D8-2 로 되살릴지 먼저 묻는다.
 - **게이트 `docs.archive` 에 이름 앞머리를 넣지 않는다.** 이 칸은 「낡아도 되는 곳 — 검사에서 뺀다」이다. `docs/task/goal-`·`docs/phase` 같은 앞머리는 아직 살아 있는 같은 이름의 문서까지 검사에서 빼, 시험 설치처에서는 살아 있는 문서 9개가 검사 밖으로 나갔다. 넣을 수 있는 것은 아카이브 폴더 하나(`<archiveDir>/`)나 끝난 문서의 파일 경로뿐이다. 근거가 없으면 `[]` 로 둔다.
+
+### D8-2. 문서 칸 되살리기 — 앞선 걷어내기 백업에 docs-setup 값이 있을 때만
+
+docs-setup 은 설치 단계(tier)와 무관하게 자기 칸을 채우고, 그 줄 끝에 `// harness-kit:docs-setup` 표시를 단다. 걷어내기는 config 를 통째로 지우므로 이 값도 함께 사라지지만, 백업(`git rev-parse --git-path harness-uninstall-backup/<시각>/` 의 `index.json` `docsSetup` 과 `files/harness.config.mjs`)에는 남는다.
+
+- 관찰: `node "${CLAUDE_SKILL_DIR}/../docs-setup/scripts/config-slots.mjs" backups <레포 루트>` — 최신 백업의 칸마다 백업 값 · 지금 값 · 가리키는 폴더·파일(아카이브 폴더 · 자동 로드 `CLAUDE.md` · `docs.always` 파일 · 메모리 디렉토리 · 경로 검사 스크립트)이 아직 있는가. 「docs-setup 칸이 든 것 0개」면 묻지 않는다.
+
+| 관찰 | 권장 |
+| - | - |
+| 칸마다 가리키는 것이 모두 있다 | **되살림** — docs-setup 을 다시 돌리지 않아도 archive-cycle 이 바로 돈다 |
+| 일부 칸이 가리키는 것이 없다(아카이브 폴더를 지웠다 등) | **골라 되살림** — 없는 칸(`SKIP`)은 빼고, 목록 칸은 없는 경로만 뺀다 |
+| 백업 config 를 읽지 못했다(`WARN`) | 권장 없음 — 판단 근거 부족 |
+
+- 선택지 — 바뀌는 것
+  - **되살림** — 4단계 config 를 쓴 뒤 `config-slots.mjs restore <레포 루트> --backup <백업>` 이 그 칸 줄을 표시와 함께 되넣는다(게이트 `docs.always`·`docs.archive` 는 지금 값과 합친다). D8 의 「docs-setup 에서 정함」 `null` 이 그 값으로 바뀐다.
+  - **골라 되살림** — `backups` 의 「되살리기:」 줄(`--slots` 포함)대로 고른 칸만 되넣는다. 나머지는 D8 대로 `null` + 주석.
+  - **되살리지 않음** — D8 대로 둔다. 보고에 「docs-setup 다시 돌리기」를 다음 할 일로 적는다. 백업은 그대로 남는다.
+- 되살린 칸은 설치가 고른 값이 아니다 — 체크포인트 답에 `D8-2` 로 적고, 9단계 영수증 뒤 `config-slots.mjs record` 가 `owners["docs-setup"]` 에 적는다(설치 칸 `files`·`edits` 는 건드리지 않는다).
 
 ## D9. graft 사용 — 코드 지도를 이 PC 에서만 켤까 (레포 단위, 기본 안 씀)
 
