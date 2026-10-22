@@ -3,6 +3,16 @@
 매니페스트에 `version` 필드를 두지 않는다 — 판은 main 커밋 SHA 로 갈린다. 절은 병합 단위로 적는다.
 (0.1.0 까지는 `plugin.json` 과 `marketplace.json` 의 명시 버전을 함께 올렸다.)
 
+## 미발행 — 설치 선택 항목: graft 로컬 연결 · 전역 상태 줄
+
+- `harness-install` 에 결정 둘을 더한다(기본 끔, 순서 D8·D8-2 뒤) — **D9 graft 사용**(레포 단위, 이 PC·이 트리 전용)과 **D10 전역 상태 줄**(사용자 전역, D9 를 켰을 때만 묻고 권장). 실행은 새 8-2단계(D10 → D9 순서). D9 는 권장을 계산하지 않고 안내 한 줄(코드가 크고 작업이 잦은 레포에서 이득, 작은·문서 위주 레포에선 매 프롬프트 주입이 잡음)과 함께 묻는다 — 기본 안 씀. 묻기 전 `graft-localize.mjs check` 로 graft 설치 여부와 Node 조건만 보고, graft 가 없으면 설치 안내만 하고 건너뛴다
+- 플러그인 스크립트 `plugins/harness-kit/scripts/` 를 더한다(Node 내장 모듈만) — `graft-localize.mjs`(`check`·`prepare`·`localize`·`status`·`remove`): init 전 스냅숏과 `.gitignore` 의 `/graft/` 표시 블록(graft build 가 `.gitignore` 텍스트만 보고 매번 덧붙이는 것을 막는다), graft 가 settings.json 에 넣은 훅·상태 줄·권한·`footerLinksRegexes` 를 `settings.local.json` 으로 옮기고 settings.json 을 init 전 바이트로 되돌림(이벤트별 기계 대조, 어긋나면 쓰지 않음), graft 훅 timeout 을 초로 교정(8000·10000·15000 → 8·10·15), `.mcp.json` 정리와 `disabledMcpjsonServers: ["graft"]`, info/exclude 로컬 산출물 블록(추적 경로 제외, 없으면 넣고 있으면 둔다 — worktree 공용이라 `remove` 는 지운 뒤 경고 한 줄만 낸다). 다시 돌려도 같다 — graft 업그레이드가 settings.json 에 키를 다시 넣으면 `localize` 만 다시 돌린다. `statusline-combined.cjs`(원래 명령과 레포의 graft 상태 줄 헬퍼를 병렬로 돌려 줄 단위로 잇고, 헬퍼가 실패하면 그 줄만 뺀다) · `statusline-setup.mjs`(`status`·`install`·`restore` — base 를 돌릴 셸을 설치 때 한 번 정해 `statusline.json` 의 `shell` 에 절대경로로 적고 그 셸로 base 를 한 번 돌려 확인, 전역 settings.json 백업 뒤 `statusLine.command` 만 바꾸고, 다른 합치기 스크립트를 가리키거나 base 확인이 실패하면 아무것도 쓰지 않고 멈춤, 되돌리기는 지금 값이 우리가 쓴 값일 때만 전역 값만 — 사본은 레포 `settings.local.json` 이 가리킬 수 있어 남긴다). 합치기 스크립트는 실행 때 셸을 찾지 않는다 — Claude Code 의 PATH(System32 가 앞)에서 이름으로 찾은 bash 가 WSL bash 라 base 줄이 조용히 사라진 실물 시험 결과다. base 실패는 `statusline base 실패(exit N)` 한 줄로, `shell` 이 없는 옛 설정은 안내 한 줄로 낸다. `graft-localize.mjs remove` 는 다 걷으면 `git-path harness-kit-graft/` 째 지우고, `check`·`prepare` 의 `graft --version` 은 Windows 에서 cmd 로 명시 실행한다(`shell:true` 의 DEP0190 경고 없음)
+- harness-kit 이 사용자 전역에 쓰는 첫 항목이라 README 에 예외와 이유(플러그인 settings 는 `agent`·`subagentStatusLine` 만 받는다)를 적는다. graft 업그레이드 뒤 재실행 안내도 README 에
+- 영수증(`write-manifest.mjs`)에 `local`(커밋되지 않는 로컬 항목 — 해시 없음, 상대경로·`~/`·`git-path:` 꼴만)을 더한다(TEMPLATES §9)
+- `harness-uninstall` 에 0-2단계(scan 전)를 더한다 — graft 로컬 연결 걷어내기(`graft-localize.mjs remove`, 그래프만 남기기 가능)와 전역 상태 줄 되돌리기를 레포 걷어내기와 따로 묻는다. scan 은 graft 가 아직 연결된 트리에서 `.gitignore` 의 `/graft/` 블록을 「남김」으로 권한다
+- 시험을 더한다 — `npm test`(`tests/*.test.mjs`, node:test · 임시 git 레포·임시 홈, git 전역 설정을 비워 돈다)
+- D9 사전 점검에 Node 판 확인을 더한다 — `graft-localize.mjs` 의 `check`·`prepare` 가 graft 설치본(`npm root -g` 아래, 없으면 실행 파일 위치)의 `engines.node` 를 지금 Node 와 대어 보고(`>=X`·`>=X.Y.Z`·`^X`), 못 미치면 graft 가 있어도 「Node <요구> 필요, 현재 <판>」으로 건너뛴다(종료코드 3). 못 읽거나 해석하지 못하면 `WARN` 만 내고 진행한다. 설치 안내에 `npm view @nanonets/graft engines` → `node --version` 비교 → 모자라면 Node 먼저 올리기를 넣는다
+
 ## 미발행 — 문서 셋업 스킬
 
 - 스킬 추가: `docs-setup`(SKILL·DECISIONS·TEMPLATES·`scripts/` observe·refs·links) — 레포에 아카이브 폴더·`docs/README.md` 성격표·`CLAUDE.md` 작업 라우팅·문서 규약 표를 세우고, 「아직 일을 시키는가」로 판정한 끝난 문서를 배너와 함께 옮긴다. `project.docs.archiveDir`·`pathValidator`·`autoloaded`·`project.memory.slugs` 를 채우고 harness-agent `docs.always`·`docs.archive` 를 맞춰 `archive-cycle` 이 바로 돌게 하며, 메모리 규약(인덱스 한 줄 형식·연표 접기·핸드오프 보관 수·정리 시점 — 수치는 판단값)을 `CLAUDE.md` 에 넣는다. 결정은 하나씩 묻고 관찰에서 계산한 권장을 보인다. 이동은 `git mv` 없이 백업 → 이동 → 참조 고침(지시 문서는 따로 묻는다) → 기준선 대비 링크 검사 → 경로 지정 커밋 순이고, 체크포인트로 이어받는다

@@ -66,6 +66,14 @@
 - 시작·끝 표시 줄(`# harness-kit:begin` · `# harness-kit:end`)은 줄 전체가 그 문자열이어야 한다. `.gitignore` 는 줄 끝 주석이 없어 한 줄 표시를 쓰지 않는다 — 넣는 줄은 늘 블록으로 감싼다.
 - 블록 앞뒤에 빈 줄을 하나씩 두면, harness-uninstall 이 블록을 지울 때 빈 줄 하나만 남겨 원래 모양으로 돌아간다.
 - 미커밋 변경과 같은 자리(파일 끝)를 피할 수 있으면 피한다 — 나중 병합이 쉬워진다.
+- D9(graft 사용)의 `/graft/` 줄은 따로 블록 하나다 — `graft-localize.mjs prepare` 가 파일 끝에 넣는다(graft 가 인정하는 줄 `/graft/`·`graft/`·`graft` 가 이미 있으면 넣지 않는다). 하네스 로그 블록과 합치지 않는다 — 걷어낼 때 graft 를 남기면 이 블록도 남겨야 한다.
+
+```
+# harness-kit:begin
+# graft 그래프 캐시 — 이 PC 에서 다시 만드는 로컬 산출물이라 커밋하지 않는다(graft build 는 이 줄이 없으면 매번 덧붙인다)
+/graft/
+# harness-kit:end
+```
 
 ## §4 CLAUDE.md 「개발 하네스」 절
 
@@ -159,7 +167,11 @@ example 을 복사한 직후 **첫 줄 앞에** 한 줄을 넣는다(Edit). 정�
         { "command": "git push --delete <브랜치>", "plugin": "ask", "answer": "none", "rule": null }
       ],
       "slots": [],
-      "recs": [{ "item": "recursive-delete", "recommended": "ask", "basis": "플러그인이 ask · 정상 절차(빌드 산출물 정리)", "followed": true }] }
+      "recs": [{ "item": "recursive-delete", "recommended": "ask", "basis": "플러그인이 ask · 정상 절차(빌드 산출물 정리)", "followed": true }] },
+    { "id": "D9", "answer": "사용 — 이 PC 에서만 · graft 0.12.1", "slots": [],
+      "recs": [{ "item": "graft", "recommended": null, "basis": "권장을 계산하지 않는 항목 · check: graft 0.12.1", "followed": null }] },
+    { "id": "D10", "answer": "합치기 사용", "slots": [],
+      "recs": [{ "item": "statusline", "recommended": "combined", "basis": "D9 사용 · 전역 statusLine 은 보통 상태 줄", "followed": true }] }
   ],
   "nulls": [{ "path": "project.commands.fe.lint", "why": "lint 도구 없음 — 도입하면 채운다" }],
   "created": [
@@ -314,6 +326,26 @@ D8-2. 지난번 하네스를 걷어 낼 때 문서 정리 설정(아카이브 �
    바뀌는 것: 고른 칸만 들어간다. 나머지는 「docs-setup 에서 정함」으로 비워 둔다
 3. 되살리지 않음
    바뀌는 것: 비워 둔다. 문서 정리를 쓰려면 docs-setup 을 다시 돌린다. 백업은 그대로 남는다
+
+header: graft 사용
+D9. 이 레포의 코드 지도(graft)를 만들어, 질문할 때마다 관련 코드 위치를 자동으로 붙여 줄까? 이 PC·이 폴더에서만 켜지고 커밋되지 않습니다.
+코드가 크고 작업이 잦은 레포에서 이득. 작은·문서 위주 레포에선 매 프롬프트 주입이 잡음이 된다
+근거: graft-localize check — graft <판> · Node 조건 충족
+
+1. 안 씀 (기본)
+   바뀌는 것: 아무것도 바뀌지 않는다
+2. 사용 — 이 PC 에서만
+   바뀌는 것: .gitignore 에 /graft/ 블록 1개(커밋). graft 설정은 settings.local.json 으로, 로컬 산출물은 .git/info/exclude 로 — 커밋되는 settings.json 은 그대로
+
+header: 전역 상태줄 합치기
+D10. Claude Code 아래 상태 줄에 지금 쓰는 줄과 graft 줄을 함께 보일까? 이 PC 의 사용자 전역 설정(~/.claude/settings.json)에서 상태 줄 명령 하나만 바꿉니다 — 모든 레포에 적용되고, graft 가 없는 레포에서는 원래 줄만 나옵니다.
+근거: statusline-setup status — 지금 전역 상태 줄 <명령> · 판정 <보통 상태 줄>
+
+1. 합치기 사용 (전역 설정 바꿈) (권장)
+   권장 이유: D9 에서 graft 를 켰다 — 플러그인은 상태 줄을 줄 수 없어 전역 명령을 바꿔야 graft 줄이 보인다
+   바뀌는 것: 전역 settings.json 백업 뒤 statusLine.command 만 합치기 스크립트로. 원래 명령은 ~/.claude/harness-kit/statusline.json 에 남고, 되돌리기는 걷어내기에서 따로 묻는다
+2. 안 씀
+   바뀌는 것: 전역 설정을 바꾸지 않는다. graft 상태 줄은 보이지 않는다
 ```
 
 ### header (질문 chip, 12자 이하) — 대상 + 동작 명사구
@@ -343,6 +375,8 @@ D8-2. 지난번 하네스를 걷어 낼 때 문서 정리 설정(아카이브 �
 | D7 (testFirst) | `테스트먼저 가드` | 8 |
 | D7 (증거 슬롯) | `완료증거 관찰` | 7 |
 | D8-2 | `문서칸 되살리기` | 8 |
+| D9 | `graft 사용` | 8 |
+| D10 | `전역 상태줄 합치기` | 10 |
 
 ### 선택지 라벨 · 권장 표시
 
@@ -389,10 +423,16 @@ D8-2. 지난번 하네스를 걷어 낼 때 문서 정리 설정(아카이브 �
       { "path": ["enabledPlugins", "<이름>@<마켓>"], "value": false, "parentCreated": false, "decision": "D6" }
     ]
   },
-  "plugin": { "id": "harness-kit@harness-kit", "scope": "project", "marketplace": "project", "installRecord": "installed" }
+  "plugin": { "id": "harness-kit@harness-kit", "scope": "project", "marketplace": "project", "installRecord": "installed" },
+  "local": {
+    "graft": { "answer": "local", "graftVersion": "0.12.1", "state": "git-path:harness-kit-graft/state.json",
+      "items": [".claude/settings.local.json#graft", ".claude/helpers/graft-*.cjs", ".claude/skills/graft/", "graft/", ".mcp.json", ".ignore", "git-path:info/exclude#harness-kit graft-localize"] },
+    "statusline": { "answer": "combined", "receipt": "~/.claude/harness-kit/receipt.json", "items": ["~/.claude/settings.json#statusLine", "~/.claude/harness-kit/"] }
+  }
 }
 ```
 
+- `local` — 8-2단계(D9·D10)를 했을 때만. 커밋되지 않는 이 PC·이 트리의 항목이라 해시를 채우지 않는다. `items` 는 걷어낼 때 볼 자리를 적는 목록이다 — 상대경로 · `~/` · `git-path:` 꼴만(스크립트가 절대경로·모르는 항목을 막는다). `.mcp.json`·`.ignore` 는 init 전에 없던 경우만 적는다. 실제로 무엇을 만들었는지는 각 PC 의 체크포인트(`git-path:harness-kit-graft/state.json` · `~/.claude/harness-kit/receipt.json`)가 기준이다 — 다른 PC·worktree 에는 이 항목들이 없다.
 - `files` — 디렉토리 항목은 스크립트가 파일로 편다(`.harness/*.jsonl` 런타임 산출물은 뺀다). `role` 은 `skeleton` · `config` · `aux`.
 - `edits` — `block`(시작·끝 표시 블록) · `line`(한 줄 표시) · `replace`(표시 없이 고친 줄). block·line 은 그 파일 안에 나오는 순서대로 하나씩 적는다 — 스크립트가 표시 수와 맞춰 보고 해시를 채운다. `replace` 의 `before`·`after` 는 줄끝 없이 LF 로 잇고, `count` 는 `after` 가 그 파일에 나오는 수다.
 - `settings.hooks` — 넣은 훅마다 하나. `matcher` 가 없는 이벤트는 `null`. `eventCreated` 는 그 이벤트 키를 이 설치가 새로 만들었는가.

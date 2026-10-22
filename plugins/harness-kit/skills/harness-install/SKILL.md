@@ -1,6 +1,6 @@
 ---
 name: harness-install
-description: 지금 레포에 harness-agent 게이트(.harness/ 훅)와 harness-kit 플러그인(project scope)을 함께 설치한다 — 사전 확인 → 정적 분석 → 결정 질문 → 골격 복사 → config → settings.json → 정적 확인 → 발동 확인 안내 → CLAUDE.md 절 → 영수증 · 경로 지정 커밋. Triggers on "하네스 설치해줘", "이 레포에 하네스 적용", "harness-agent 설치", "harness-kit 설치", "하네스 설치 이어서". 끝난 설치의 업그레이드에는 쓰지 않는다 — 다시 설치하려면 harness-uninstall 뒤 새 세션에서.
+description: 지금 레포에 harness-agent 게이트(.harness/ 훅)와 harness-kit 플러그인(project scope)을 함께 설치한다 — 사전 확인 → 정적 분석 → 결정 질문 → 골격 복사 → config → settings.json → 정적 확인 → 발동 확인 안내 → CLAUDE.md 절 → 선택 항목(graft 로컬 연결 · 전역 상태 줄, 기본 끔) → 영수증 · 경로 지정 커밋. Triggers on "하네스 설치해줘", "이 레포에 하네스 적용", "harness-agent 설치", "harness-kit 설치", "하네스 설치 이어서". 끝난 설치의 업그레이드에는 쓰지 않는다 — 다시 설치하려면 harness-uninstall 뒤 새 세션에서.
 ---
 
 # harness-install — 게이트와 플러그인을 한 번에, 결정은 하나씩
@@ -9,6 +9,8 @@ description: 지금 레포에 harness-agent 게이트(.harness/ 훅)와 harness-
 
 1. **harness-agent 게이트** — `.harness/`(골격 사본) + `harness.config.mjs` + `.claude/settings.json` 의 훅 5개
 2. **harness-kit 플러그인** — `.claude/settings.json` 의 `enabledPlugins`·`extraKnownMarketplaces`(project scope)
+
+선택 항목 둘은 기본이 끔이고, 고르면 8-2단계에서 넣는다 — **graft 로컬 연결**(D9, 이 PC·이 트리 전용 · 커밋되는 것은 `.gitignore` 한 줄뿐)과 **전역 상태 줄 합치기**(D10, harness-kit 이 사용자 전역 `~/.claude` 에 쓰는 유일한 항목).
 
 다른 레포의 고유 지식을 담은 **프로젝트 전용 플러그인은 설치하지 않는다.** 이 레포의 고유 지식은 레포 안(`CLAUDE.md`·`docs/`·`.claude/skills`)에 둔다.
 
@@ -66,7 +68,9 @@ description: 지금 레포에 harness-agent 게이트(.harness/ 훅)와 harness-
 
 [DECISIONS.md](DECISIONS.md) 의 질문을 1단계 근거와 함께 하나씩 묻는다. 일괄 기본값을 제시하고 "이대로 갈까요" 로 묶지 않는다. 답이 다음 질문의 선택지를 바꾸는 순서로 묻는다.
 
-설치 위치(D1) → 공유 자원(D2 · 서버 기동 D2-2) → 단위 테스트 범위(D3) → **플러그인 겹침(D6 · 끄면 사라지는 가드 D6-2)** → 위험 명령(D4) → 커밋 정책(D5) → 나머지 칸(D7) → kit 이 읽는 칸(D8 · 문서 칸 되살리기 D8-2)
+설치 위치(D1) → 공유 자원(D2 · 서버 기동 D2-2) → 단위 테스트 범위(D3) → **플러그인 겹침(D6 · 끄면 사라지는 가드 D6-2)** → 위험 명령(D4) → 커밋 정책(D5) → 나머지 칸(D7) → kit 이 읽는 칸(D8 · 문서 칸 되살리기 D8-2) → graft 사용(D9) → 전역 상태 줄(D10)
+
+D9 를 묻기 전에 `node "${CLAUDE_SKILL_DIR}/../../scripts/graft-localize.mjs" check <레포 루트>` 로 사전 점검한다(종료코드 3 이면 graft 가 없거나 지금 Node 가 graft 의 `engines.node` 에 못 미쳐 묻지 않는다 — 출력의 설치 안내를 보고에 옮긴다). D9 는 권장을 계산하지 않는다 — 「(권장)」 없이 DECISIONS.md D9 의 안내 한 줄과 함께 묻고, 기본은 안 씀이다. D10 은 D9 가 「사용」일 때만 묻는다.
 
 D6 을 D4 앞에 묻는다. 플러그인을 끄면 그 플러그인이 막던 명령이 이 레포에서 무방비가 되는데, D4 를 먼저 정하면 그 빈자리가 D4 후보에 들지 못한다 — 시험 설치에서 볼륨 삭제를 「막지 않음」으로 정한 뒤에야 D6 이 그 가드를 없앤다는 것을 알았다.
 
@@ -151,9 +155,26 @@ D6 을 D4 앞에 묻는다. 플러그인을 끄면 그 플러그인이 막던 �
 
 **완료 기준:** 초안이 반영됐거나 사용자가 보류했고, 걸리는 줄 목록의 각 줄에 「고침 / 그대로(사유)」가 표시돼 있다. 넣은 블록·줄과 고친 줄이 체크포인트 `edits` 에 빠짐없이 있다. 고친 줄이 version 있는 프로젝트 플러그인 안에 있으면 그 version 이 올랐거나 「올리지 않음(사용자 답)」이 적혀 있다.
 
+## 8-2. 선택 항목 — 전역 상태 줄(D10) → graft 로컬 연결(D9)
+
+D9·D10 이 둘 다 「안 씀」(또는 건너뜀)이면 이 단계는 없다. `S=${CLAUDE_SKILL_DIR}/../../scripts` 라 할 때, 순서는 D10 먼저다 — `localize --statusline` 이 D10 의 전역 영수증에서 명령을 읽는다.
+
+1. **전역 상태 줄(D10 = 합치기 사용)** — `node "$S/statusline-setup.mjs" install`. 종료코드 3 이면 아무것도 쓰지 않은 것이다 — 이미 다른 합치기 스크립트를 가리키면 출력의 명령을 보이고 D10 표대로 다시 묻고, 원래 명령을 기록할 셸로 돌려 보니 실패·빈 출력이면 그 셸과 이유를 보이고 묻는다. 출력의 백업·영수증 경로를 보고에 옮긴다.
+2. **graft 준비(D9 = 사용)** — `node "$S/graft-localize.mjs" prepare <레포 루트>`. graft 확인 · Node 판 확인(graft 설치본의 `engines.node` 와 지금 Node — 못 미치면 「Node <요구> 필요, 현재 <판>」으로 종료코드 3, 못 읽으면 `WARN` 만 내고 진행) · init 전 `settings.json`·`.mcp.json`·`.gitignore`·`.ignore`·`settings.local.json` 스냅숏(`git rev-parse --git-path harness-kit-graft/`) · `.gitignore` 에 `/graft/` 표시 블록(TEMPLATES.md §3 꼴, 출력이 그 파일의 몇 번째 블록인지 낸다 — 체크포인트 `edits` 에 `block` 으로). 종료코드 3 이면 graft 가 없거나 Node 판이 모자라다 — 출력의 설치 안내(`npm view @nanonets/graft engines` → `node --version` 과 비교 → 모자라면 Node 먼저 올린 뒤 `npm i -g @nanonets/graft`)만 보고에 옮기고 이 항목을 건너뛴다. 종료코드 1 이면(`settings.local.json` 이 추적 중) 멈추고 보고한다.
+   - `/graft/` 를 `.gitignore` 에 미리 넣는 이유: graft build 는 `.gitignore` 텍스트만 보고 그 줄이 없으면 **매 build(= 매 턴)** 표시 없이 덧붙인다. `.git/info/exclude`·`core.excludesFile` 은 보지 않는다.
+3. **graft 연결** — 레포 루트에서 `graft init . --no-agents --no-global --no-build -y` → `graft build .`. 기본값의 init 은 추적 파일(`AGENTS.md`·`.cursor/`)을 건드리고, `--no-global` 없이는 사용자 홈의 다른 에이전트 설정에 쓴다.
+4. **로컬 전용으로 옮기기** — `node "$S/graft-localize.mjs" localize <레포 루트>`(D10 을 켰으면 `--statusline`). 이 스크립트가 graft 가 `settings.json` 에 넣은 것(graft 훅 · `subagentStatusLine` · graft `statusLine` · graft 권한 `Bash(graft:*)` 등 · `footerLinksRegexes`)을 `settings.local.json` 으로 옮기고(훅 timeout 은 초로 교정), `settings.json` 을 init 전 바이트로 되돌리며, `.mcp.json` 을 정리하고(init 전에 없었으면 로컬 전용 · 추적 파일이었으면 init 전 바이트로) `settings.local.json` 에 `disabledMcpjsonServers: ["graft"]` 를 넣고, `git rev-parse --git-path info/exclude` 에 로컬 산출물 블록(`/graft/` · `/.claude/helpers/graft-*.cjs` · `/.claude/skills/graft/` · 새로 생긴 `.mcp.json`·`.ignore`)을 쓴다. 추적 중인 경로는 exclude 에 넣지 않는다. 이벤트별 기계 대조가 어긋나면 아무 파일도 쓰지 않고 `failures=N` 으로 끝난다.
+5. 체크포인트에 D9·D10 답과 영수증 `local` 초안(TEMPLATES.md §9)을 적는다.
+6. Windows 안내(보고에) — graft 가 띄우는 하위 프로세스의 콘솔 창을 숨기려고 graft 설치본(dist)을 고치는 개인 스크립트를 쓰는 PC 가 있다. graft 를 업그레이드하면 그 고침은 사라지므로 업그레이드 뒤 그 스크립트를 다시 돌린다.
+
+graft 업그레이드 뒤에는 `node "$S/graft-localize.mjs" status <레포 루트>` 가 `settings.json` 에 다시 들어온 graft 몫을 알린다. 그때 `localize` 만 다시 돌린다(멱등) — 이 안내를 보고에 남긴다. 커밋되는 CLAUDE.md 에는 적지 않는다(graft 는 이 PC 에만 있다).
+
+**완료 기준:** D10 을 켰으면 `install` 이 `OK`(또는 「이미 설치」) · D9 를 켰으면 `prepare`·`localize` 가 종료코드 0 이고 `localize` 끝 줄이 `failures=0` · `git status --short` 에 이 단계가 더한 커밋 대상은 `.gitignore` 하나뿐 · `status` 가 `settings.json graft 몫: 0개`.
+
 ## 9. 영수증과 커밋 — 경로 지정, 같은 명령에서 브랜치 조건
 
 - 커밋 전에 **영수증**을 쓴다: 체크포인트의 원본·결정 답·`created`·`edits` 를 초안 JSON 으로 옮겨 scratchpad 에 Write 하고(꼴은 [TEMPLATES.md](TEMPLATES.md) §9), `node "${CLAUDE_SKILL_DIR}/scripts/write-manifest.mjs" <레포 루트> <초안>` 을 돌린다. 스크립트가 파일·블록·줄의 sha256 을 채우고, 적힌 것이 실제로 있는지와 개인 경로가 없는지 대조한 뒤 레포 루트에 `harness.install.json` 을 쓴다. `FAIL` 이 있으면 쓰지 않는다 — 초안이나 작업본을 고쳐 다시 돌린다.
+- 8-2단계를 했으면 초안에 `local` 을 넣는다(D9 → `local.graft`, D10 → `local.statusline`, 꼴은 TEMPLATES.md §9). 로컬 항목은 커밋되지 않아 해시를 채우지 않고, 경로는 상대경로 · `~/` · `git-path:` 꼴만 받는다. `.gitignore` 의 `/graft/` 블록은 다른 블록처럼 `edits` 에 `block` 으로 적는다(파일 안 순서대로).
 - D8-2 로 칸을 되살렸으면 영수증 뒤에 `node "${CLAUDE_SKILL_DIR}/../docs-setup/scripts/config-slots.mjs" record <레포 루트>` 를 돌려 `owners["docs-setup"]` 에 그 칸을 적는다. 설치 칸(`files`·`edits`·`settings`)은 건드리지 않는다.
 - 영수증 뒤에 설치 파일을 고쳤으면 영수증을 다시 쓴다. 영수증의 sha256 과 다른 파일은 harness-uninstall 이 「설치 뒤 손댄 파일」로 따로 묻는다.
 - 2단계에서 정한 커밋 정책대로 한다. 레포 규칙이 「커밋하지 않고 메시지만」이면 메시지만 건넨다. 영수증도 커밋 대상이다.
@@ -167,6 +188,6 @@ D6 을 D4 앞에 묻는다. 플러그인을 끄면 그 플러그인이 막던 �
 
 ## 보고
 
-마지막 응답에 담는다: 원본 SHA · 변경 파일 목록 · 영수증 경로 · 결정별 답 표(「권장」 열 — 권장대로 / 권장과 다름 / 권장 없음) · `null` 로 둔 칸과 그 이유, **그 null 이 끄는 kit 자산**(`install.mjs slots` 의 목록) · D6-2 에서 「막지 않음」으로 남긴 빈자리 · 6단계 결과(남긴 HOLE 포함) · 7단계 상태 · 사용자가 할 일(발동 확인, 제외 규칙 실행 확인, 첫 사용자 설치, 미정 결정).
+마지막 응답에 담는다: 원본 SHA · 변경 파일 목록 · 영수증 경로 · 결정별 답 표(「권장」 열 — 권장대로 / 권장과 다름 / 권장 없음, D9 는 권장을 계산하지 않아 「—」) · `null` 로 둔 칸과 그 이유, **그 null 이 끄는 kit 자산**(`install.mjs slots` 의 목록) · D6-2 에서 「막지 않음」으로 남긴 빈자리 · 6단계 결과(남긴 HOLE 포함) · 7단계 상태 · 8-2단계 결과(D9·D10 — graft 판 · 옮긴 graft 몫과 timeout 교정 · exclude 블록 · 전역 백업·영수증 경로, 또는 「graft 없음 — 건너뜀」·「Node 판 모자람 — 건너뜀」) · 사용자가 할 일(발동 확인, 제외 규칙 실행 확인, 첫 사용자 설치, 미정 결정, graft 업그레이드 뒤 `localize` 재실행).
 
 보고를 건넨 뒤 체크포인트 파일을 지운다 — 원본 SHA 는 config 머리 줄에 남는다. 체크포인트가 남아 있으면 다음 0단계가 그 트리를 「중단된 설치」로 본다.

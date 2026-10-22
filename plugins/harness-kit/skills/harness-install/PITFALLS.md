@@ -88,6 +88,16 @@
 - **레포 플러그인의 파일을 고치고 판을 올리지 않았다.** 걸리는 줄을 레포 안 프로젝트 전용 플러그인(명시 version 이 있는 것)에서도 고쳤는데, 시험 설치본은 version 을 그대로 두었다. 같은 레포의 정답본은 같은 고침에서 patch 를 올렸다 — 그 플러그인은 이후 고칠 때마다 0.1.1 → 0.1.2 → 0.2.0 으로 올랐다. 명시 version 플러그인은 판이 바뀌어야 설치본이 갱신되므로, 고친 커밋에서 올린다(SKILL.md 8단계). version 이 없는 플러그인(harness-kit 처럼 커밋 SHA 로 판을 가르는 것)에는 version 을 새로 넣지 않는다.
 - **표시 없이 넣은 절과 고친 줄은 나중에 가려낼 수 없었다.** 걷어내기 시험에서 「개발 하네스」 절은 제목으로 찾았지만, 커맨드·에이전트 문서 곳곳의 고친 명령 줄은 설치가 바꾼 것이라는 근거가 HEAD 와의 diff 뿐이었다 — 그것으로 되돌리면 파일 단위 되돌리기가 된다. 절은 시작·끝 표시로 감싸고, 고친 줄은 바꾸기 전·뒤 원문을 체크포인트 `edits` 에 적는다.
 
+## §8-2 선택 항목 — graft · 전역 상태 줄
+
+- **graft 는 Node engines 조건이 있다 — 설치 실패·런타임 오류가 Node 버전 때문일 수 있다.** graft 의 `package.json` 은 `engines.node` 로 Node 판을 요구한다(예: 조사 판 0.12.1 기준 `>=20`). 실제로 graft 를 깔 때 Node 를 먼저 올려야 했다. `graft --version` 이 돈다고 쓸 수 있는 것이 아니다 — `check`·`prepare` 가 설치본의 `engines.node` 를 지금 Node 와 대어 보고, 못 미치면 건너뛴다(종료코드 3). 요구 판은 `npm view @nanonets/graft engines` 로 그때그때 확인하고 문서에 숫자를 박지 않는다.
+- **graft init 은 settings.json 을 통째로 다시 쓴다.** 2칸 들여쓰기·LF 로 쓰므로 CRLF·다른 들여쓰기 파일은 내용이 같아도 바이트가 바뀐다. 손으로 graft 키만 지우면 서식 차이가 diff 로 남는다 — `localize` 가 init 전 스냅숏 바이트로 되돌린다. 스냅숏은 `prepare` 에서만 뜨므로 **init 전에 prepare 를 빠뜨리지 않는다.**
+- **settings 병합은 이벤트별로 기계 대조한다.** 무충돌로 보이는 병합이 같은 이벤트 배열의 훅을 잃은 사고가 있었다. `localize` 는 옮기기 전·뒤 graft 가 아닌 훅을 이벤트별로 대조하고, 어긋나면 아무 파일도 쓰지 않는다.
+- **graft 의 훅 timeout 은 ms 로 적혀 있다.** Claude Code 는 초로 읽어 15000 이 네 시간 넘는 한도가 된다 — 멈춘 훅을 끊지 못한다. 옮길 때 초로 교정한다(DECISIONS.md D9).
+- **`/graft/` 를 `.git/info/exclude` 에만 넣으면 graft build 가 매 턴 `.gitignore` 에 표시 없는 줄을 덧붙인다.** graft 는 `.gitignore` 텍스트만 본다. `.gitignore` 표시 블록이 먼저 있어야 한다(`prepare`).
+- **graft 업그레이드는 settings.json 에 graft 키를 다시 넣는다.** 판이 바뀐 첫 세션 시작에 연결을 다시 쓰기 때문이다. `status` → `localize` 를 다시 돌리면 된다. 전역 상태 줄을 합치지 않았으면 graft 전용 statusLine 도 다시 들어온다.
+- **info/exclude 는 같은 레포의 worktree 끼리 함께 쓴다.** `git rev-parse --git-path info/exclude` 는 worktree 에서도 공용 git 디렉토리의 파일을 돌려준다. `localize` 는 블록이 없으면 넣고 있으면 그대로 두며, `remove` 는 다른 worktree 를 따지지 않고 블록을 지운 뒤 경고 한 줄을 낸다 — 다른 worktree 에서 graft 를 쓰면 그쪽 helpers 등이 미추적으로 보일 수 있다(`/graft/` 는 `.gitignore` 에 있어 영향 없음). 그 worktree 에서 `localize` 를 다시 돌리면 블록이 돌아온다.
+
 ## §9 영수증 · 커밋
 
 - **영수증의 sha256 은 줄끝을 LF 로 맞춘 내용으로 계산한다.** autocrlf 트리는 같은 커밋도 PC 마다 CRLF·LF 가 달라, 바이트 해시면 다른 PC 에서 걷어 낼 때 모든 파일이 「설치 뒤 손댐」으로 뜬다. 스크립트가 맞춰 계산하므로 해시를 손으로 적지 않는다.

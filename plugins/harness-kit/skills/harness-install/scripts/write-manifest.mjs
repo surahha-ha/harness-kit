@@ -112,7 +112,13 @@ const manifest = {
   schema: 1, tool: 'harness-install', installedAt: draft.installedAt || new Date().toISOString(),
   source: draft.source, kit: draft.kit || null, decisions: draft.decisions || [],
   files, edits, settings: st ? { path: st.path || '.claude/settings.json', hooks: st.hooks || [], keys: st.keys || [] } : null, plugin: draft.plugin || null,
+  // D9·D10 — 커밋되지 않는 로컬 항목의 기록. 해시를 채우지 않는다(PC·트리마다 다르다). 경로는 상대경로 · ~/ · git-path: 꼴만
+  ...(draft.local ? { local: draft.local } : {}),
 };
+for (const [k, v] of Object.entries(draft.local || {})) {
+  if (!['graft', 'statusline'].includes(k)) bad(`local 에 모르는 항목: ${k}`);
+  for (const p of (v && v.items) || []) if (typeof p !== 'string' || !(relOk(p.split('#')[0]) || p.startsWith('~/') || p.startsWith('git-path:'))) bad(`local.${k}.items 경로가 상대경로·~/·git-path: 꼴이 아님: ${p}`);
+}
 const text = JSON.stringify(manifest, null, 2) + '\n';
 const home = os.homedir().replace(/\\/g, '/');
 for (const s of text.match(/"(?:[^"\\]|\\.)*"/g) || []) {
