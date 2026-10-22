@@ -243,7 +243,7 @@ node tools/scan-commit-meta.mjs --all        # 기존 커밋 전체의 author·c
 
 ## 시험
 
-`npm test`(= `node --test "tests/*.test.mjs"`) — 플러그인 스크립트(`plugins/harness-kit/scripts/`, 영수증·걷어내기의 로컬 항목)를 임시 git 레포와 임시 홈으로 돌린다. 실제 사용자 홈(`~/.claude`)과 이 PC 의 git 전역 설정은 쓰지 않는다.
+`npm test`(= `cd tests && node --test` — `tests/` 의 `*.test.mjs`, Node 20 에서도 돈다) — 플러그인 스크립트(`plugins/harness-kit/scripts/`, 영수증·걷어내기의 로컬 항목)를 임시 git 레포와 임시 홈으로 돌린다. 실제 사용자 홈(`~/.claude`)과 이 PC 의 git 전역 설정은 쓰지 않는다.
 
 ## 변경 기록
 

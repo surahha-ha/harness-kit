@@ -165,3 +165,17 @@ test('원래 statusLine 이 없었으면 base 를 돌려 보지 않고 설치하
   assert.equal(setup(h, 'restore').code, 0);
   assert.deepEqual(JSON.parse(readFileSync(path.join(h, '.claude', 'settings.json'), 'utf8')), { model: 'x' });
 });
+
+test('전역 settings.json 이 원래 없었으면 restore 가 파일을 지워 원상태로 되돌린다 — 있던 파일이 비게 되면 남긴다', () => {
+  const h = home(null);
+  assert.equal(setup(h, 'install').code, 0);
+  assert.ok(existsSync(path.join(h, '.claude', 'settings.json')), '전제: install 이 파일을 만들었다');
+  const rs = setup(h, 'restore');
+  assert.equal(rs.code, 0, rs.out);
+  assert.equal(existsSync(path.join(h, '.claude', 'settings.json')), false);
+  assert.match(rs.out, /install 전에 없던 settings\.json 이라 파일을 지웠다/);
+  const h2 = home('{}\n');
+  assert.equal(setup(h2, 'install').code, 0);
+  assert.equal(setup(h2, 'restore').code, 0);
+  assert.equal(readFileSync(path.join(h2, '.claude', 'settings.json'), 'utf8'), '{}\n', '원래 있던 빈 파일은 바이트 그대로');
+});
