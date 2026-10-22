@@ -9,6 +9,7 @@
 - 「이관 후 접기」 문서는 옮기지 않고 archive-cycle 이관 대상으로 넘긴다. 아카이브가 아닌 이동은 권장하지 않는다
 - docs-setup 이 채운 config 칸이 재설치·설치 단계 변경 뒤에도 남게 한다 — 칸마다 줄 끝 `// harness-kit:docs-setup` 표시(문서 칸이 없는 config 에는 표시 붙은 블록째)와 영수증 `owners["docs-setup"]`(설치 칸은 그대로) · `scripts/config-slots.mjs`(list·record·backups·restore). harness-uninstall 은 그 칸을 후보와 따로 보고하고 백업 `index.json` 에 `docsSetup` 으로 적으며, harness-install D8-2 가 최신 백업에서 되살릴지 묻는다(가리키는 폴더·파일이 남아 있으면 권장 「되살림」). 옮긴 문서·배너·성격표·`CLAUDE.md` 표가 걷어내기 후보가 되지 않는지 `scripts/boundary.mjs`(uninstall 과 같은 판정 함수)로 보고, `scripts/boundary.test.mjs` 가 설치 → docs-setup → 걷어내기 → 새 설치(표준·라이트 꼴) → 되살리기를 시험한다
 - 옮긴 뒤 커밋 전에 `observe.mjs` 가 지워진 옛 경로를 읽다 멈추던 것(작업본에 없는 추적 파일을 목록에서 뺀다)과, `links.mjs` 가 아카이브 배너의 옛 경로 표기를 새 깨짐으로 세던 것(배너 줄의 경로는 출처 표기로 본다)을 고친다
+- `links.mjs`·`refs.mjs`·`observe.mjs` 가 함께 쓰는 `lib.mjs` 의 `mdLinks` 가 인라인 코드 스팬 안의 링크 꼴(`` `[제목](파일.md)` `` — TEMPLATES 메모리 규약 절의 예시)을 링크로 세어 적용한 레포마다 깨진 링크로 보고하던 것을 고친다 — 줄마다 코드 스팬을 같은 길이 공백으로 가린 뒤 링크를 뽑고(`maskCodeSpans`), 펜스 안은 전처럼 뺀다. 백틱 속 레포 경로 문자열 판정(links 의 path · refs 의 경로)은 그대로다. `scripts/links.test.mjs` 가 스팬·펜스 안 링크 꼴 0 · 본문 깨진 링크 1 · 경로 판정 유지를 시험한다
 
 ## 미발행 — 하네스 설치 시험 반영
 

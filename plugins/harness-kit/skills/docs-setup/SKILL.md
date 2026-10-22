@@ -27,7 +27,7 @@ description: 지금 레포에 문서 구조와 아카이브 규약을 세운다 
 | - | - | - |
 | `observe.mjs <레포>` | `docs/` 문서별 표지·참조 수, `CLAUDE.md` 의 표 유무, config 칸과 그 어긋남, 메모리 크기 | 1 · 4 |
 | `refs.mjs <레포> <문서>…` · `--prefix` · `--plan` | 옮길 문서의 참조(링크·경로·이름만)와 패턴 참조, 이동 계획의 참조 고침 목록. 파일을 바꾸는 것은 `--apply --backup` 일 때뿐이다 | 2 · 3 |
-| `links.mjs <레포>` | 깨진 상대 링크·경로 참조. `--baseline` 으로 이번에 새로 깨진 것만 센다 | 3 · 4 |
+| `links.mjs <레포>` | 깨진 상대 링크·경로 참조. `--baseline` 으로 이번에 새로 깨진 것만 센다. 코드 스팬·펜스 안의 링크 꼴은 예시로 보고 세지 않는다 | 3 · 4 |
 | `config-slots.mjs list·record·backups·restore <레포>` | 표시 붙은 config 칸 읽기 · 영수증 `owners["docs-setup"]` 기록 · 걷어내기 백업에 남은 칸과 가리키는 경로 · 백업에서 칸 되살리기(harness-install D8-2 도 쓴다) | 0 · 3 · 4 |
 | `boundary.mjs <레포> --base <rev>` | 이번에 쓴 줄이 harness-uninstall 의 후보 꼴(설치 표시 · 표시 블록 안 · 「개발 하네스」 절)에 걸리는지 — uninstall 과 같은 판정 함수로 본다 | 4 |
 

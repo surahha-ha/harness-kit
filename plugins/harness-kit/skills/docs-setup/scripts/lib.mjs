@@ -37,14 +37,38 @@ export function readText(abs) {
   }
 }
 
-/** 마크다운 링크 대상: [글](대상) · [글](대상 "제목") · [이름]: 대상. 코드 펜스 안은 뺀다. */
+/** 한 줄의 인라인 코드 스팬(`…` · ``…``)을 같은 길이의 공백으로 가린다. 같은 길이의 닫는 백틱이 없으면 글자 그대로 둔다. */
+export function maskCodeSpans(line) {
+  let out = '';
+  let i = 0;
+  while (i < line.length) {
+    if (line[i] !== '`') { out += line[i++]; continue; }
+    let n = 0;
+    while (line[i + n] === '`') n++;
+    let j = i + n;
+    let close = -1;
+    while (j < line.length) {
+      if (line[j] !== '`') { j++; continue; }
+      let k = 0;
+      while (line[j + k] === '`') k++;
+      if (k === n) { close = j; break; }
+      j += k;
+    }
+    if (close < 0) { out += line.slice(i, i + n); i += n; continue; }
+    out += ' '.repeat(close + n - i);
+    i = close + n;
+  }
+  return out;
+}
+
+/** 마크다운 링크 대상: [글](대상) · [글](대상 "제목") · [이름]: 대상. 코드 펜스 안과 인라인 코드 스팬 안은 뺀다(예시로 적은 링크 꼴은 링크가 아니다). */
 export function* mdLinks(text) {
   const lines = text.split('\n');
   let fence = false;
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    if (/^\s*(```|~~~)/.test(line)) { fence = !fence; continue; }
+    if (/^\s*(```|~~~)/.test(lines[i])) { fence = !fence; continue; }
     if (fence) continue;
+    const line = maskCodeSpans(lines[i]);
     for (const m of line.matchAll(/\]\(\s*<?([^)\s>]+)>?(?:\s+["'][^"']*["'])?\s*\)/g)) yield { line: i + 1, raw: m[1] };
     const ref = line.match(/^\s*\[[^\]]+\]:\s*<?(\S+?)>?(\s|$)/);
     if (ref) yield { line: i + 1, raw: ref[1] };
