@@ -1,18 +1,27 @@
 ---
 name: harness-install
-description: 지금 레포에 harness-agent 게이트(.harness/ 훅)와 harness-kit 플러그인(project scope)을 함께 설치한다 — 사전 확인 → 정적 분석 → 결정 질문 → 골격 복사 → config → settings.json → 정적 확인 → 발동 확인 안내 → CLAUDE.md 절 → 선택 항목(graft 로컬 연결 · 전역 상태 줄, 기본 끔) → 영수증 · 경로 지정 커밋. Triggers on "하네스 설치해줘", "이 레포에 하네스 적용", "harness-agent 설치", "harness-kit 설치", "하네스 설치 이어서". 끝난 설치의 업그레이드에는 쓰지 않는다 — 다시 설치하려면 harness-uninstall 뒤 새 세션에서.
+description: 지금 레포에 harness-agent 게이트(.harness/ 훅)와 harness-kit 플러그인(project scope)을 함께 설치한다 — 사전 확인 → 정적 분석 → 결정 질문(설치 범위 라이트·계측부터) → 골격 복사 → config → settings.json → 정적 확인 → 발동 확인 안내 → CLAUDE.md 절 → 선택 항목(graft 로컬 연결 · 전역 상태 줄, 기본 끔) → 영수증 · 경로 지정 커밋 → 문서 구조 질문. Triggers on "하네스 설치해줘", "이 레포에 하네스 적용", "harness-agent 설치", "harness-kit 설치", "하네스 설치 이어서". 끝난 설치의 업그레이드에는 쓰지 않는다 — 다시 설치하려면 harness-uninstall 뒤 새 세션에서.
 ---
 
 # harness-install — 게이트와 플러그인을 한 번에, 결정은 하나씩
 
 이 스킬이 레포에 넣는 것은 두 가지다.
 
-1. **harness-agent 게이트** — `.harness/`(골격 사본) + `harness.config.mjs` + `.claude/settings.json` 의 훅 5개
+1. **harness-agent 게이트** — `.harness/`(골격 사본) + `harness.config.mjs` + `.claude/settings.json` 의 훅(라이트 1개 · 계측 5개)
 2. **harness-kit 플러그인** — `.claude/settings.json` 의 `enabledPlugins`·`extraKnownMarketplaces`(project scope)
 
 선택 항목 둘은 기본이 끔이고, 고르면 8-2단계에서 넣는다 — **graft 로컬 연결**(D9, 이 PC·이 트리 전용 · 커밋되는 것은 `.gitignore` 한 줄뿐)과 **전역 상태 줄 합치기**(D10, harness-kit 이 사용자 전역 `~/.claude` 에 쓰는 유일한 항목).
 
 다른 레포의 고유 지식을 담은 **프로젝트 전용 플러그인은 설치하지 않는다.** 이 레포의 고유 지식은 레포 안(`CLAUDE.md`·`docs/`·`.claude/skills`)에 둔다.
+
+**설치 범위는 둘이다**(D0, [DECISIONS.md](DECISIONS.md)). 골격 파일은 두 범위 모두 통째로 복사하고, 범위가 가르는 것은 settings.json 에 거는 훅 · config 에 채우는 칸 · CLAUDE.md 절의 판 셋뿐이다(표는 `scripts/tiers.mjs`).
+
+| 범위 | 무엇을 넣나 | 권장 |
+| - | - | - |
+| **라이트** | 실행 전 가드 훅 1개 · 사고 근거가 있는 deny·ask · 공유 자원 · 공유DB 테스트 제외 init script(필요할 때) · 짧은 「개발 하네스」 절 · 영수증 · harness-kit 켜기 | 권장 |
+| **계측** — 하네스 개발 설치처용 | 지금까지의 전체 설치: 훅 5개 · 계측 로그·지표 · 증거 슬롯 · 전체 절 | 권장하지 않는다(마지막 선택지) |
+
+표준(그 사이)은 아직 없다 — 비교 창 판정 뒤에 정한다.
 
 설치를 끝까지 지배하는 말 여섯 개:
 
@@ -44,7 +53,7 @@ description: 지금 레포에 harness-agent 게이트(.harness/ 훅)와 harness-
 판정:
 
 - 설치 위치는 precheck 의 `D1 관찰` 줄을 [DECISIONS.md](DECISIONS.md) D1 규칙표에 대어 권장을 정하고 2단계에서 묻는다. 이 트리가 이미 연결 worktree 면 선택지 이름이 「지금 worktree 에 설치」·「새 worktree 를 하나 더 만들어 설치」로 바뀐다.
-- 설치 흔적은 CHECKS.md §5 의 표로 가른다. **중단된 설치**면 남은 상태(완료 단계·답)를 보이고 「재개 / 초기화」를 묻는다. **끝난 설치**면 멈추고 보고한다(업그레이드는 범위 밖). 다시 설치하려면 **`harness-uninstall` 로 걷어 낸 뒤 새 세션에서 이 스킬을 돌리라고** 안내한다 — 끝난 설치 위에 덮어 설치하지 않는다. **HEAD 에 하네스가 있는데 작업본에서 지워졌으면** 멈추고 보고한 뒤 「의도적 재설치인가」를 묻고, 그렇다는 답이 있을 때만 새 설치로 진행한다.
+- 설치 흔적은 CHECKS.md §5 의 표로 가른다. **중단된 설치**면 남은 상태(완료 단계·답)를 보이고 「재개 / 초기화」를 묻는다. **끝난 설치**면 멈추고 보고한다(업그레이드는 범위 밖). **끝난 설치의 범위를 바꾸려는 것**이면 — 계측 → 라이트는 `harness-uninstall` 의 범위 낮추기(`scan --tier light`: 범위 밖 훅 · 칸 · 안내절만 바꾸고 나머지는 남긴다), 라이트 → 계측은 걷어 낸 뒤 새 세션에서 이 스킬을 계측으로. 다시 설치하려면 **`harness-uninstall` 로 걷어 낸 뒤 새 세션에서 이 스킬을 돌리라고** 안내한다 — 끝난 설치 위에 덮어 설치하지 않는다. **HEAD 에 하네스가 있는데 작업본에서 지워졌으면** 멈추고 보고한 뒤 「의도적 재설치인가」를 묻고, 그렇다는 답이 있을 때만 새 설치로 진행한다.
 
 **완료 기준:** 위 항목마다 관찰값이 한 줄씩 적혀 있고, 「중단」 · 「진행 — 새 설치(현 트리 / worktree 후보)」 · 「재개 — N단계부터」 중 하나로 판정돼 있다.
 
@@ -68,9 +77,11 @@ description: 지금 레포에 harness-agent 게이트(.harness/ 훅)와 harness-
 
 [DECISIONS.md](DECISIONS.md) 의 질문을 1단계 근거와 함께 하나씩 묻는다. 일괄 기본값을 제시하고 "이대로 갈까요" 로 묶지 않는다. 답이 다음 질문의 선택지를 바꾸는 순서로 묻는다.
 
-설치 위치(D1) → 공유 자원(D2 · 서버 기동 D2-2) → 단위 테스트 범위(D3) → **플러그인 겹침(D6 · 끄면 사라지는 가드 D6-2)** → 위험 명령(D4) → 커밋 정책(D5) → 나머지 칸(D7) → kit 이 읽는 칸(D8 · 문서 칸 되살리기 D8-2) → graft 사용(D9) → 전역 상태 줄(D10)
+**설치 범위(D0)** → 설치 위치(D1) → 공유 자원(D2 · 서버 기동 D2-2) → 단위 테스트 범위(D3) → **플러그인 겹침(D6 · 끄면 사라지는 가드 D6-2)** → 위험 명령(D4) → 커밋 정책(D5) → 나머지 칸(D7) → kit 이 읽는 칸(D8 · 문서 칸 되살리기 D8-2) → graft 사용(D9) → 전역 상태 줄(D10)
 
-D9 를 묻기 전에 `node "${CLAUDE_SKILL_DIR}/../../scripts/graft-localize.mjs" check <레포 루트>` 로 사전 점검한다(종료코드 3 이면 graft 가 없거나 지금 Node 가 graft 의 `engines.node` 에 못 미쳐 묻지 않는다 — 출력의 설치 안내를 보고에 옮긴다). D9 는 권장을 계산하지 않는다 — 「(권장)」 없이 DECISIONS.md D9 의 안내 한 줄과 함께 묻고, 기본은 안 씀이다. D10 은 D9 가 「사용」일 때만 묻는다.
+D0 을 맨 앞에 묻는다. 범위 표(무엇이 걸리고 무엇이 채워지나)를 질문 본문에 먼저 보이고, 라이트에 「(권장)」을, 계측은 마지막 선택지로 「하네스 개발 설치처용」이라 적는다. 답을 체크포인트 `tier` 에 적는다(TEMPLATES.md §7). 라이트면 DECISIONS.md D0 「뒤 질문」 표의 질문은 묻지 않고 범위대로 채워 `auto: true` 와 이유를 남긴다.
+
+D9 를 묻기 전에 `node "${CLAUDE_SKILL_DIR}/../../scripts/graft-localize.mjs" check <레포 루트>` 로 사전 점검한다(종료코드 3 이면 graft 가 없거나 지금 Node 가 graft 의 `engines.node` 에 못 미쳐 묻지 않는다 — 출력의 설치 안내를 보고에 옮긴다). D9 는 권장을 계산하지 않는다 — 「(권장)」 없이 DECISIONS.md D9 의 안내 한 줄과 함께 묻고, 기본은 안 씀이다. D10 은 D9 가 「사용」일 때만 묻는다. D9·D10 은 범위(D0)와 따로인 선택 항목이라 라이트·계측 모두 같게 묻는다.
 
 D6 을 D4 앞에 묻는다. 플러그인을 끄면 그 플러그인이 막던 명령이 이 레포에서 무방비가 되는데, D4 를 먼저 정하면 그 빈자리가 D4 후보에 들지 못한다 — 시험 설치에서 볼륨 삭제를 「막지 않음」으로 정한 뒤에야 D6 이 그 가드를 없앤다는 것을 알았다.
 
@@ -103,10 +114,11 @@ D6 을 D4 앞에 묻는다. 플러그인을 끄면 그 플러그인이 막던 �
 - harness-kit `project` 블록: 슬롯 정의는 harness-kit README 「프로젝트 프로필」이 SSOT 다. **kit 이 받는 값만** 쓴다 — 열거형 슬롯(`layout`·`data.schemaMgmt`·`git.commitExecution`·`git.push`)은 README 의 값 목록 밖이면 무효다.
 - 정규식·명령 문자열은 Write/Edit 도구로 쓴다. 셸로 다루면 방금 만든 규칙에 자기가 걸린다.
 - 근거 없는 칸은 `null` + 주석 「미확정 — 무엇을 확인하면 채운다」.
+- **범위 밖 칸** — 라이트면 계측 칸(`testFirst.auditOnStop`·`qualityCycle.evidence`·`drift`·`metrics`·`promotion`·게이트 `docs.*`)은 example 기본값 그대로 두고, kit `project.docs`·`project.memory` 는 키를 넣지 않는다(TEMPLATES.md §4 「라이트 config 의 꼴」). 키가 없는 그 칸은 10단계 문서 구조 질문이 채운다.
 - **kit 자산이 읽는 칸은 비워 두지 않는다.** 키가 없으면 그 자산이 멈추고 묻고, `null` 이면 그 단계를 말없이 건너뛴다. 칸마다 DECISIONS.md D8 대로 묻거나 근거로 채우고, `null` 로 두는 칸에는 **그 null 이 끄는 자산과 단계**를 주석에 적는다(`archiveDir: null, // 아카이브 폴더 없음 — archive-cycle ④ 레포 문서 이동이 건너뛴다. docs-setup 에서 정함`). 시험 설치에서 `docs.archiveDir: null` 이 주석 없이 남아 archive-cycle 의 문서 이동이 조용히 꺼졌다.
 - D8-2 답이 「되살림」·「골라 되살림」이면 위 칸을 다 쓴 뒤 `node "${CLAUDE_SKILL_DIR}/../docs-setup/scripts/config-slots.mjs" restore <레포 루트> --backup <백업> [--slots …]` 를 돌린다(`backups` 의 「되살리기:」 줄). 스크립트가 표시 붙은 칸 줄만 바꾸거나 넣고, import 해 값이 같은지 본 뒤 아니면 원래 판으로 되돌린다. 표시 줄은 Edit 로 손대지 않는다.
 
-**완료 기준:** `node --check harness.config.mjs` 통과 · 머리 줄을 뺀 본문이 example 과 다름(CHECKS.md §5) · `--status` 가 「활성」(deny·ask·공유자원 중 1개 이상)이고 「프로브 설정됨」 · 비밀번호 0건 · 절대경로·사용자 홈 경로 0건 · 열거형 슬롯 값이 전부 README 목록 안 · `node "${CLAUDE_SKILL_DIR}/scripts/install.mjs" slots <레포 루트>` 가 `failures=0`(kit 이 읽는 칸에 「없음」 0 · 주석에 꺼지는 자산이 없는 null 0).
+**완료 기준:** `node --check harness.config.mjs` 통과 · 머리 줄을 뺀 본문이 example 과 다름(CHECKS.md §5) · `--status` 가 「활성」(deny·ask·공유자원 중 1개 이상)이고 「프로브 설정됨」 · 비밀번호 0건 · 절대경로·사용자 홈 경로 0건 · 열거형 슬롯 값이 전부 README 목록 안 · `node "${CLAUDE_SKILL_DIR}/scripts/install.mjs" slots <레포 루트>` 가 `failures=0`(kit 이 읽는 칸에 「없음」 0 · 주석에 꺼지는 자산이 없는 null 0 — 범위는 체크포인트 `tier` 에서 읽는다. 라이트의 문서·메모리 칸 「키 없음」은 `DEFER` 줄로 나오고 실패가 아니다).
 
 ## 5. settings.json 반영 — 직접 편집하고 기계 대조
 
@@ -115,14 +127,14 @@ D6 을 D4 앞에 묻는다. 플러그인을 끄면 그 플러그인이 막던 �
 `I=node "${CLAUDE_SKILL_DIR}/scripts/install.mjs"` 라 할 때:
 
 1. 편집 전 판을 뜬다: `$I settings-snap <레포 루트> before`. settings.json·settings.local.json 의 바이트와 줄끝(CRLF/LF)·BOM 이 `git rev-parse --git-path harness-install-settings/before/` 에 남는다. 재개 때는 이미 있는 before 를 덮지 않는다.
-2. 훅 5개와 플러그인 키를 **Edit 로** 넣는다(꼴은 [TEMPLATES.md](TEMPLATES.md) §1·§2). 같은 이벤트 키가 이미 있으면 그 배열에 항목을 더하고, 이벤트 키를 하나 더 만들지 않는다. **Write 로 파일을 통째로 다시 쓰지 않는다** — Write 는 넘긴 문자열을 그대로 써서 CRLF 체크아웃의 파일이 LF 로 바뀐다(시험 설치에서 실제로 났다).
+2. D0 범위의 훅(라이트 1개 · 계측 5개)과 플러그인 키를 **Edit 로** 넣는다(꼴은 [TEMPLATES.md](TEMPLATES.md) §1·§2). 같은 이벤트 키가 이미 있으면 그 배열에 항목을 더하고, 이벤트 키를 하나 더 만들지 않는다. **Write 로 파일을 통째로 다시 쓰지 않는다** — Write 는 넘긴 문자열을 그대로 써서 CRLF 체크아웃의 파일이 LF 로 바뀐다(시험 설치에서 실제로 났다).
 3. 줄끝을 확인한다: `$I settings-eol <레포 루트>`. 편집 전과 줄끝·BOM·끝 줄바꿈이 다르면 내용은 그대로 두고 그 바이트만 되돌린다. `OK` 가 아니면 다음으로 가지 않는다.
 4. 편집 뒤 판을 뜬다: `$I settings-snap <레포 루트> after-edit` — CLI 뒤 대조·복원의 기준이다.
 5. 이 PC 에 플러그인 설치 기록을 남긴다(사용자 확인 뒤): `claude plugin marketplace list` 로 마켓 등록을 보고, 없으면 `claude plugin marketplace add surahha-ha/harness-kit --scope project`, 이어서 `claude plugin install harness-kit@harness-kit --scope project`. 대상 트리에서 `claude plugin list` 가 harness-kit 을 「not installed」 없이 enabled 로 보이면 이 줄과 6번을 건너뛴다.
 6. **CLI 를 돌렸으면 바로** `$I after-cli <레포 루트>`. CLI 는 settings.json 을 통째로 다시 써 키 순서·줄끝을 바꾸고 다른 도구의 값을 지운다. 스크립트가 after-edit 스냅숏과 대조해, 달라졌으면 CLI 판을 남긴 뒤 스냅숏 바이트로 되덮는다 — 넣은 훅·키, 원래 줄끝·BOM, CLI 가 지운 키가 함께 돌아온다(설치 기록은 남는다). `WARN … CLI 가 더한 키` 가 나오면 그 키가 설치에 필요한지 보고 필요하면 Edit 로 다시 넣고 3·4번을 다시 한다.
 7. 넣은 훅(이벤트·matcher·명령, 이벤트 키를 새로 만들었는지)과 키(경로·값, 부모 객체를 새로 만들었는지, 어느 결정인지)와 5번의 설치 기록(scope · 건너뜀 여부)을 체크포인트 `edits` 에 적는다.
 
-**완료 기준:** JSON 파싱 OK · 이벤트 키 중복 0 · 하네스 훅 5개가 각 이벤트에 정확히 1번 · 기존 훅이 편집 전과 같은 수·같은 명령 · `settings-eol` 이 `failures=0`(줄끝·BOM 이 편집 전과 같음) · CLI 를 돌렸으면 `after-cli` 가 `failures=0` · `git diff` 에 의도한 추가만 있음(autocrlf 트리에서도 줄 수로 본다).
+**완료 기준:** JSON 파싱 OK · 이벤트 키 중복 0 · `$I hooks <레포 루트>` 가 `failures=0`(그 범위의 하네스 훅이 각 이벤트에 정확히 1번 · 범위 밖 훅 0 · matcher 에 Bash·PowerShell) · 기존 훅이 편집 전과 같은 수·같은 명령 · `settings-eol` 이 `failures=0`(줄끝·BOM 이 편집 전과 같음) · CLI 를 돌렸으면 `after-cli` 가 `failures=0` · `git diff` 에 의도한 추가만 있음(autocrlf 트리에서도 줄 수로 본다).
 
 ## 6. 정적 확인 — 실행 없이 판정
 
@@ -133,14 +145,14 @@ D6 을 D4 앞에 묻는다. 플러그인을 끄면 그 플러그인이 막던 �
 - `.harness` 각 실행 파일의 `--status`(기대값 표는 CHECKS.md §2)
 - deny/ask/shared 패턴 — `danger-guard.mjs` 의 `evaluate` 를 import 해 **통과 기대 / 차단 기대** 케이스 표로 판정한다. 케이스에는 레포 문서에 적힌 실제 명령 줄을 원문 그대로 넣는다. 차단 기대 케이스마다 **래퍼 변형**(`bash -c "…"` · `cmd /c` · `powershell -Command` 등)을 스크립트가 자동으로 만들어 같은 판정인지 보고, 규칙마다 **도구 경로 변형**(`./gradlew`·`gradlew.bat`·`cd <하위> && …`·`npx …`)과 **와일드카드**(`--tests '*'`·`'<패키지>.*'`·glob 경로)를 1건 이상 넣는다(CHECKS.md §4). 시험 설치의 전체 테스트 규칙은 와일드카드 `--tests` 와 `bash -c` 래퍼를 통과시켰다.
 - 테스트 제외 규칙(D3 의 init script·필터)이 있으면 `install.mjs test-select` 로 **무엇이 빠지는지**를 정적으로 펼쳐, 빼려던 것만 빠지는지 본다(CHECKS.md §8). 「빼려던 것이 빠졌나」만 보면 제외가 넓은 것을 못 잡는다.
-- kit 이 읽는 칸 — `install.mjs slots` 를 다시 돌려 4단계 뒤에 바뀐 칸이 없는지 본다.
-- 답을 바꾼 흔적 — 주석↔값 · 규칙 중복 · example 기본값이 남은 슬롯 · 체크포인트 답↔config 값 · 권장과 다른 답 · 질문 형식(header·선택지 라벨·권장 표시·쉬운 말)(CHECKS.md §6, 스크립트 `scripts/answer-trace.mjs`)
+- kit 이 읽는 칸 — `install.mjs slots` 를 다시 돌려 4단계 뒤에 바뀐 칸이 없는지 본다. 훅 — `install.mjs hooks` 로 범위와 settings 훅이 맞는지 본다.
+- 답을 바꾼 흔적 — 주석↔값 · 규칙 중복 · example 기본값이 남은 슬롯 · 체크포인트 답↔config 값 · 권장과 다른 답 · 질문 형식(header·선택지 라벨·권장 표시·쉬운 말)(CHECKS.md §6, 스크립트 `scripts/answer-trace.mjs`). 체크포인트에 `tier` 가 없으면 실패한다. 라이트의 범위 밖 칸은 `SAME` 대신 `TIER`(의도), 범위로 채운 답은 `AUTO` 로 나온다
 
 **완료 기준:** 모든 확인이 기대값과 같고, 케이스 표에 FAIL 0 · HOLE 0(남기는 구멍은 사용자 답과 함께 보고에) · 차단 기대와 통과 기대가 규칙마다 1건 이상 · `test-select` 가 `failures=0` · 흔적 점검의 항목마다 「고침 / 의도(근거)」가 적혀 있다.
 
 ## 7. 발동 확인 안내 — 사용자가 직접
 
-설정이 맞아도 훅이 실제로 불리는지는 대화형 세션의 도구 호출로만 알 수 있다. [CHECKS.md](CHECKS.md) §3 의 안내문을 config 의 프로브 토큰을 **정확히** 넣어 사용자에게 건넨다. 헤드리스(`-p`)·`!` 직접 실행은 훅 경로를 타지 않아 거짓 음성이다.
+설정이 맞아도 훅이 실제로 불리는지는 대화형 세션의 도구 호출로만 알 수 있다. [CHECKS.md](CHECKS.md) §3 의 안내문을 config 의 프로브 토큰을 **정확히** 넣어 사용자에게 건넨다. 라이트면 턴 종료 훅이 없으므로 §3 의 3번(턴 종료 기록 확인)은 건네지 않는다. 헤드리스(`-p`)·`!` 직접 실행은 훅 경로를 타지 않아 거짓 음성이다.
 
 테스트 제외 규칙을 만들었으면 CHECKS.md §8 의 실행 확인 안내도 건넨다 — 사용자가 판정용 테스트 명령을 돌린 뒤 `test-select --results` 로 **돌아야 할 테스트가 실제로 돌았는지**와 빠져야 할 것이 안 돌았는지를 함께 본다. 실행 환경(로컬 컨테이너인가)은 안내문에 적고 사용자가 확인한다.
 
@@ -148,7 +160,7 @@ D6 을 D4 앞에 묻는다. 플러그인을 끄면 그 플러그인이 막던 �
 
 ## 8. 레포 지식 초안 — CLAUDE.md 「개발 하네스」 절
 
-- [TEMPLATES.md](TEMPLATES.md) §4 꼴로 「개발 하네스」 절 초안을 만든다: 무엇이 막히고 무엇이 관찰만 되는가, 바뀐 테스트 명령, 상태 확인 명령, 첫 사용자 설치 절차. 절은 **시작·끝 표시로 감싸고**, 절을 가리키는 라우팅 한 줄에는 한 줄 표시를 붙인다.
+- [TEMPLATES.md](TEMPLATES.md) §4 의 **D0 범위 판**(라이트 · 계측)으로 「개발 하네스」 절 초안을 만든다: 무엇이 막히고 무엇이 관찰만 되는가, 바뀐 테스트 명령, 상태 확인 명령, 첫 사용자 설치 절차. 절은 **시작·끝 표시로 감싸고**, 절을 가리키는 라우팅 한 줄에는 한 줄 표시를 붙인다.
 - 레포 `CLAUDE.md`·커맨드·에이전트 문서에서 **새 deny 에 걸리게 된 명령 줄**(맨 테스트 명령, 출력 파이프)을 찾아 목록으로 보이고, 고칠지 묻는다. 서술 문서가 차단될 명령을 권하는 모순이 남지 않게 한다. 고친 줄마다 바꾸기 전·뒤 원문을 체크포인트 `edits` 에 `replace` 로 적는다(코드 블록 안이라 표시를 붙이지 않는 자리다).
 
 - 고친 줄이 **레포 안 프로젝트 전용 플러그인 디렉토리**(그 레포가 스스로 배포하는 플러그인 — `.claude-plugin/plugin.json` 이 있는 곳)에 있으면 판 올림을 함께 묻는다. 관례: 그 플러그인의 매니페스트에 `version` 이 있으면 **파일을 고친 커밋에서 version 을 올린다** — 명령 줄·문구 고침은 patch, 자산 추가·절차 변경은 minor. 마켓플레이스 파일에 같은 플러그인의 `version` 이 있으면 같은 값으로 함께 올린다. 올리지 않으면 이미 설치한 사람은 옛 판을 계속 쓴다. 매니페스트에 `version` 이 없으면(harness-kit 자신처럼 커밋 SHA 로 판을 가르는 플러그인) 올리지도 새로 넣지도 않는다. 올린 줄은 바꾸기 전·뒤 원문을 체크포인트 `edits` 에 `replace` 로 적는다.
@@ -173,7 +185,7 @@ graft 업그레이드 뒤에는 `node "$S/graft-localize.mjs" status <레포 루
 
 ## 9. 영수증과 커밋 — 경로 지정, 같은 명령에서 브랜치 조건
 
-- 커밋 전에 **영수증**을 쓴다: 체크포인트의 원본·결정 답·`created`·`edits` 를 초안 JSON 으로 옮겨 scratchpad 에 Write 하고(꼴은 [TEMPLATES.md](TEMPLATES.md) §9), `node "${CLAUDE_SKILL_DIR}/scripts/write-manifest.mjs" <레포 루트> <초안>` 을 돌린다. 스크립트가 파일·블록·줄의 sha256 을 채우고, 적힌 것이 실제로 있는지와 개인 경로가 없는지 대조한 뒤 레포 루트에 `harness.install.json` 을 쓴다. `FAIL` 이 있으면 쓰지 않는다 — 초안이나 작업본을 고쳐 다시 돌린다.
+- 커밋 전에 **영수증**을 쓴다: 체크포인트의 원본·결정 답·`created`·`edits` 를 초안 JSON 으로 옮겨 scratchpad 에 Write 하고(꼴은 [TEMPLATES.md](TEMPLATES.md) §9), `node "${CLAUDE_SKILL_DIR}/scripts/write-manifest.mjs" <레포 루트> <초안> --example <example 사본>` 을 돌린다(example 사본은 CHECKS.md §5 ② 의 그 SHA 판 — 설치가 바꾼 칸마다 설치 전 값을 `config.slots` 에 적어, 범위 낮추기가 칸을 되돌릴 기준이 된다). 초안의 `tier` 는 필수다. 스크립트가 파일·블록·줄의 sha256 을 채우고, 적힌 것이 실제로 있는지와 개인 경로가 없는지 대조한 뒤 레포 루트에 `harness.install.json` 을 쓴다. `FAIL` 이 있으면 쓰지 않는다 — 초안이나 작업본을 고쳐 다시 돌린다.
 - 8-2단계를 했으면 초안에 `local` 을 넣는다(D9 → `local.graft`, D10 → `local.statusline`, 꼴은 TEMPLATES.md §9). 로컬 항목은 커밋되지 않아 해시를 채우지 않고, 경로는 상대경로 · `~/` · `git-path:` 꼴만 받는다. `.gitignore` 의 `/graft/` 블록은 다른 블록처럼 `edits` 에 `block` 으로 적는다(파일 안 순서대로).
 - D8-2 로 칸을 되살렸으면 영수증 뒤에 `node "${CLAUDE_SKILL_DIR}/../docs-setup/scripts/config-slots.mjs" record <레포 루트>` 를 돌려 `owners["docs-setup"]` 에 그 칸을 적는다. 설치 칸(`files`·`edits`·`settings`)은 건드리지 않는다.
 - 영수증 뒤에 설치 파일을 고쳤으면 영수증을 다시 쓴다. 영수증의 sha256 과 다른 파일은 harness-uninstall 이 「설치 뒤 손댄 파일」로 따로 묻는다.
@@ -182,12 +194,23 @@ graft 업그레이드 뒤에는 `node "$S/graft-localize.mjs" status <레포 루
 - 메시지는 레포 `git log` 관례(언어·접두어)를 따르고, 원본 SHA 를 본문에 넣는다. trailer 는 레포 규칙이 허용할 때만 넣는다.
 - push·MR 은 실행 직전에 따로 확인받는다.
 
-**완료 기준:** `write-manifest.mjs` 가 `OK` 로 끝났고 영수증의 파일 수가 `.harness/`(런타임 산출물 제외)·config·보조 파일 수의 합과 같다. 커밋 직후 `git status --short` 에 설치 전부터 있던 변경만 남아 있고, `git show --stat HEAD` 의 파일 목록이 의도한 목록(영수증 포함)과 같다.
+**완료 기준:** `write-manifest.mjs` 가 `OK` 로 끝났고(줄에 「범위 <라이트|계측>」 · config 칸 수) 영수증의 파일 수가 `.harness/`(런타임 산출물 제외)·config·보조 파일 수의 합과 같다. 커밋 직후 `git status --short` 에 설치 전부터 있던 변경만 남아 있고, `git show --stat HEAD` 의 파일 목록이 의도한 목록(영수증 포함)과 같다.
+
+## 10. 문서 구조 맞추기 — docs-setup 으로 넘길까
+
+9단계가 끝난 뒤 한 번 묻는다(두 범위 모두). `node "${CLAUDE_SKILL_DIR}/scripts/install.mjs" docs-hookup <레포 루트>` 의 「관찰:」 줄을 근거로, 「권장:」 · 「권장 이유:」 줄을 그대로 옮겨 header `문서구조 맞추기` 로 묻는다(규칙표는 [DECISIONS.md](DECISIONS.md) 「10단계 질문」, 꼴은 [TEMPLATES.md](TEMPLATES.md) §8). 「권장: 묻지 않음」이면 묻지 않고 보고에 그 이유를 적는다.
+
+- **진행** — 보고를 건넨 뒤 이 세션에서 docs-setup 스킬로 넘어간다. 설치는 여기서 끝이다 — docs-setup 이 바꾸는 것은 그 스킬의 영수증 칸(`owners["docs-setup"]`)에 따로 적힌다.
+- **나중에** — 아무것도 바꾸지 않는다. 보고의 다음 할 일에 「docs-setup — 나중에」를 적는다.
+
+답과 권장·이유는 체크포인트 `docsHookup` 에 적는다(영수증에는 들지 않는다).
+
+**완료 기준:** `docs-hookup` 의 관찰·권장·권장 이유가 보고에 있고, 질문을 했으면 답이 체크포인트에 있다.
 
 ---
 
 ## 보고
 
-마지막 응답에 담는다: 원본 SHA · 변경 파일 목록 · 영수증 경로 · 결정별 답 표(「권장」 열 — 권장대로 / 권장과 다름 / 권장 없음, D9 는 권장을 계산하지 않아 「—」) · `null` 로 둔 칸과 그 이유, **그 null 이 끄는 kit 자산**(`install.mjs slots` 의 목록) · D6-2 에서 「막지 않음」으로 남긴 빈자리 · 6단계 결과(남긴 HOLE 포함) · 7단계 상태 · 8-2단계 결과(D9·D10 — graft 판 · 옮긴 graft 몫과 timeout 교정 · exclude 블록 · 전역 백업·영수증 경로, 또는 「graft 없음 — 건너뜀」·「Node 판 모자람 — 건너뜀」) · 사용자가 할 일(발동 확인, 제외 규칙 실행 확인, 첫 사용자 설치, 미정 결정, graft 업그레이드 뒤 `localize` 재실행).
+마지막 응답에 담는다: **설치 범위(라이트 / 계측)** · 원본 SHA · 변경 파일 목록 · 영수증 경로 · 결정별 답 표(「권장」 열 — 권장대로 / 권장과 다름 / 권장 없음 / 범위로 정함, D9 는 권장을 계산하지 않아 「—」) · `null` 로 둔 칸과 그 이유, **그 null 이 끄는 kit 자산**(`install.mjs slots` 의 목록) · 라이트면 키 없이 둔 칸(`slots` 의 「키 없이 둔 칸」 목록) · 10단계 문서 구조 질문의 답 · D6-2 에서 「막지 않음」으로 남긴 빈자리 · 6단계 결과(남긴 HOLE 포함) · 7단계 상태 · 8-2단계 결과(D9·D10 — graft 판 · 옮긴 graft 몫과 timeout 교정 · exclude 블록 · 전역 백업·영수증 경로, 또는 「graft 없음 — 건너뜀」·「Node 판 모자람 — 건너뜀」) · 사용자가 할 일(발동 확인, 제외 규칙 실행 확인, 첫 사용자 설치, 미정 결정, graft 업그레이드 뒤 `localize` 재실행).
 
 보고를 건넨 뒤 체크포인트 파일을 지운다 — 원본 SHA 는 config 머리 줄에 남는다. 체크포인트가 남아 있으면 다음 0단계가 그 트리를 「중단된 설치」로 본다.

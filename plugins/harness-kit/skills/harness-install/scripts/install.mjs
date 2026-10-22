@@ -10,8 +10,14 @@
  *   test-select --src <테스트 소스 디렉토리> [--exclude <Ant 패턴>]… [--filter-exclude <클래스 패턴>]…
  *               [--expect-excluded <FQN>]… [--results <JUnit XML 디렉토리>]
  *                                                   6·7단계 — 제외 규칙이 무엇을 빼는지(정적), 실제 실행에서 돌아야 할 것이 돌았는지(결과)
- *   slots [--kit <harness-kit 플러그인 디렉토리>]     4·6단계 — kit 자산이 읽는 project 칸마다 값·null·없음, null 이면 주석이 끄는 자산을 적었는지
+ *   slots [--kit <harness-kit 플러그인 디렉토리>] [--tier light|instrumented]
+ *                                                   4·6단계 — kit 자산이 읽는 project 칸마다 값·null·없음, null 이면 주석이 끄는 자산을 적었는지.
+ *                                                   라이트면 문서·메모리 칸(docs.*·memory.*)의 「키 없음」은 실패가 아니다(DEFER — 읽는 자산이 쓸 때 묻는다)
+ *   hooks [--tier light|instrumented]               5·6단계 — 그 범위의 하네스 훅이 각 이벤트에 정확히 1번, 범위 밖 훅은 0번인가
+ *   docs-hookup [--json <파일>]                     10단계 — 문서 구조 맞추기(docs-setup)를 권할지: 문서 수 · archiveDir · 문서 칸 null
  *   plugin-hooks <이름@마켓> [--records <installed_plugins.json>]   2단계 D6 — 끌 플러그인이 건 훅 목록(빈자리 조사의 출발점)
+ *
+ * 범위(--tier)를 주지 않으면 설치 체크포인트의 tier → 영수증 tier(schema 1 은 계측) → 계측 순으로 정한다(tiers.mjs).
  *
  * 시험용 바꿔치기: HARNESS_INSTALL_PROJECTS_DIR(세션 기록 디렉토리) · HARNESS_INSTALL_PLUGINS_JSON(설치 기록 파일)
  * 인자에는 경로·이름·패턴만 넘긴다. 실행 전 가드가 막을 명령 문자열을 셸 인자로 넘기지 않는다.
@@ -23,9 +29,10 @@ import path from 'node:path';
 import os from 'node:os';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
+import { HOOKS, LABEL, RANK, hookSpec, resolveTier, deferredInLight } from './tiers.mjs';
 
 const [cmd, rootArg, ...args] = process.argv.slice(2);
-const USAGE = '사용: node install.mjs <precheck|settings-snap|settings-eol|after-cli|test-select|slots|plugin-hooks> <레포 루트 | 이름@마켓> [인자…]';
+const USAGE = '사용: node install.mjs <precheck|settings-snap|settings-eol|after-cli|test-select|slots|hooks|docs-hookup|plugin-hooks> <레포 루트 | 이름@마켓> [인자…]';
 if (!cmd || !rootArg) { console.error(USAGE); process.exit(2); }
 const SELF = fileURLToPath(import.meta.url);
 const opt = (name) => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : null; };
@@ -403,7 +410,12 @@ function nullComments(text) {
   }
   return out;
 }
+function tierOrExit() {
+  try { return resolveTier(root, opt('--tier')); } catch (e) { console.error(e.message); process.exit(2); }
+}
 async function slots() {
+  const { tier, from } = tierOrExit();
+  console.log(`설치 범위: ${LABEL[tier]} (${from})`);
   const kit = path.resolve(opt('--kit') || path.join(path.dirname(SELF), '..', '..', '..'));
   const map = kitSlots(kit);
   if (!map.size) { console.error(`kit 문서에서 「읽는 슬롯」 줄을 찾지 못했다: ${posix(kit)}`); process.exit(2); }
@@ -437,8 +449,11 @@ async function slots() {
     for (const a of assets) c.assets.add(a);
     cells.set(r.path, c);
   }
+  const deferred = [];
   for (const [p, c] of [...cells].sort(([a], [b]) => a.localeCompare(b))) {
     const who = [...c.assets].sort().join(', ');
+    // 라이트 — 문서·메모리 칸은 키 없이 둔다. null 과 달리 말없이 건너뛰지 않고, 읽는 자산이 쓸 때 멈추고 묻는다
+    if (c.state === 'missing' && tier === 'light' && deferredInLight(p)) { console.log(`DEFER project.${p} — 라이트라 키 없이 둔다. 읽는 자산 ${who} 가 쓸 때 묻는다 · 설치 끝의 문서 구조 질문(docs-setup)에서 정한다`); deferred.push(`project.${p} → ${who}`); continue; }
     if (c.state === 'missing') bad(`없음 project.${p} — 읽는 자산 ${who} 가 그 자리에서 멈추고 묻는다. 값이나 null + 주석을 넣는다`);
     else if (c.state === 'null') {
       const nc = nulls.get(p);
@@ -452,8 +467,75 @@ async function slots() {
   }
   console.log(`null 칸 ${disabled.length}개 — 보고의 「null 로 둔 칸」에 읽는 자산과 함께 옮긴다`);
   for (const d of disabled) console.log(`  ${d}`);
+  if (deferred.length) {
+    console.log(`키 없이 둔 칸 ${deferred.length}개(라이트) — 보고의 「키 없이 둔 칸」에 옮긴다. 읽는 자산이 쓸 때 묻는다`);
+    for (const d of deferred) console.log(`  ${d}`);
+  }
   console.log(`slots: failures=${fail}`);
   process.exit(fail ? 1 : 0);
+}
+
+// ── hooks — 그 범위의 하네스 훅이 정확히 1번, 범위 밖 훅은 0번 ──────────────────────
+
+function hooks() {
+  const { tier, from } = tierOrExit();
+  console.log(`설치 범위: ${LABEL[tier]} (${from})`);
+  const sf = '.claude/settings.json';
+  if (!exists(sf)) { bad(`${sf} 가 없다`); console.log(`hooks: failures=${fail}`); process.exit(1); }
+  let json;
+  try { json = JSON.parse(readFileSync(abs(sf), 'utf8').replace(/^\uFEFF/, '')); } catch (e) { bad(`${sf} JSON 파싱 실패 ${e.message}`); console.log(`hooks: failures=${fail}`); process.exit(1); }
+  const found = [];
+  for (const [ev, groups] of Object.entries(json.hooks || {})) for (const g of Array.isArray(groups) ? groups : []) for (const h of g.hooks || []) {
+    if (!/[\/\\]\.harness[\/\\]/.test(String(h.command || ''))) continue;
+    found.push({ event: ev, matcher: g.matcher ?? null, command: h.command, spec: hookSpec(ev, h.command) });
+  }
+  for (const spec of HOOKS) {
+    const n = found.filter((f) => f.spec === spec).length;
+    const want = RANK[spec.tier] <= RANK[tier] ? 1 : 0;
+    if (n === want) console.log(`OK   ${spec.event} 하네스 훅 ${n}개${want ? '' : ` — ${LABEL[tier]} 범위 밖(${spec.what})이라 걸지 않는다`}`);
+    else if (want) bad(`${spec.event} 하네스 훅 ${n}개 — ${LABEL[tier]} 범위는 ${spec.what} 훅을 정확히 1번 건다`);
+    else bad(`${spec.event} 하네스 훅 ${n}개 — ${LABEL[tier]} 범위 밖(${spec.what})인데 걸려 있다. 범위와 settings 가 어긋난다`);
+    if (want && n && spec.matcher) {
+      const m = found.find((f) => f.spec === spec).matcher || '';
+      if (!/Bash/.test(m) || !/PowerShell/.test(m)) bad(`${spec.event} matcher 가 Bash·PowerShell 둘 다가 아님(${m || '*'})`);
+    }
+  }
+  for (const f of found.filter((x) => !x.spec)) bad(`표에 없는 하네스 훅 ${f.event} | ${f.matcher ?? '*'} | ${f.command} — TEMPLATES §1 꼴이 아니다`);
+  console.log(`hooks: failures=${fail}`);
+  process.exit(fail ? 1 : 0);
+}
+
+// ── docs-hookup — 설치 끝에 문서 구조 맞추기(docs-setup)를 권할지 ──────────────────
+
+/** 문서로 세는 것 — 루트 README·CLAUDE·CHANGELOG·LICENSE 와 .claude/·.github/·.harness/ 아래는 뺀다. */
+const NOT_DOC = (p) => /^(README|CLAUDE|CHANGELOG|LICENSE)(\.[^/]*)?$/i.test(p) || /^(\.claude|\.github|\.harness|node_modules)\//.test(p) || /(^|\/)node_modules\//.test(p);
+/** 이 수 이하면 「거의 빈 새 레포」로 본다 — 맞출 문서가 아직 없다. */
+const NEAR_EMPTY_MAX = 2;
+async function docsHookup() {
+  const ls = (...a) => (tryGit('ls-files', '-z', ...a) || '').split('\0').filter(Boolean);
+  const docs = [...new Set([...ls(), ...ls('-o', '--exclude-standard')])].filter((p) => /\.(md|markdown)$/i.test(p) && !NOT_DOC(p) && exists(p)).sort();
+  const underDocs = docs.filter((p) => p.startsWith('docs/'));
+  let cfg = null, cfgErr = null;
+  if (exists('harness.config.mjs')) { try { cfg = (await import(pathToFileURL(abs('harness.config.mjs')).href + `?t=${Date.now()}`)).default || {}; } catch (e) { cfgErr = String(e.message || e); } }
+  const proj = (cfg && cfg.project) || {};
+  const state = (o, k) => (!o || typeof o !== 'object' || !(k in o) ? 'missing' : o[k] === null ? 'null' : Array.isArray(o[k]) && !o[k].length ? 'empty' : 'value');
+  const archive = state(proj.docs, 'archiveDir');
+  const docSlots = [...['archiveDir', 'pathValidator', 'autoloaded'].map((k) => ['docs', k]), ['memory', 'slugs']].map(([a, k]) => ({ path: `project.${a}.${k}`, state: state(proj[a], k) }));
+  const nulls = docSlots.filter((s) => s.state === 'null').map((s) => s.path);
+  const missing = docSlots.filter((s) => s.state === 'missing').map((s) => s.path);
+  const marks = exists('harness.config.mjs') ? (readFileSync(abs('harness.config.mjs'), 'utf8').match(/\/\/\s*harness-kit:docs-setup\b/g) || []).length : 0;
+  const archText = archive === 'value' ? JSON.stringify(proj.docs.archiveDir) : archive === 'null' ? 'null' : archive === 'empty' ? '빈 값' : '키 없음';
+  console.log(`관찰: 문서 ${docs.length}개(docs/ 아래 ${underDocs.length}개 · 루트 README·CLAUDE·CHANGELOG 와 .claude/ 등은 세지 않음) · archiveDir ${archText} · 문서 칸 null ${nulls.length}개${nulls.length ? `(${nulls.join(' · ')})` : ''} · 키 없음 ${missing.length}개${missing.length ? `(${missing.join(' · ')})` : ''} · docs-setup 표시 칸 ${marks}개${cfgErr ? ` · WARN config 를 import 하지 못했다(${cfgErr.slice(0, 80)})` : ''}`);
+  if (docs.length) console.log(`  문서 표본: ${docs.slice(0, 5).join(' · ')}${docs.length > 5 ? ` … ${docs.length - 5}개 더` : ''}`);
+  let rec, why;
+  if (docs.length <= NEAR_EMPTY_MAX) { rec = 'later'; why = `맞출 문서가 거의 없다(문서 ${docs.length}개 — ${NEAR_EMPTY_MAX}개 이하). 문서가 쌓인 뒤 docs-setup 을 돌려도 늦지 않다`; }
+  else if (archive !== 'value' || nulls.length || missing.length) { rec = 'proceed'; why = `문서가 ${docs.length}개 있는데 ${archive !== 'value' ? `아카이브 폴더 칸(project.docs.archiveDir)이 ${archText}라` : `문서 칸 ${[...nulls, ...missing].length}개가 비어`} 문서 정리(archive-cycle)가 문서를 옮기지 못한다`; }
+  else { rec = 'skip'; why = `아카이브 폴더(${JSON.stringify(proj.docs.archiveDir)})와 문서 칸이 이미 채워져 있다 — 묻지 않는다`; }
+  const LBL = { proceed: '진행', later: '나중에', skip: '묻지 않음' };
+  console.log(`권장: ${LBL[rec]}`);
+  console.log(`권장 이유: ${why}`);
+  const j = opt('--json');
+  if (j) writeFileSync(path.resolve(j), JSON.stringify({ docs: docs.length, underDocs: underDocs.length, archiveDir: archive, nulls, missing, marks, recommend: rec, why }, null, 2) + '\n', 'utf8');
 }
 
 // ── plugin-hooks — 끌 플러그인이 건 훅 ────────────────────────────────────────
@@ -483,6 +565,6 @@ function pluginHooks() {
   }
 }
 
-const table = { precheck, 'settings-snap': settingsSnap, 'settings-eol': settingsEol, 'after-cli': afterCli, 'test-select': testSelect, slots, 'plugin-hooks': pluginHooks };
+const table = { precheck, 'settings-snap': settingsSnap, 'settings-eol': settingsEol, 'after-cli': afterCli, 'test-select': testSelect, slots, hooks, 'docs-hookup': docsHookup, 'plugin-hooks': pluginHooks };
 if (!table[cmd]) { console.error(USAGE); process.exit(2); }
 await table[cmd]();

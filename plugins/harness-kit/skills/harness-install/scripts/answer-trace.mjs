@@ -8,12 +8,15 @@
  *
  * ① 체크포인트 답 ↔ config·settings 값  ② 같은 규칙 중복  ③ example 과 값이 같은 칸(목록만)
  * ④ 「미확정」 주석인데 값이 있는 줄  ⑤ 권장과 다른 답 · 권장 없음(목록만, recs 누락은 실패)
+ * ⑥ 설치 범위 — 체크포인트 tier(D0)가 없으면 실패. 라이트면 ③ 의 범위 밖 칸(계측 칸)은 SAME 대신 TIER(의도 — 범위 밖
+ *    example 기본값)로 내고, 범위 때문에 묻지 않고 채운 답(auto)은 AUTO 로 낸다.
  * 읽기만 한다 — 대상 레포에 파일을 만들지 않는다.
  */
 import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { LABEL, normTier, tierOfSlot } from './tiers.mjs';
 
 if (process.argv.length < 4) { console.error('사용: node answer-trace.mjs <레포 루트> <example 사본>'); process.exit(2); }
 const root = path.resolve(process.argv[2]);
@@ -25,6 +28,11 @@ const statePath = path.resolve(root, execFileSync('git', ['-C', root, 'rev-parse
 const state = JSON.parse(readFileSync(statePath, 'utf8'));
 let fail = 0;
 const bad = (m) => { fail++; console.log(`FAIL ${m}`); };
+
+// ⑥ 설치 범위 — D0 답이 체크포인트 tier 에 있어야 뒤 질문의 생략·자동 답을 가를 수 있다
+const tier = normTier(state.tier);
+tier ? console.log(`OK   설치 범위 ${LABEL[tier]} (체크포인트 tier)`) : bad(`체크포인트에 tier 가 없다(${JSON.stringify(state.tier ?? null)}) — D0(하네스 설치범위)를 묻고 light|instrumented 로 적는다`);
+for (const d of state.decisions || []) if (d.auto) console.log(`AUTO ${d.id} — ${d.answer}${d.why ? ` (${d.why})` : ''}`);
 const canon = (v) => JSON.stringify(v, (_, x) => (x instanceof RegExp ? String(x) : x));
 const pick = (o, [k, ...rest]) => k === undefined ? o
   : k === '*' ? (Array.isArray(o) ? o.map((x) => pick(x, rest)) : undefined)
@@ -52,7 +60,12 @@ const walk = (v, p, out) => {
   else out.push([p, v]);
   return out;
 };
-for (const [p, v] of walk(example, [], [])) if (v != null && canon(pick(config, p)) === canon(v)) console.log(`SAME ${p.join('.')} = ${canon(v).slice(0, 60)}`);
+// 라이트 — 계측 칸이 example 기본값인 것은 의도다(범위 밖). 흔적 점검의 「고침 / 의도」 판정을 손으로 하지 않게 따로 낸다
+for (const [p, v] of walk(example, [], [])) if (v != null && canon(pick(config, p)) === canon(v)) {
+  const k = p.join('.');
+  if (tier === 'light' && tierOfSlot(k) === 'instrumented') console.log(`TIER ${k} = ${canon(v).slice(0, 60)} — 의도: 라이트 범위 밖 칸(example 기본값)`);
+  else console.log(`SAME ${k} = ${canon(v).slice(0, 60)}`);
+}
 
 // ④ 「미확정」 주석인데 값이 있는 줄
 readFileSync(path.join(root, 'harness.config.mjs'), 'utf8').split(/\r?\n/).forEach((l, i) => {

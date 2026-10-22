@@ -29,7 +29,7 @@ function repo(files) {
 }
 function manifest(root, local) {
   const draft = path.join(mkdtempSync(path.join(os.tmpdir(), 'hk-draft-')), 'draft.json');
-  writeFileSync(draft, JSON.stringify({ source: { repo: 'https://github.com/example/x', sha: SHA }, files: [{ path: 'harness.config.mjs', role: 'config' }], local }));
+  writeFileSync(draft, JSON.stringify({ tier: 'light', source: { repo: 'https://github.com/example/x', sha: SHA }, files: [{ path: 'harness.config.mjs', role: 'config' }], local }));
   const r = spawnSync(process.execPath, [MANIFEST, root, draft], { encoding: 'utf8' });
   return { code: r.status, out: r.stdout + r.stderr };
 }

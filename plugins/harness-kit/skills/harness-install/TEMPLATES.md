@@ -1,8 +1,24 @@
 # 꼴 — settings.json · .gitignore · CLAUDE.md · 커밋 명령 · config 머리 줄 · 체크포인트 · 결정 질문 · 영수증
 
-## §1 훅 5개 (`.claude/settings.json` 의 `hooks`)
+## §1 훅 — 범위마다 (`.claude/settings.json` 의 `hooks`)
 
-이벤트 키가 이미 있으면 **그 배열에 그룹 하나를 더한다.** 같은 이벤트 키를 하나 더 만들지 않는다. timeout 단위는 초다.
+이벤트 키가 이미 있으면 **그 배열에 그룹 하나를 더한다.** 같은 이벤트 키를 하나 더 만들지 않는다. timeout 단위는 초다. 거는 훅은 D0(설치 범위)이 정한다 — 골격 파일은 범위와 무관하게 통째로 복사하고, 범위가 가르는 것은 여기 거는 훅 · config 에 채우는 칸 · §4 절의 판뿐이다.
+
+**라이트** — 실행 전 가드 하나:
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      { "matcher": "Bash|PowerShell",
+        "hooks": [{ "type": "command", "shell": "bash", "timeout": 10,
+                    "command": "node \"$CLAUDE_PROJECT_DIR/.harness/danger-guard.mjs\"" }] }
+    ]
+  }
+}
+```
+
+**계측** — 훅 5개(실행 전 가드 + 관찰 넷):
 
 ```json
 {
@@ -34,8 +50,9 @@
 }
 ```
 
-- 레포의 기존 훅이 다른 `shell`·경로 표기를 쓰면 그 관례를 따른다. 기존 항목은 고치지 않는다.
+- 레포의 기존 훅이 다른 `shell`·경로 표기를 쓰면 그 관례를 따른다. 기존 항목은 고치지 않는다. 명령의 끝(`danger-guard.mjs"` · `danger-guard.mjs" --post` · `turn-end.mjs"` · `turn-start.mjs"`)은 바꾸지 않는다 — `install.mjs hooks` 와 harness-uninstall 이 그 끝으로 어느 범위의 훅인지 가른다(`scripts/tiers.mjs` 의 `HOOKS`).
 - Stop 의 timeout 은 `qualityCycle.evidence.scanTimeoutMs`(기본 5초)보다 길게 둔다.
+- 라이트에 관찰 훅을 하나만 더 거는 식으로 섞지 않는다 — 범위는 둘뿐이고, 섞으면 `install.mjs hooks` 가 「범위 밖 훅」으로 실패한다. 관찰이 필요하면 계측으로 설치한다.
 
 ## §2 플러그인 키 (project scope)
 
@@ -77,7 +94,27 @@
 
 ## §4 CLAUDE.md 「개발 하네스」 절
 
-값은 이 레포의 config 에서 옮긴다. 하네스 원본 SHA 는 config 머리 줄(§6)과 커밋 메시지에 두고 여기에는 적지 않는다(갱신 때마다 낡는다).
+값은 이 레포의 config 에서 옮긴다. 하네스 원본 SHA 는 config 머리 줄(§6)과 커밋 메시지에 두고 여기에는 적지 않는다(갱신 때마다 낡는다). 판은 범위(D0)마다 하나다 — 두 판 모두 같은 시작·끝 표시로 감싸, 범위를 낮출 때 harness-uninstall 이 블록을 통째로 바꾼다(`block`).
+
+**라이트** — 짧은 판:
+
+```markdown
+<!-- harness-kit:begin -->
+## 개발 하네스 (`.harness/` · `harness.config.mjs`)
+
+에이전트 훅(`.claude/settings.json`)의 실행 전 가드 하나만 돈다(설치 범위: 라이트). 규칙의 기준은 `harness.config.mjs` 다.
+
+- **실행 전 가드(Bash·PowerShell)** — 막는 것: {deny 규칙마다 한 구절 + 이유}. 확인받는 것: {ask·공유 자원}. 막히면 판정 메시지의 `→` 뒤 복구 방법을 따른다. 막는 것은 에이전트의 도구 호출뿐이다 — 꼭 필요하면 사람이 자기 터미널에서 직접 친다.
+- {D3 에서 테스트 제외를 넣었으면} **테스트 명령** — {바뀐 명령}. 출력은 파이프로 넘기지 않는다.
+- 상태 확인: `node .harness/danger-guard.mjs --status`. 관찰 훅(턴 시작·종료 · 실행 뒤)은 걸지 않았다 — 계측 로그가 쌓이지 않는다.
+- **플러그인** — `harness-kit` 은 `.claude/settings.json` 으로 project scope 에서 켜져 있다. 처음 쓰는 PC 의 설치 절차는 계측 판의 플러그인 항목(1~3)과 같다.
+- 걷어내기: `harness-uninstall`. 계측으로 올리려면 걷어 낸 뒤 새 세션에서 `harness-install` 을 계측으로.
+<!-- harness-kit:end -->
+```
+
+- 라이트 판에도 플러그인 1~3 줄(비공개 저장소 접근 · 설치 명령 · `git restore`)을 그대로 옮긴다 — 위 꼴의 「계측 판과 같다」는 꼴을 줄이려는 표기이고, 설치처 CLAUDE.md 에는 세 줄을 다 적는다.
+
+**계측** — 전체 판:
 
 ```markdown
 <!-- harness-kit:begin -->
@@ -95,9 +132,22 @@
   2. `claude plugin marketplace add surahha-ha/harness-kit` → `claude plugin install harness-kit@harness-kit --scope project`
   3. 이 설치 명령은 `.claude/settings.json` 을 다시 쓰므로(키 순서·줄끝이 바뀌고 다른 도구의 값이 지워진다) 직후 `git restore .claude/settings.json` 으로 되돌린다. 설치 기록은 남는다.
   같은 PC 의 새 worktree 는 다시 설치하지 않아도 된다.
-- 걷어내기: `harness-uninstall` — 이 절과 `harness.install.json` 의 영수증대로 넣은 것만 뺀다. 다시 설치하려면 걷어 낸 뒤 새 세션에서 `harness-install`.
+- 걷어내기: `harness-uninstall` — 이 절과 `harness.install.json` 의 영수증대로 넣은 것만 뺀다. 다시 설치하려면 걷어 낸 뒤 새 세션에서 `harness-install`. 라이트로 낮추려면 `harness-uninstall` 의 범위 낮추기(`scan --tier light`).
 <!-- harness-kit:end -->
 ```
+
+### 라이트 config 의 꼴
+
+라이트도 example 전체를 복사하고 머리 줄(§6)을 넣는다 — 칸을 지우지 않는다. 범위가 가르는 것은 **어느 칸을 채우는가**뿐이다.
+
+| 칸 | 라이트 | 계측 |
+| - | - | - |
+| `dangerGuard.*` · `commands` · `approvals` · `testFirst`(`auditOnStop` 말고) | 2단계 답대로 채운다 | 같다 |
+| `testFirst.auditOnStop` · `qualityCycle.evidence` · `drift` · `metrics` · `promotion` · 게이트 `docs.always`·`docs.archive` | example 기본값 그대로(턴 종료 훅이 없어 읽는 쪽이 없다) | 2단계 답대로 |
+| kit `project.docs.*` · `project.memory.*` | **키를 넣지 않는다** — 읽는 자산이 쓸 때 멈추고 묻는다(`null` 과 달리 말없이 건너뛰지 않는다). 10단계 문서 구조 질문(docs-setup)이 채운다 | D8 대로 |
+| 그 밖의 kit `project` 칸 | D8 대로 | D8 대로 |
+
+범위 밖 칸의 목록은 `scripts/tiers.mjs` 의 `INSTRUMENTED_SLOTS` 가 기준이다 — 영수증 `config.slots` 의 `tier` 와 answer-trace 의 `TIER` 줄이 그것을 읽는다.
 
 - 시작·끝 표시는 절 전체를 감싼다. 표시 줄은 앞뒤 공백 말고는 그 문자열만 있어야 하고, 블록 앞뒤에 빈 줄을 하나씩 둔다. 블록 안에 같은 표시를 또 넣지 않는다.
 - 비공개 저장소 줄(플러그인 1번)은 빼지 않는다. 이 줄이 없던 시험 설치본은 팀원이 첫 설치에서 「저장소를 찾지 못함」으로 막힐 자리를 남겼다. harness-kit 이 공개로 바뀌면 그때 이 꼴에서 지운다.
@@ -146,7 +196,13 @@ example 을 복사한 직후 **첫 줄 앞에** 한 줄을 넣는다(Edit). 정�
   "skill": "harness-install",
   "source": { "repo": "https://github.com/surahha-ha/harness-agent", "local": "<로컬 클론 또는 임시 clone 경로>", "sha": "<40자 SHA>", "dirty": false },
   "done": [2, 3],
+  "tier": "light",
   "decisions": [
+    { "id": "D0", "answer": "light", "slots": [],
+      "recs": [{ "item": "tier", "recommended": "light", "basis": "하네스 개발 설치처가 아니다 — 관찰 훅·계측 로그를 읽을 사람이 없다", "followed": true }] },
+    { "id": "D7", "answer": "증거 슬롯 비움 · 턴 종료 감사 끔", "auto": true, "why": "라이트 — 턴 종료 훅이 없어 읽는 쪽이 없다",
+      "slots": [{ "file": "config", "path": ["testFirst", "auditOnStop"], "value": false }],
+      "recs": [{ "item": "qualityCycle.evidence", "recommended": "비움", "basis": "D0 라이트", "followed": true }] },
     { "id": "D5", "answer": "커밋하지 않고 메시지만 · push 확인 · trailer 없음 · 리뷰 문턱 미정",
       "slots": [
         { "file": "config", "path": ["project", "git", "commitExecution"], "value": "message-only" },
@@ -198,6 +254,9 @@ example 을 복사한 직후 **첫 줄 앞에** 한 줄을 넣는다(Edit). 정�
 - `lost`(D6-2) — 끈 플러그인이 막던 명령 꼴마다 하나. 규칙 배열의 최종값(`dangerGuard.deny`·`ask` 의 id 목록)은 D4 의 `slots` 에 한 번만 적는다 — 두 곳에 나눠 적으면 6단계 대조가 서로 다른 부분 목록을 전체와 비교해 틀린다. `plugin` 은 그 플러그인의 판정(`deny`·`ask`·`warn`), `answer` 는 사용자 답(`deny`·`ask`·`none`), `rule` 은 그 답으로 넣은 하네스 규칙 id(`none` 이면 `null`). `none` 인 줄은 보고의 「빈자리」 목록이 된다.
 - `settingsSnapshots` — 5단계의 `install.mjs settings-snap`·`settings-eol`·`after-cli` 결과 한 줄씩. 스냅숏 바이트 자체는 `git rev-parse --git-path harness-install-settings/` 아래에 있다.
 
+- `tier` — D0 답(`light` · `instrumented`). 없으면 6단계 answer-trace 가 실패한다. `install.mjs slots`·`hooks` 는 `--tier` 가 없으면 이 칸을 읽는다.
+- `auto: true` · `why` — 범위 때문에 묻지 않고 채운 답(DECISIONS.md D0 「뒤 질문」 표). 6단계 answer-trace 가 `AUTO` 줄로 내고, 보고의 결정 표에 「범위로 정함」으로 옮긴다. `recs` 는 그래도 적는다(권장 = 범위가 정한 값).
+- `docsHookup` — 10단계 문서 구조 질문의 답(`proceed` · `later` · `skip`)과 `docs-hookup` 의 권장·이유. 9단계 영수증 뒤에 묻기 때문에 영수증에는 들지 않는다.
 - `done` 에는 완료 기준을 통과한 단계 번호만 넣는다. 0·1단계는 읽기뿐이라 적지 않는다 — 재개 때 다시 한다.
 - `slots` 는 그 답이 정하는 슬롯 값이다. `"*"` 는 배열의 모든 원소, 정규식 값은 `String(re)` 꼴(`"/…/i"`) 문자열로 적는다. CHECKS.md §6 스크립트가 이것을 config·settings 와 대조한다.
 - `recs` 는 그 D 의 항목마다 권장(DECISIONS.md 「권장」)이다. `recommended: null` 은 「판단 근거 부족」이고 그때 `followed` 도 `null` 이다. 권장과 다르게 고르면 `followed: false` — CHECKS.md §6 ⑤ 와 보고의 「권장과 다름」이 이것을 읽는다.
@@ -233,12 +292,40 @@ example 을 복사한 직후 **첫 줄 앞에** 한 줄을 넣는다(Edit). 정�
 | `drift.mirrors` | 레포 안 사본이 원본과 달라지면 알린다 |
 | `reviewThreshold` | 이만큼 넘게 바뀌면 커밋 전에 리뷰를 돌린다(파일 수·줄 수) |
 | probe · 프로브 | 훅이 실제로 도는지 확인하는 가짜 명령. 아무것도 막지 않는다 |
+| 라이트 · 설치 범위 | 위험한 명령을 실행 전에 막는 가드 하나만 건다. 관찰·기록은 하지 않는다 |
+| 계측 | 막는 가드에 더해, 턴마다 무엇을 했는지 관찰해 기록(계측 로그)한다. 하네스 자체를 개발·평가하는 설치처용이다 |
+| docs-setup · 문서 구조 맞추기 | 지난 계획서 같은 낡은 문서를 따로 둘 폴더(아카이브)와 문서 목록을 정해, 문서 정리 도구가 그 문서를 옮길 수 있게 한다 |
 
 표에 없는 용어를 첫 문장에 써야 하면 같은 꼴로 풀어 쓰고, 보고의 「질문 형식」 줄에 그 용어를 적는다 — 다음 판 풀이표의 후보다.
 
 ### 꼴
 
 ```text
+header: 하네스 설치범위
+D0. 이 레포에 하네스를 어디까지 설치할까? 「라이트」는 위험한 명령을 실행 전에 막는 가드 하나만 걸고, 「계측」은 거기에 더해 턴마다 한 일을 관찰해 기록합니다.
+근거: 이 레포는 하네스를 개발·평가하는 설치처 목록(<비교 창 설치처 문서:행>)에 없다 · 관찰 기록을 읽을 사람·일정이 없다
+
+| 범위 | 거는 훅 | 채우는 칸 | CLAUDE.md 절 |
+| - | - | - | - |
+| 라이트 | 실행 전 가드 1개 | 위험 명령(deny·ask)·공유 자원 · 공유DB 테스트 제외 · 커밋 정책 · kit 칸(문서 칸은 비워 두고 끝에 묻는다) | 짧은 판 |
+| 계측 | 5개(가드 + 실행 뒤·실패·턴 시작·턴 종료 관찰) | 위 + 증거 슬롯 · 지표 · 사본 감시 · 문서 칸 | 전체 판 |
+
+1. 라이트 (권장)
+   권장 이유: 하네스 개발 설치처가 아니다 — 관찰 기록을 쌓아도 읽는 사람이 없고, 막는 가드는 두 범위가 같다
+   바뀌는 것: settings.json 에 훅 1개. 관찰·증거 질문(D7 일부)은 묻지 않고 끔으로 둔다. 나중에 계측으로 올리려면 걷어 낸 뒤 다시 설치한다
+2. 계측 — 하네스 개발 설치처용
+   바뀌는 것: settings.json 에 훅 5개 · .harness/log.jsonl 에 턴마다 기록이 쌓인다(커밋하지 않음). 증거 슬롯·지표 질문을 모두 묻는다
+
+header: 문서구조 맞추기
+10단계. 설치가 끝났습니다. 지난 계획서 같은 낡은 문서를 따로 둘 폴더(아카이브)와 문서 목록을 지금 정할까? 정하면 문서 정리 도구(archive-cycle)가 문서를 옮길 수 있습니다. (docs-setup — project.docs.archiveDir 등)
+근거: install.mjs docs-hookup — 「관찰: 문서 <N>개(docs/ 아래 <M>개) · archiveDir 키 없음 · …」
+
+1. 진행 (권장)
+   권장 이유: <docs-hookup 의 「권장 이유:」 줄 — 예: 문서가 14개 있는데 아카이브 폴더 칸이 비어 문서 정리가 문서를 옮기지 못한다>
+   바뀌는 것: 이어서 docs-setup 을 돈다(문서마다 판정 → 옮김은 그 스킬이 다시 묻는다)
+2. 나중에
+   바뀌는 것: 지금은 아무것도 바꾸지 않는다. 문서 칸은 비워 둔 채라 문서 정리 도구가 쓸 때 묻는다. 나중에 docs-setup 을 돌린다
+
 header: 단위테스트 범위
 D3-1. 단위 테스트를 돌릴 때 로컬 컨테이너 DB 가 필요한 통합 테스트까지 함께 돌릴까? (commands.unitTest)
 근거: <기반 클래스 파일:행> 을 상속하는 통합 테스트 <N>개 · 대상 localhost:<포트> 컨테이너(<compose 파일>) · 거를 이름 관습·태그 없음
@@ -359,6 +446,7 @@ D10. Claude Code 아래 상태 줄에 지금 쓰는 줄과 graft 줄을 함께 �
 
 | 항목 | header | 글자 수 |
 | - | - | - |
+| D0 | `하네스 설치범위` | 8 |
 | D1 | `설치 위치` | 5 |
 | D2 | `공유DB 승인방식` | 9 |
 | D2-2 (서버 기동) | `서버 기동 확인` | 8 |
@@ -377,6 +465,7 @@ D10. Claude Code 아래 상태 줄에 지금 쓰는 줄과 graft 줄을 함께 �
 | D8-2 | `문서칸 되살리기` | 8 |
 | D9 | `graft 사용` | 8 |
 | D10 | `전역 상태줄 합치기` | 10 |
+| 10단계 (문서 구조) | `문서구조 맞추기` | 8 |
 
 ### 선택지 라벨 · 권장 표시
 
@@ -400,6 +489,7 @@ D10. Claude Code 아래 상태 줄에 지금 쓰는 줄과 graft 줄을 함께 �
 ```json
 {
   "installedAt": "<ISO 시각>",
+  "tier": "light",
   "source": { "repo": "https://github.com/surahha-ha/harness-agent", "sha": "<40자 SHA>", "dirty": false },
   "kit": { "repo": "surahha-ha/harness-kit", "sha": "<설치에 쓴 harness-kit SHA 또는 null>" },
   "decisions": [{ "id": "D1", "answer": "새 worktree 에 설치" }, { "id": "D5", "answer": "메시지만 · push 확인 · trailer 없음" }],
@@ -432,6 +522,7 @@ D10. Claude Code 아래 상태 줄에 지금 쓰는 줄과 graft 줄을 함께 �
 }
 ```
 
+- `tier` — 체크포인트 `tier`(D0 답). **필수** — 없으면 스크립트가 쓰지 않는다. `settings.hooks` 가 그 범위의 훅(§1)과 정확히 맞는지도 본다(범위 밖 훅 · 빠진 범위 훅 → `FAIL`).
 - `local` — 8-2단계(D9·D10)를 했을 때만. 커밋되지 않는 이 PC·이 트리의 항목이라 해시를 채우지 않는다. `items` 는 걷어낼 때 볼 자리를 적는 목록이다 — 상대경로 · `~/` · `git-path:` 꼴만(스크립트가 절대경로·모르는 항목을 막는다). `.mcp.json`·`.ignore` 는 init 전에 없던 경우만 적는다. 실제로 무엇을 만들었는지는 각 PC 의 체크포인트(`git-path:harness-kit-graft/state.json` · `~/.claude/harness-kit/receipt.json`)가 기준이다 — 다른 PC·worktree 에는 이 항목들이 없다.
 - `files` — 디렉토리 항목은 스크립트가 파일로 편다(`.harness/*.jsonl` 런타임 산출물은 뺀다). `role` 은 `skeleton` · `config` · `aux`.
 - `edits` — `block`(시작·끝 표시 블록) · `line`(한 줄 표시) · `replace`(표시 없이 고친 줄). block·line 은 그 파일 안에 나오는 순서대로 하나씩 적는다 — 스크립트가 표시 수와 맞춰 보고 해시를 채운다. `replace` 의 `before`·`after` 는 줄끝 없이 LF 로 잇고, `count` 는 `after` 가 그 파일에 나오는 수다.
@@ -440,4 +531,8 @@ D10. Claude Code 아래 상태 줄에 지금 쓰는 줄과 graft 줄을 함께 �
 - `plugin.installRecord` — `installed`(5단계 3번을 실행) · `skipped`(이미 enabled 라 건너뜀).
 - 반출 — 로컬 클론 경로·사용자 홈·드라이브 경로를 넣지 않는다(스크립트가 막는다). 결정 답에 경로가 필요하면 상대경로나 일반 이름으로 적는다.
 
-스크립트가 쓰는 영수증은 초안에 `schema: 1`·`tool` 과 sha256(파일·블록·줄)을 더한 꼴이다. sha256 은 **줄끝을 LF 로 맞춘 UTF-8 내용**의 해시이고, 블록·줄은 표시 줄을 포함해 줄끝을 뺀 줄을 LF 로 이은 것의 해시다.
+스크립트가 쓰는 영수증은 초안에 `schema: 2`·`tool` 과 sha256(파일·블록·줄)을 더한 꼴이다. sha256 은 **줄끝을 LF 로 맞춘 UTF-8 내용**의 해시이고, 블록·줄은 표시 줄을 포함해 줄끝을 뺀 줄을 LF 로 이은 것의 해시다.
+
+- `config.slots` — `--example <example 사본>`(CHECKS.md §5 ② 의 그 SHA 판)을 넘기면 스크립트가 example 과 config 를 칸 단위로 대어, **설치가 바꾼 칸마다** `{ path, tier, before, beforeNote, afterSha }` 를 적는다. `before` 는 example 의 값 원문(LF · 여러 줄 배열은 여러 줄 그대로), `beforeNote` 는 그 칸 줄의 꼬리 주석(`''` = 없음 · `null` = 다른 칸과 한 줄), example 에 없던 칸은 맨 위 새 칸 하나만 `before: null` 로 적는다. harness-uninstall 의 범위 낮추기가 이것으로 범위 밖 칸을 설치 전 값으로 되돌린다 — `--example` 없이 쓰면 그 기준이 없다(INFO 줄).
+- schema 1 영수증(`tier` 없음)은 harness-uninstall 이 **계측**으로 읽는다 — 그때까지의 설치는 모두 전체 설치였다. 고쳐 쓰지 않아도 된다.
+- 범위를 낮추면 harness-uninstall 이 `tier` · `settings.hooks` · `config.slots` · 바꾼 블록 해시를 고치고 `tierChanges` 에 한 줄(`{ at, from, to, by, hooks, slots }`)을 더한다.
