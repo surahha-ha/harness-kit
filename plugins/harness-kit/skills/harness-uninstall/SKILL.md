@@ -10,6 +10,7 @@ description: 지금 레포에서 harness-install 이 넣은 것만 걷어 낸다
 1. **게이트** — `.harness/`(골격 사본 · 런타임 산출물) · `harness.config.mjs` · config 가 가리키는 레포 고유 보조 파일 · `.claude/settings.json` 의 `.harness/` 훅
 2. **설치가 고친 곳** — `CLAUDE.md` 의 「개발 하네스」 절과 그 절을 가리키는 줄 · `.gitignore` 의 하네스 줄 · 8단계에서 고친 문서 줄 · 겹침 결정으로 넣은 `enabledPlugins` false 키
 3. **harness-kit 플러그인 키** — `enabledPlugins` 의 `harness-kit@harness-kit` · `extraKnownMarketplaces.harness-kit`(맨 마지막 결정)
+4. **로컬 전용 선택 항목**(harness-install D9·D10 을 켰을 때) — graft 로컬 연결(`settings.local.json` 의 graft 몫 · `.claude/helpers/graft-*.cjs` · `.claude/skills/graft/` · `graft/` · 새로 생긴 `.mcp.json`·`.ignore` · info/exclude 블록)과 사용자 전역 상태 줄 합치기. 커밋되지 않는 것이라 영수증 해시 대신 각 스크립트의 체크포인트가 기준이고, 0-2단계에서 따로 묻는다. 전역 상태 줄은 이 레포를 걷어 내도 저절로 되돌리지 않는다
 
 기준은 둘 중 하나다. 레포 루트에 **영수증**(`harness.install.json`, harness-install 9단계가 쓴다)이 있으면 영수증이 기준이다. 없으면 **알려진 구조**로 후보를 뽑고 항목마다 확인받는다.
 
@@ -24,7 +25,7 @@ description: 지금 레포에서 harness-install 이 넣은 것만 걷어 낸다
 
 보조 스크립트는 이 스킬 디렉토리의 `scripts/uninstall.mjs` 하나다. 아래에서 `U` 는 `node "${CLAUDE_SKILL_DIR}/scripts/uninstall.mjs"` 를 줄인 것이다. 인자에는 레포 경로·후보 id·답만 넘긴다 — 명령 문자열을 셸 인자로 넘기면 아직 살아 있는 실행 전 가드가 그 문자열을 보고 막는다.
 
-스크립트 순서는 하나다 — `sessions` → `scan` → `answer` → `backup` → `apply` → `plugin` → `records` → (CLI 를 돌렸으면) `after-cli` → `verify` → 보고 → `finish`. 명령마다 출력 끝 「다음:」 줄이 다음 명령을 말한다. 한 Bash 호출에 두 단계를 묶지 않는다 — 시험에서 `plugin` 과 `verify` 를 한 번에 돌려, 설치기록 질문이 검증 뒤로 밀렸다.
+스크립트 순서는 하나다 — `sessions` → (로컬 선택 항목이 있으면 0-2단계의 `graft-localize.mjs remove` · `statusline-setup.mjs restore`) → `scan` → `answer` → `backup` → `apply` → `plugin` → `records` → (CLI 를 돌렸으면) `after-cli` → `verify` → 보고 → `finish`. 명령마다 출력 끝 「다음:」 줄이 다음 명령을 말한다. 한 Bash 호출에 두 단계를 묶지 않는다 — 시험에서 `plugin` 과 `verify` 를 한 번에 돌려, 설치기록 질문이 검증 뒤로 밀렸다.
 
 각 단계를 시작할 때 [PITFALLS.md](PITFALLS.md) 의 같은 번호 절을 먼저 읽는다.
 
@@ -48,6 +49,17 @@ description: 지금 레포에서 harness-install 이 넣은 것만 걷어 낸다
 
 **완료 기준:** 위 항목마다 관찰값이 한 줄씩 적혀 있고, 「중단 — harness-install 초기화로」 · 「진행 — 새로 걷어내기」 · 「재개 — N단계부터」 중 하나로 판정돼 있다.
 
+## 0-2. 로컬 선택 항목 — graft 로컬 연결 · 전역 상태 줄 (scan 전에)
+
+영수증에 `local` 이 있거나, 영수증이 없어도 `.claude/helpers/graft-hooks.cjs` 가 있거나 `git rev-parse --git-path harness-kit-graft/state.json` 이 있으면 graft 로컬 연결이 있다. `S=${CLAUDE_SKILL_DIR}/../../scripts` 라 할 때 상태는 `node "$S/graft-localize.mjs" status <루트>` 와 `node "$S/statusline-setup.mjs" status` 로 본다.
+
+- **scan 보다 먼저 한다.** graft 훅을 남긴 채 `.gitignore` 의 `/graft/` 블록을 지우면 다음 graft build 가 표시 없는 줄을 다시 덧붙인다. 또 graft 몫을 뺀 `settings.local.json` 을 백업·검증의 기준으로 삼아야 6단계 대조(하네스가 아닌 훅이 백업과 같은가)가 맞는다.
+- **graft 로컬 연결** — [DECISIONS.md](DECISIONS.md) 「graft 로컬 연결」을 묻는다. 「걷어 냄」이면 `node "$S/graft-localize.mjs" remove <루트>`(그래프 데이터를 남기려면 `--keep-graph`). 백업은 `git-path harness-kit-graft/backup-<시각>/` 에 남고(그래프 `graft/` 는 다시 만드는 산출물이라 백업하지 않는다), `failures=0` 이어야 다음으로 간다. 다른 worktree 가 graft 를 쓰면 info/exclude 블록은 남긴다(`KEEP` 줄). settings.json 에 graft 몫이 남아 있다는 `WARN` 은 커밋 파일이라 스크립트가 지우지 않는다 — 사용자에게 옮긴다.
+- **전역 상태 줄** — 전역 영수증(`~/.claude/harness-kit/receipt.json`)이 있을 때만 DECISIONS.md 「전역 상태 줄 되돌리기」를 따로 묻는다. 「되돌림」이면 `node "$S/statusline-setup.mjs" restore`. 지금 값이 우리가 쓴 값과 다르면 스크립트가 손대지 않고 종료코드 3 으로 멈춘다 — 그 사실만 보고한다. 이 PC 의 다른 레포도 같은 전역 줄을 쓰므로 레포 걷어내기가 저절로 되돌리지 않는다.
+- 이 세션에 이미 올라온 graft 훅은 helpers 가 지워진 뒤 도구 호출·턴 끝에 오류(파일 없음)를 낼 수 있다. 막지는 않는 오류다 — 새 세션에서는 나지 않는다.
+
+**완료 기준:** 로컬 항목이 없으면 「없음」이 적혀 있다. 있으면 답마다 스크립트 출력 끝 줄(`failures=0` · `OK` · `STOP` 과 이유)과 백업 경로가 보고 초안에 있다.
+
 ## 1. 후보 뽑기 — 영수증 또는 알려진 구조
 
 `U scan <루트>` 를 돌린다. 스크립트가 체크포인트에 계획을 적고 표를 낸다(id · 질문 header · 상태 · 권장 · 답 · 항목 — 근거). 표 위 「후보 N개」 줄과 「설치: HEAD 에 커밋됨 / HEAD 에 없음」이 보고와 7단계의 근거다.
@@ -56,6 +68,7 @@ description: 지금 레포에서 harness-install 이 넣은 것만 걷어 낸다
 - **영수증이 없으면** 알려진 구조로 뽑는다 — `.harness/` · `harness.config.mjs` · `.harness/` 를 가리키는 settings 훅(`settings.local.json` 포함) · `CLAUDE.md` 의 「개발 하네스」 절과 그 절을 가리키는 줄 · `.gitignore` 의 `.harness/` 줄과 바로 위 주석 · config `commands.*`·`project.commands.*` 가 가리키는 보조 파일(이름에 harness 가 있거나 설치와 함께 생긴 것) · 설치 근거가 있는 `enabledPlugins` false 키 · harness-kit 플러그인 키. 표시(`harness-kit:begin`·`harness-kit:line`)가 있으면 어느 파일이든 후보로 잡는다. 상태는 `unknown`(비교 기준 없음)이다.
 - **앞선 걷어내기가 있었으면** 그 백업(`git rev-parse --git-path harness-uninstall-backup/*/index.json`)에서 그때 후보와 답을 읽어, 남긴 보조 파일을 다시 후보로 잡는다 — 두 번째 걷어내기에는 config 가 이미 없어 config 명령으로는 보조 파일을 못 찾는다. 예전 꼴의 index.json(후보 목록 없음)이면 백업 파일 중 이름에 harness 가 있는 것을 잡는다. config 도 백업도 없으면 이름에 harness 가 있고 미추적(또는 설치 커밋에서 생긴) 파일을 「권장 없음」으로 잡는다. 표 위 「앞선 걷어내기 백업 N개」 줄이 그 근거다.
 - 표 아래 **남을 참조**는 권장대로 걷어 낸 뒤에도 남을 줄이다. 보조 파일을 다른 파일이 가리키면 그 보조 파일의 권장은 「남김」이 된다. 보고의 참조 수는 이 줄(과 verify 요약)에서 옮긴다 — 시험에서 스크립트가 보조 파일을 몰라 「0줄」을 냈고, 보고는 그 수를 손으로 고쳐 썼다.
+- `.gitignore` 의 `/graft/` 표시 블록(harness-install D9)은 graft 가 아직 이 트리에 연결돼 있으면(0-2단계에서 남겼으면) 권장이 「남김」이다 — 지우면 graft build 가 표시 없는 줄을 다시 덧붙인다.
 - 스크립트가 config 의 `project.git.commitExecution`·`push`·`coAuthor` 를 **지우기 전에** 읽어 체크포인트에 적는다(7단계가 쓴다).
 
 **완료 기준:** 체크포인트에 계획이 있고, 표의 후보마다 header·상태·권장(또는 「권장 없음」)·근거가 있다. `WARN` 줄은 하나씩 사용자에게 옮겼다. 표에 없는데 하네스로 보이는 것을 찾았으면 손으로 지우지 않고 보고에 적는다.
@@ -154,6 +167,7 @@ R=<레포 루트>; B=<브랜치>
 
 - 기준(영수증 / 알려진 구조) · 후보 수(플러그인 키 포함) · 지운 것 · 되돌린 것 · 남긴 것(이유) · 「설치 뒤 손댄 것」의 처리 · 권장이 없어 keep 으로 채운 칸
 - 남은 참조 목록 · 검증 결과 · 커밋(SHA, 메시지 파일, 또는 verify 가 낸 「커밋하지 않음」 이유) · 플러그인 키 상태 · 설치 기록(요약의 「설치 기록:」 줄 — 다른 트리 기록은 건드리지 않았다는 것)
+- 0-2단계 로컬 항목 — graft 로컬 연결(걷어 냄 / 남김 · 백업 경로 · 남긴 exclude 블록과 이유) · 전역 상태 줄(되돌림 / 남김 / 값이 달라 손대지 않음). 남겼으면 나중에 걷어 내는 명령(`graft-localize.mjs remove` · `statusline-setup.mjs restore`)을 적는다
 - **백업과 증거 사본 — 두 절대경로와 수명.** 백업은 `git-path` 아래라 worktree 면 `.git/worktrees/<이름>/` 안에 있어 `git worktree remove` 가 함께 지운다. 증거 사본은 `git-common-dir/harness-evidence/` 아래라 worktree 를 지워도 남고, 필요 없어지면 손으로 지운다. 재설치할 수 있으면 백업을 레포 밖으로 옮겨 두라고 적는다. **앞선 걷어내기의 백업·증거 사본**(요약의 「앞선 백업」·「앞선 증거 사본」 줄)도 함께 적고, 증거 사본은 손으로 지워야 남지 않는다고 적는다
 - **되돌리는 법** — 요약의 「되돌리기:」 줄(그대로 복사해 돌린다)과 「되돌리기(스크립트가 없을 때)」 줄. 되돌리면 하네스 훅도 돌아오니 새 세션을 연다는 말을 붙인다
 - **남긴 것을 나중에 지우려면** — 요약의 같은 이름 절을 항목마다 옮긴다(다시 걷어내기 · 정확한 손 편집 · 줄끝 명령). `git restore`·`git checkout -- <파일>` 로 한꺼번에 되돌리지 않는다고 적는다 — 파일 단위라 다른 변경까지 되돌리고, 자동 모드의 권한 분류기가 막을 수 있다. 막히면 우회하지 않고 줄 단위 Edit 나 걷어내기 재실행으로 한다(PITFALLS §8)

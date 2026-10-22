@@ -2,7 +2,7 @@
 
 질문마다 **1단계 근거(파일:행)** 를 먼저 보이고, 선택지와 각 선택이 바꾸는 것을 함께 제시한다. 사용자가 답하지 않은 칸은 내가 고르지 않는다 — `null` + 「미확정」 주석으로 두고 보고에 적는다. 답을 바꾸면 체크포인트의 그 항목도 덮어쓴다(TEMPLATES.md §7) — 6단계가 체크포인트 답과 config 값을 대조한다.
 
-묻는 순서는 D1 → D2(D2-2) → D3 → D6(D6-2) → D4 → D5 → D7 → D8 이다. 앞 답이 뒤 질문의 선택지를 바꾼다. 번호는 체크포인트·영수증의 id 라 그대로 두고, D6 만 D4 앞으로 당겨 묻는다 — 플러그인을 끄면 사라지는 가드(D6-2)가 D4 의 후보가 되기 때문이다.
+묻는 순서는 D1 → D2(D2-2) → D3 → D6(D6-2) → D4 → D5 → D7 → D8 → D9 → D10 이다. 앞 답이 뒤 질문의 선택지를 바꾼다. D9·D10 은 선택 항목이라 기본은 끔이고, 커밋되는 파일을 바꾸지 않는다(D9 의 `.gitignore` 한 줄만 예외). 번호는 체크포인트·영수증의 id 라 그대로 두고, D6 만 D4 앞으로 당겨 묻는다 — 플러그인을 끄면 사라지는 가드(D6-2)가 D4 의 후보가 되기 때문이다.
 
 ## 권장 — 관찰에서 계산하고, 고르는 것은 사용자다
 
@@ -248,3 +248,46 @@ harness-kit 의 스킬·커맨드·에이전트는 config `project` 블록의 �
 
 - **docs-setup 과의 연결** — `docs.archiveDir`·`pathValidator`·`autoloaded`·`memory.slugs` 와 게이트 `docs.always`·`docs.archive` 는 harness-kit 의 docs-setup 스킬이 정하는 칸이다. 그 스킬은 아직 이 판에 들어 있지 않다 — 지금은 근거 없는 칸을 위 주석과 함께 `null` 로 두고 보고에 「docs-setup 에서 정함」으로 적는다. 스킬이 들어오면 보고의 이 줄이 다음 할 일이 된다.
 - **게이트 `docs.archive` 에 이름 앞머리를 넣지 않는다.** 이 칸은 「낡아도 되는 곳 — 검사에서 뺀다」이다. `docs/task/goal-`·`docs/phase` 같은 앞머리는 아직 살아 있는 같은 이름의 문서까지 검사에서 빼, 시험 설치처에서는 살아 있는 문서 9개가 검사 밖으로 나갔다. 넣을 수 있는 것은 아카이브 폴더 하나(`<archiveDir>/`)나 끝난 문서의 파일 경로뿐이다. 근거가 없으면 `[]` 로 둔다.
+
+## D9. graft 사용 — 코드 지도를 이 PC 에서만 켤까 (레포 단위, 기본 안 씀)
+
+graft(전역 npm 패키지 `@nanonets/graft`)는 레포의 코드 그래프를 `graft/` 에 만들고, 훅으로 **매 프롬프트마다 관련 코드 위치를 대화에 붙이고** 턴 끝에 그래프를 다시 짓는다. 코드가 크고 작업이 잦은 레포에서만 이득이다 — 작고 문서 위주인 레포에서는 붙는 내용이 잡음이었다(실측).
+
+- 질문 첫 문장: 「이 레포의 코드 지도(graft)를 만들어, 질문할 때마다 관련 코드 위치를 자동으로 붙여 줄까요? 이 PC·이 폴더에서만 켜지고 커밋되지 않습니다.」
+- 근거: `node "${CLAUDE_SKILL_DIR}/../../scripts/graft-localize.mjs" signal <레포 루트>` 의 `D9 관찰`·`D9 권장` 두 줄 — 추적 파일 수 · 코드 파일 수(확장자 기준) · 최근 30일 커밋 수 · `graft --version`.
+
+| 관찰 | 권장 |
+| - | - |
+| graft 가 이 PC 에 없다(`graft --version` 실패) | 묻지 않는다 — 설치 안내(`npm i -g @nanonets/graft`, 사용자가 직접)만 하고 보고에 「graft 없음 — 건너뜀」. 전역 npm 설치를 스킬이 하지 않는다 |
+| 코드 파일 150개 미만, 또는 코드 파일이 추적 파일의 1/3 미만(문서 위주) | 안 씀 |
+| 코드 파일 500개 이상이고 최근 30일 커밋 20개 이상 | 사용 — 이 PC 에서만 |
+| 그 사이 | 권장 없음 — 크기와 작업 빈도가 문턱 사이다 |
+
+- 문턱의 근거: 150개 미만·문서 위주는 실측(작은 문서 위주 레포에서 주입이 잡음)에 맞춘 선이다. 500개·20커밋은 「`grep`·`Read` 몇 번으로는 위치를 찾기 어려운 크기」와 「턴마다 그래프를 다시 짓는 비용을 회수할 만큼 작업이 잦음」의 첫 추정이다 — 실측이 쌓이면 스크립트의 `SIGNAL` 상수와 이 표를 함께 고친다.
+- 선택지 — 바뀌는 것
+  - **사용 — 이 PC 에서만** — 8-2단계가 `.gitignore` 에 `/graft/` 표시 블록 한 개(커밋 대상, 개인 경로 없음)를 넣고, `graft init`·`graft build` 뒤 `graft-localize.mjs localize` 로 graft 가 넣은 설정을 전부 `.claude/settings.local.json` 으로 옮긴다. 커밋되는 `settings.json` 은 init 전과 같아진다. 다른 PC·worktree 에는 graft 가 없다.
+  - **안 씀** — 아무것도 바뀌지 않는다.
+- **왜 로컬 전용인가** — graft 가 만드는 `.claude/helpers/graft-*.cjs` 는 그 PC 의 graft 설치 경로를 절대경로로 박아 둔다(shim 의 `BAKED`). 커밋하면 README 읽기 규칙 7(절대경로·사용자 홈 금지)에 걸리고, graft 가 없는 팀원 PC 에서는 settings.json 의 graft 훅이 매 턴 실패한다.
+- **timeout 교정** — graft 0.12.1 은 훅 `timeout` 에 8000·10000·15000 을 적는다(ms 로 본 값). Claude Code 의 훅 timeout 단위는 **초**다(공식 hooks 문서 Common fields 「Seconds before canceling」). `localize` 는 graft 훅의 timeout 이 1000 이상이면 ms 로 보고 초로 올림한다(8000→8 · 10000→10 · 15000→15). graft 는 프롬프트 훅의 하위 질의 시간을 `settings.json` 의 timeout 에서만 읽으므로, 옮긴 뒤에는 기본값(6초)으로 돈다 — 15초 안에 든다.
+- **graft 업그레이드 뒤** — graft 는 판이 바뀐 첫 세션 시작에 연결을 다시 쓰면서(`reconcileWiring` → `runInit`) `settings.json` 에 graft 키를 다시 넣는다. `graft-localize.mjs status` 가 그것을 알리고, `localize` 만 다시 돌리면 같은 상태가 된다(멱등).
+- 체크포인트에 `D9` 로 적는다 — `slots: []`, `recs` 에 권장·근거(`signal` 두 줄)·따름 여부. 영수증의 `local.graft`(TEMPLATES.md §9)가 걷어내기의 기준이다.
+
+## D10. 전역 상태 줄 — 지금 상태 줄과 graft 줄을 함께 보일까 (사용자 전역, 기본 안 씀)
+
+harness-kit 이 **사용자 전역(`~/.claude`)에 쓰는 유일한 항목**이다. 플러그인은 상태 줄(`statusLine`)을 줄 수 없다 — 플러그인 settings 에서 효력이 있는 키는 `agent`·`subagentStatusLine` 뿐이다(공식 plugins manifest-reference 「settings」). 상태 줄은 세션에 하나뿐이라, graft 줄을 보이려면 전역 상태 줄 명령을 「원래 명령 + graft 줄」을 잇는 스크립트로 바꿔야 한다.
+
+- 질문 첫 문장: 「Claude Code 아래 상태 줄에 지금 쓰는 줄과 graft 줄을 함께 보일까요? 이 PC 의 사용자 전역 설정(`~/.claude/settings.json`)에서 상태 줄 명령 하나만 바꿉니다 — 모든 레포에 적용되고, graft 가 없는 레포에서는 원래 줄만 나옵니다.」
+- 근거: `node "${CLAUDE_SKILL_DIR}/../../scripts/statusline-setup.mjs" status` — 지금 전역 statusLine 명령과 판정(없음 · 보통 상태 줄 · 다른 합치기 스크립트 · 우리 합치기).
+
+| 관찰 | 권장 |
+| - | - |
+| D9 가 「안 씀」이거나 건너뜀 | 묻지 않는다 |
+| 전역 statusLine 이 이미 우리 합치기 스크립트다 | 묻지 않는다 — 그대로 쓴다(보고에 「설치돼 있음」) |
+| 전역 statusLine 이 이미 상태 줄을 합치는 명령으로 보인다(우리 것이 아님) | 권장 없음 — 그 명령을 보이고, 그대로 둘지 · 그 원래 명령을 base 로 옮겨 바꿀지 묻는다. 스크립트는 덮어쓰지 않고 종료코드 3 으로 멈춘다 |
+| D9 가 「사용」 | 합치기 사용 |
+
+- 선택지 — 바뀌는 것
+  - **합치기 사용 (전역 설정 바꿈)** — `statusline-setup.mjs install` 이 합치기 스크립트를 `~/.claude/harness-kit/statusline-combined.cjs` 로 복사하고(플러그인 캐시 경로는 판마다 바뀌어 가리키지 않는다), 지금 명령을 `~/.claude/harness-kit/statusline.json` 의 `base` 로 남기며, 전역 settings.json 을 백업한 뒤 `statusLine.command` 하나만 바꾼다. 전역 영수증은 `~/.claude/harness-kit/receipt.json` 이다(레포 영수증과 따로). 8-2단계의 `localize --statusline` 이 같은 명령을 그 레포의 `settings.local.json` 에도 넣어, graft 업그레이드가 graft 전용 상태 줄을 다시 넣어도 가려지게 한다(local 이 project 보다 앞선다).
+  - **안 씀** — 전역 설정을 바꾸지 않는다. graft 상태 줄은 보이지 않고, graft 업그레이드 뒤 `settings.json` 에 다시 들어온 graft 상태 줄은 `localize` 를 다시 돌려야 빠진다.
+- 되돌리기는 레포 걷어내기와 따로 묻는다(harness-uninstall 0-2단계). 지금 값이 우리가 쓴 값과 같을 때만 원래 값으로 되돌린다.
+- 체크포인트에 `D10` 으로 적는다 — `slots: []`, `recs`. 영수증 `local.statusline` 에는 전역 영수증 위치를 `~/` 꼴로만 적는다.

@@ -3,6 +3,15 @@
 매니페스트에 `version` 필드를 두지 않는다 — 판은 main 커밋 SHA 로 갈린다. 절은 병합 단위로 적는다.
 (0.1.0 까지는 `plugin.json` 과 `marketplace.json` 의 명시 버전을 함께 올렸다.)
 
+## 미발행 — 설치 선택 항목: graft 로컬 연결 · 전역 상태 줄
+
+- `harness-install` 에 결정 둘을 더한다(기본 끔, 순서 D8 뒤) — **D9 graft 사용**(레포 단위, 이 PC·이 트리 전용)과 **D10 전역 상태 줄**(사용자 전역, D9 를 켰을 때만 묻고 권장). 실행은 새 8-2단계(D10 → D9 순서). D9 권장은 `graft-localize.mjs signal` 의 추적 코드 파일 수·최근 30일 커밋 수로 계산한다(코드 150개 미만이거나 코드 비율 1/3 미만 → 안 씀 · 코드 500개 이상이고 30일 커밋 20개 이상 → 사용 · 그 사이 권장 없음). graft 가 없으면 설치 안내만 하고 건너뛴다
+- 플러그인 스크립트 `plugins/harness-kit/scripts/` 를 더한다(Node 내장 모듈만) — `graft-localize.mjs`(`signal`·`prepare`·`localize`·`status`·`remove`): init 전 스냅숏과 `.gitignore` 의 `/graft/` 표시 블록(graft build 가 `.gitignore` 텍스트만 보고 매번 덧붙이는 것을 막는다), graft 가 settings.json 에 넣은 훅·상태 줄·권한·`footerLinksRegexes` 를 `settings.local.json` 으로 옮기고 settings.json 을 init 전 바이트로 되돌림(이벤트별 기계 대조, 어긋나면 쓰지 않음), graft 훅 timeout 을 초로 교정(8000·10000·15000 → 8·10·15), `.mcp.json` 정리와 `disabledMcpjsonServers: ["graft"]`, info/exclude 로컬 산출물 블록(추적 경로 제외, worktree 공용이라 합집합). 다시 돌려도 같다 — graft 업그레이드가 settings.json 에 키를 다시 넣으면 `localize` 만 다시 돌린다. `statusline-combined.cjs`(원래 명령과 레포의 graft 상태 줄 헬퍼를 병렬로 돌려 줄 단위로 잇고, 한쪽이 실패·타임아웃이면 나머지만) · `statusline-setup.mjs`(`status`·`install`·`restore` — 전역 settings.json 백업 뒤 `statusLine.command` 만 바꾸고, 다른 합치기 스크립트를 가리키면 멈춤, 되돌리기는 지금 값이 우리가 쓴 값일 때만)
+- harness-kit 이 사용자 전역에 쓰는 첫 항목이라 README 에 예외와 이유(플러그인 settings 는 `agent`·`subagentStatusLine` 만 받는다)를 적는다. graft 업그레이드 뒤 재실행 안내도 README 에
+- 영수증(`write-manifest.mjs`)에 `local`(커밋되지 않는 로컬 항목 — 해시 없음, 상대경로·`~/`·`git-path:` 꼴만)을 더한다(TEMPLATES §9)
+- `harness-uninstall` 에 0-2단계(scan 전)를 더한다 — graft 로컬 연결 걷어내기(`graft-localize.mjs remove`, 그래프만 남기기 가능)와 전역 상태 줄 되돌리기를 레포 걷어내기와 따로 묻는다. scan 은 graft 가 아직 연결된 트리에서 `.gitignore` 의 `/graft/` 블록을 「남김」으로 권한다
+- 시험을 더한다 — `npm test`(`tests/*.test.mjs`, node:test · 임시 git 레포·임시 홈, git 전역 설정을 비워 돈다)
+
 ## 미발행 — 하네스 설치 시험 반영
 
 - `harness-install` 에 `scripts/install.mjs` 를 더한다 — `precheck`(트리 종류·worktree 여부·다른 세션을 timestamp 있는 마지막 user·assistant 기록으로 동시·최근·오래됨으로 가름) · `settings-snap`·`settings-eol`·`after-cli`(settings 의 줄끝·BOM·끝 개행을 손대기 전 판대로 되살리고, CLI 가 다시 쓴 파일을 손본 직후 스냅숏으로 되덮음) · `test-select`(테스트 제외 패턴을 소스 트리에 대어 빠지는 것을 펼치고 실행 결과와 대조 — 디렉토리 일치로 하위 패키지까지 빠지는 것을 잡는다) · `slots`(kit 자산이 읽는 슬롯을 모아 빈 키와 이유 없는 `null` 을 실패로 셈) · `plugin-hooks`(끌 플러그인의 훅 목록). CHECKS §6 안에 있던 `answer-trace.mjs` 를 `scripts/` 로 꺼낸다

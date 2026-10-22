@@ -286,8 +286,13 @@ async function scan() {
       const sha = rangeSha(lines, b), want = blockSha(p, i);
       const status = !manifest ? 'unknown' : !want ? 'extra' : want === sha ? 'clean' : 'modified';
       const first = lines.slice(b.start + 1, b.end).map(body).find((l) => l.trim()) || '';
+      // graft 로컬 연결(D9)의 /graft/ 줄 — graft 가 아직 이 트리에 연결돼 있으면, 지우는 순간 graft build 가 표시 없는 줄을 다시 덧붙인다
+      const inner = lines.slice(b.start + 1, b.end).map((l) => body(l).trim()).filter((l) => l && !l.startsWith('#'));
+      const graftWired = p === '.gitignore' && inner.length === 1 && inner[0] === '/graft/' && exists('.claude/helpers/graft-hooks.cjs');
       add({ id: `text:${p}#block${i + 1}`, kind: 'text', group: 'text', title: `${p} 표시 블록 ${i + 1} (${b.end - b.start + 1}줄: ${first.slice(0, 40)})`, status,
-        recommend: 'remove', basis: status === 'modified' ? '설치 뒤 블록 안을 고쳤다 — 하네스 안내뿐이라 지우고 백업본에 남긴다' : '시작·끝 표시로 감싼 설치 블록', data: { path: p, op: { op: 'block', sha } } });
+        recommend: graftWired ? 'keep' : 'remove',
+        basis: graftWired ? 'graft 가 이 트리에 아직 연결돼 있다(.claude/helpers/graft-hooks.cjs) — 지우면 다음 graft build 가 표시 없는 /graft/ 줄을 다시 덧붙인다. graft 로컬 연결을 먼저 걷어 냈으면(0-2단계) 지운다'
+          : status === 'modified' ? '설치 뒤 블록 안을 고쳤다 — 하네스 안내뿐이라 지우고 백업본에 남긴다' : '시작·끝 표시로 감싼 설치 블록', data: { path: p, op: { op: 'block', sha } } });
       sectionTexts.push(lines.slice(b.start, b.end + 1).join(''));
     });
     const ls = lineShas(p);

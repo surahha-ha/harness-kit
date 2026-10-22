@@ -18,7 +18,7 @@
 | 스킬 | `ui-ux-guide` | 화면·문구·인터랙션을 만들거나 고칠 때 6단계 + 7원칙 + 체크리스트 |
 | 스킬 | `data-migration` | 데이터가 있는 DB 의 스키마 이행 · 타 서비스 ETL |
 | 스킬 | `plugin-sync` | 플러그인(이 플러그인 또는 프로젝트 오버레이) 최신화 사이클 — 명시 호출 전용 |
-| 스킬 | `harness-install` | "하네스 설치해줘" — 지금 레포에 harness-agent 게이트(`.harness/` 훅)와 이 플러그인(project scope)을 함께 설치. 결정은 하나씩 묻는다. 끝에 영수증 `harness.install.json` 을 남긴다 |
+| 스킬 | `harness-install` | "하네스 설치해줘" — 지금 레포에 harness-agent 게이트(`.harness/` 훅)와 이 플러그인(project scope)을 함께 설치. 결정은 하나씩 묻는다. 선택 항목(기본 끔): graft 로컬 연결 · 전역 상태 줄 합치기. 끝에 영수증 `harness.install.json` 을 남긴다 |
 | 스킬 | `harness-uninstall` | "하네스 제거해줘" · "하네스 재설치" — harness-install 이 넣은 것만 블록·키 단위로 걷어 낸다. 영수증이 있으면 영수증 기준, 없으면 알려진 구조로 후보를 뽑아 항목마다 확인. 재설치는 이 스킬 → 새 세션 → `harness-install` |
 | 에이전트 | `backend-engineer` | BE 구현 위임 기본 대상 |
 | 에이전트 | `frontend-engineer` | FE 구현 · BE→FE 계약 동기화 |
@@ -34,6 +34,25 @@
 
 이 플러그인에는 `hooks/` 가 없다. 위험 명령 가드 · test-first 가드 · 미러 드리프트 감시 같은 **실행 게이트는 harness-agent 의 몫**이다 — 각 프로젝트에 harness-agent 골격을 설치해 쓴다.
 플러그인 훅은 설치 범위(user 범위면 모든 프로젝트)에서 발화하므로, 공용 플러그인이 훅을 가지면 그 훅을 전제하지 않은 프로젝트에서도 돌게 된다.
+
+`harness-install` 의 선택 항목 「graft 사용」(D9)이 넣는 graft 훅도 플러그인 훅이 아니다 — 그 레포의 `.claude/settings.local.json`(커밋되지 않음)에만 들어간다.
+
+### 사용자 전역에 쓰는 것 — 상태 줄 하나뿐
+
+harness-kit 은 레포 안에만 쓴다. 예외가 하나 있다: `harness-install` 의 선택 항목 「전역 상태 줄」(D10, 기본 끔)을 고르면 `~/.claude/settings.json` 의 `statusLine.command` 를 합치기 스크립트(`~/.claude/harness-kit/statusline-combined.cjs` — 원래 명령의 출력 + 그 레포에 graft 상태 줄 헬퍼가 있으면 그 출력)로 바꾼다.
+
+- 왜 전역인가: 플러그인은 상태 줄을 줄 수 없다 — 플러그인 settings 에서 효력이 있는 키는 `agent`·`subagentStatusLine` 뿐이다(공식 plugins manifest-reference 「settings」). 상태 줄은 세션에 하나라 원래 줄과 graft 줄을 함께 보이려면 그 명령을 바꿔야 한다.
+- 바꾸기 전에 전역 settings.json 을 `~/.claude/harness-kit/backup/` 에 백업하고, 원래 명령은 `~/.claude/harness-kit/statusline.json` 의 `base` 로, 바꾼 기록은 `~/.claude/harness-kit/receipt.json`(레포 영수증과 따로)에 남긴다. 이미 다른 합치기 스크립트를 가리키면 덮어쓰지 않고 묻는다.
+- 되돌리기는 `harness-uninstall` 이 레포 걷어내기와 따로 묻고, 지금 값이 harness-kit 이 쓴 값과 같을 때만 원래 값으로 되돌린다(`plugins/harness-kit/scripts/statusline-setup.mjs restore`).
+
+### graft 를 업그레이드한 뒤
+
+「graft 사용」으로 설치한 레포는 graft 가 넣은 설정을 `.claude/settings.local.json` 으로 옮겨 둔다. graft 는 판이 바뀐 첫 세션 시작에 연결을 다시 쓰면서 커밋되는 `.claude/settings.json` 에 graft 키(훅 · 상태 줄 등)를 다시 넣는다. 그때 그 레포에서 한 번 다시 돌린다 — 같은 결과가 된다(멱등):
+
+```
+node <harness-kit 플러그인>/scripts/graft-localize.mjs status   <레포 루트>   # settings.json 에 graft 몫이 다시 들어왔는가
+node <harness-kit 플러그인>/scripts/graft-localize.mjs localize <레포 루트>   # 전역 상태 줄을 합쳤으면 --statusline
+```
 
 ### 우선순위
 
@@ -218,6 +237,10 @@ node tools/scan-commit-meta.mjs --all        # 기존 커밋 전체의 author·c
 - 조직명·식별자 접두어처럼 형태로 못 잡는 것은 **`.forbidden-terms.local`** 에 적는다. 이 파일은 **커밋하지 않는다**(`.gitignore` 등록) — 목록 자체가 유출물이기 때문이다.
 - 본문 스캔은 커밋 신원을 보지 않는다. 커밋의 author·committer(이름·메일)는 `tools/scan-commit-meta.mjs` 가 **`.forbidden-meta.local`**(한 줄에 정규식 하나, 커밋하지 않음)과 대조해 막는다. 클론한 PC 마다 이 파일도 만들고, 신원은 `git config user.email` 로 이 저장소에만 설정한다.
 - 검출되면 `--no-verify` 로 우회하지 말고, 값을 프로필 슬롯 참조나 합성 값(`192.0.2.x`, `example.com`, `orders` 같은 가상 이름)으로 바꾼다.
+
+## 시험
+
+`npm test`(= `node --test "tests/*.test.mjs"`) — 플러그인 스크립트(`plugins/harness-kit/scripts/`, 영수증·걷어내기의 로컬 항목)를 임시 git 레포와 임시 홈으로 돌린다. 실제 사용자 홈(`~/.claude`)과 이 PC 의 git 전역 설정은 쓰지 않는다.
 
 ## 변경 기록
 
