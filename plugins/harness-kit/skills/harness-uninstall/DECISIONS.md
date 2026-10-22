@@ -92,7 +92,7 @@ header 는 `graft 연결 처리` 다. 질문 첫 문장: 「이 PC 에서만 켜
 | 사용자 요청이 graft 까지 걷어 내라고 했다 | 걷어 냄 |
 | 그 밖(0-2단계는 목적 질문보다 앞이라 목적으로 가를 수 없다) | 권장 없음 — graft 를 이 폴더에서 계속 쓸지에 따라 고른다(고정 순서는 걷어 냄 → 걷어 내되 그래프는 남김 → 남김) |
 
-- **걷어 냄** — `graft-localize.mjs remove`: settings.local.json 의 graft 몫(훅 · 상태 줄 · 권한 · `disabledMcpjsonServers` 의 graft)을 떼고, helpers·skill, init 이 새로 만든 `.mcp.json`·`.ignore`, `graft/`, info/exclude 블록을 지운다. info/exclude 는 worktree 끼리 공유라, 다른 worktree 에서 graft 를 쓰면 그쪽 helpers 등이 미추적으로 보일 수 있다(출력의 경고 한 줄 · `/graft/` 는 `.gitignore` 에 있어 영향 없음). 다 걷으면 `git-path harness-kit-graft/`(스냅숏·체크포인트·백업)째 지우고, FAIL 이 있으면 남긴다. 이어지는 항목 질문에서 `.gitignore` 의 `/graft/` 블록은 「지움」이 권장된다.
+- **걷어 냄** — `graft-localize.mjs remove`: settings.local.json 의 graft 몫(훅 · 상태 줄 · 권한 · `disabledMcpjsonServers` 의 graft)을 떼고, helpers·skill, init 이 새로 만든 `.mcp.json`·`.ignore`, `graft/`, info/exclude 블록을 지운다. `prepare` 전부터 있던 미추적 helpers·skill·`graft/` 와 추적 파일(`.mcp.json` 등)은 건드리지 않는다(`KEEP` 줄). settings.json 에 graft 몫이 다시 들어와 있으면(업그레이드 뒤 `localize` 를 안 돌림) 아무것도 지우지 않고 FAIL 로 멈춘다 — `localize` 를 먼저 다시 돌린다. info/exclude 는 worktree 끼리 공유라, 다른 worktree 에서 graft 를 쓰면 그쪽 helpers 등이 미추적으로 보일 수 있다(출력의 경고 한 줄 · `/graft/` 는 `.gitignore` 에 있어 영향 없음). 그 helpers 에는 개인 절대경로가 들어 있으니 그 worktree 에서 `git add -A` 로 커밋하지 않게 알린다. 다 걷으면 스냅숏·체크포인트를 지우고 백업 `git-path harness-kit-graft/backup-<시각>/` 은 남기며, FAIL 이 있으면 다 남긴다. 이어지는 항목 질문에서 `.gitignore` 의 `/graft/` 블록은 「지움」이 권장된다.
 - **걷어 내되 그래프는 남김** — 같은데 `--keep-graph` 로 `graft/` 를 남긴다(큰 레포에서 다시 짓는 시간이 아까울 때).
 - **남김** — 아무것도 바꾸지 않는다. `.gitignore` 의 `/graft/` 블록도 「남김」이 권장된다.
 

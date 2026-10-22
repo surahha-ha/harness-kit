@@ -2,12 +2,12 @@
 // graft init 흉내의 값은 graft 0.12.1 dist/claude/settings-merge.js · init.js 를 옮긴 것이다.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync, readFileSync, mkdirSync, existsSync, rmSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync, mkdirSync, existsSync, rmSync, readdirSync } from 'node:fs';
 import { execFileSync, spawnSync } from 'node:child_process';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { fixTimeout, stripGraft, addBlock, removeBlock, addGitignoreBlock, checkNodeEngine, findGraftPackage, graftEngine } from '../plugins/harness-kit/scripts/graft-localize.mjs';
+import { fixTimeout, stripGraft, addBlock, removeBlock, addGitignoreBlock, checkNodeEngine, findGraftPackage, graftEngine, EXCLUDE_BEGIN } from '../plugins/harness-kit/scripts/graft-localize.mjs';
 
 // 이 PC 의 git 전역·시스템 설정(전역 ignore · autocrlf)이 판정에 섞이지 않게 비운다 — 스크립트를 띄우는 자식에도 물려준다
 const EMPTY_GITCONFIG = path.join(mkdtempSync(path.join(os.tmpdir(), 'hk-gitcfg-')), 'gitconfig');
@@ -39,10 +39,15 @@ function graftMerge(existing) {
   m.permissions.allow = [...new Set([...(m.permissions.allow || []), 'Bash(graft:*)', 'Bash(npx graft:*)', 'Bash(graft-dev:*)', 'Bash(node dist/cli.js:*)'])];
   return m;
 }
-/** graft init + build 이 이 레포에 쓰는 것 — settings.json 을 2칸 LF 로 통째로 다시 쓴다. */
-function simulateGraft(root) {
+/**
+ * graft init + build 이 이 레포에 쓰는 것 — settings.json 을 2칸 LF 로 통째로 다시 쓴다.
+ * 읽기는 실제 graft(init.js · mcp-config.js mergeJsonKey)처럼 BOM 을 벗기지 않는다 — 못 읽은 settings.json 은 {} 에서 다시 쓰고, 못 읽은 .mcp.json 은 건너뛴다.
+ * build:false 면 graft init --no-build 처럼 graft/·.ignore 를 만들지 않는다.
+ */
+function simulateGraft(root, { build = true } = {}) {
   const sp = path.join(root, '.claude', 'settings.json');
-  const cur = existsSync(sp) ? JSON.parse(readFileSync(sp, 'utf8').replace(/^﻿/, '')) : {};
+  let cur = {};
+  try { cur = JSON.parse(readFileSync(sp, 'utf8')); } catch { /* 없음·못 읽음 → {} (graft init.js 와 같다) */ }
   writeFileSync(sp, `${JSON.stringify(graftMerge(cur), null, 2)}\n`);
   mkdirSync(path.join(root, '.claude', 'helpers'), { recursive: true });
   writeFileSync(path.join(root, '.claude', 'helpers', 'graft-statusline.cjs'), 'const BAKED = "/abs/path/dist/claude";\n');
@@ -50,9 +55,16 @@ function simulateGraft(root) {
   mkdirSync(path.join(root, '.claude', 'skills', 'graft'), { recursive: true });
   writeFileSync(path.join(root, '.claude', 'skills', 'graft', 'SKILL.md'), '# graft\n');
   const mp = path.join(root, '.mcp.json');
-  const mcp = existsSync(mp) ? JSON.parse(readFileSync(mp, 'utf8')) : {};
-  mcp.mcpServers = { ...(mcp.mcpServers || {}), graft: { command: 'graft', args: ['mcp'] } };
-  writeFileSync(mp, `${JSON.stringify(mcp, null, 2)}\n`);
+  let mcp = {};
+  try { mcp = existsSync(mp) ? JSON.parse(readFileSync(mp, 'utf8')) : {}; } catch { mcp = null; } // 못 읽으면 건너뜀(mergeJsonKey)
+  if (mcp) {
+    mcp.mcpServers = { ...(mcp.mcpServers || {}), graft: { command: 'graft', args: ['mcp'] } };
+    writeFileSync(mp, `${JSON.stringify(mcp, null, 2)}\n`);
+  }
+  if (build) simulateBuild(root);
+}
+/** graft build 이 쓰는 것 — graft/ 와(없으면) .ignore. */
+function simulateBuild(root) {
   mkdirSync(path.join(root, 'graft', '.cache'), { recursive: true });
   writeFileSync(path.join(root, 'graft', 'INDEX.md'), '# index\n');
   if (!existsSync(path.join(root, '.ignore'))) writeFileSync(path.join(root, '.ignore'), "# graft's cards\n!graft/\ngraft/.cache/\ngraft/.graph/\n");
@@ -157,7 +169,12 @@ test('remove — localize 가 만든 것을 걷어 내고 settings.json 은 건�
   assert.ok(existsSync(path.join(stateDir, 'before')), '전제: prepare 가 스냅숏을 떴다');
   const r = run(root, 'remove');
   assert.equal(r.code, 0, r.out);
-  assert.equal(existsSync(stateDir), false, 'git-path harness-kit-graft/(스냅숏) 가 남았다');
+  assert.equal(existsSync(path.join(stateDir, 'before')), false, '스냅숏(before/)이 남았다');
+  assert.equal(existsSync(path.join(stateDir, 'state.json')), false, '체크포인트가 남아 다음 prepare 가 새 스냅숏을 뜨지 않는다');
+  const backups = readdirSync(stateDir).filter((n) => n.startsWith('backup-'));
+  assert.equal(backups.length, 1, '백업은 남긴다');
+  assert.equal(readFileSync(path.join(stateDir, backups[0], '.claude', 'helpers', 'graft-hooks.cjs'), 'utf8'), 'const BAKED = "/abs/path/dist/claude";\n', '지운 helpers 의 백업');
+  assert.match(r.out, new RegExp(`백업: .*${backups[0]}`));
   for (const p of ['.claude/settings.local.json', '.claude/helpers', '.claude/skills', '.mcp.json', '.ignore', 'graft']) assert.ok(!existsSync(path.join(root, p)), `${p} 가 남았다`);
   assert.equal(rd(root, '.claude/settings.json'), SETTINGS_CRLF);
   assert.ok(!exclude(root).includes('graft-localize:begin'));
@@ -170,6 +187,95 @@ test('remove — 원래 있던 settings.local.json 은 graft 몫만 떼고 남�
   run(root, 'prepare'); simulateGraft(root); run(root, 'localize');
   assert.equal(run(root, 'remove').code, 0);
   assert.deepEqual(json(root, '.claude/settings.local.json'), JSON.parse(LOCAL));
+});
+
+// BOM+CRLF — 실제 graft 는 JSON.parse 가 BOM 에서 실패해 {} 에서 다시 쓴다(가드 훅·enabledPlugins 가 사라진다)
+const SETTINGS_BOM = '﻿' + SETTINGS_CRLF;
+
+test('BOM 있는 settings.json — graft 가 {} 에서 다시 써 빠진 키는 init 전 바이트로 되살리고, graft 몫은 settings.local.json 으로', () => {
+  const root = repo({ '.claude/settings.json': SETTINGS_BOM });
+  assert.equal(run(root, 'prepare').code, 0);
+  simulateGraft(root);
+  assert.equal(json(root, '.claude/settings.json').enabledPlugins, undefined, '전제: graft 가 사용자 키를 잃었다');
+  const r = run(root, 'localize');
+  assert.equal(r.code, 0, r.out);
+  assert.equal(rd(root, '.claude/settings.json'), SETTINGS_BOM, 'init 전 바이트(BOM·CRLF·4칸)');
+  assert.match(r.out, /WARN settings\.json 에서 graft 밖 키가 빠졌다\(hooks\.PreToolUse · enabledPlugins\.a@b\)/);
+  const l = json(root, '.claude/settings.local.json');
+  assert.deepEqual(Object.keys(l.hooks).sort(), ['PostToolUse', 'SessionStart', 'Stop', 'UserPromptSubmit']);
+  assert.equal(l.hooks.Stop[0].hooks[0].timeout, 8);
+  assert.equal(git(root, 'status', '--porcelain', '--', '.claude'), '', 'settings.json 이 커밋본과 같다');
+  // 업그레이드 뒤 다시 — graft 가 또 {} 에서 다시 써도 같은 결과
+  simulateGraft(root);
+  assert.equal(run(root, 'localize').code, 0);
+  assert.equal(rd(root, '.claude/settings.json'), SETTINGS_BOM);
+});
+
+test('init 전 스냅숏에 없던 graft 밖 키가 settings.json 에 더해졌으면 localize 가 멈추고 아무것도 쓰지 않는다', () => {
+  const root = repo({ '.claude/settings.json': SETTINGS_CRLF });
+  run(root, 'prepare');
+  simulateGraft(root);
+  const sp = path.join(root, '.claude', 'settings.json');
+  const edited = JSON.stringify({ ...json(root, '.claude/settings.json'), model: 'opus' }, null, 2) + '\n';
+  writeFileSync(sp, edited);
+  const r = run(root, 'localize');
+  assert.equal(r.code, 1, r.out);
+  assert.match(r.out, /FAIL settings\.json: init 전 스냅숏에 없던\(또는 값이 다른\) graft 밖 키 — model\./);
+  assert.match(r.out, /failures=1 — 아무 파일도 쓰지 않았다/);
+  assert.equal(rd(root, '.claude/settings.json'), edited);
+  assert.equal(existsSync(path.join(root, '.claude', 'settings.local.json')), false);
+});
+
+test('exclude 블록이 이미 있으면 빠진 줄만 덧붙인다 — init(--no-build) 뒤 localize, build 가 .ignore 를 만든 뒤 다시 localize', () => {
+  const root = repo({ '.claude/settings.json': '{}\n' });
+  run(root, 'prepare');
+  simulateGraft(root, { build: false });
+  assert.equal(run(root, 'localize').code, 0);
+  assert.ok(!exclude(root).split('\n').includes('/.ignore'), '전제: build 전이라 .ignore 줄이 없다');
+  simulateBuild(root);
+  const r = run(root, 'localize');
+  assert.equal(r.code, 0, r.out);
+  assert.match(r.out, /OK {3}info\/exclude 블록\(빠진 줄 덧붙임: \/\.ignore\)/);
+  assert.equal(exclude(root).split('\n').filter((l) => l === EXCLUDE_BEGIN).length, 1, '블록은 하나');
+  assert.ok(exclude(root).split('\n').includes('/.ignore'));
+  assert.equal(git(root, 'status', '--porcelain'), '?? .gitignore\n', '.ignore 가 미추적으로 보이지 않는다');
+});
+
+test('remove — prepare 전부터 있던 미추적 helpers·graft/ 는 남기고(KEEP), 추적 중인 .mcp.json 은 건드리지 않는다', () => {
+  const MCP = '{\n  "mcpServers": {\n    "graft": { "command": "graft", "args": ["mcp"] },\n    "other": { "command": "x" }\n  }\n}\n';
+  const root = repo({ '.claude/settings.json': '{}\n', '.mcp.json': MCP });
+  mkdirSync(path.join(root, '.claude', 'helpers'), { recursive: true });
+  writeFileSync(path.join(root, '.claude', 'helpers', 'graft-mine.cjs'), 'user file\n');
+  mkdirSync(path.join(root, 'graft'), { recursive: true });
+  writeFileSync(path.join(root, 'graft', 'NOTES.md'), 'mine\n');
+  run(root, 'prepare'); simulateGraft(root);
+  assert.equal(run(root, 'localize').code, 0);
+  const r = run(root, 'remove');
+  assert.equal(r.code, 0, r.out);
+  assert.equal(rd(root, '.claude/helpers/graft-mine.cjs'), 'user file\n');
+  assert.match(r.out, /KEEP \.claude\/helpers\/graft-mine\.cjs — graft 연결 전부터 있던 파일/);
+  assert.equal(existsSync(path.join(root, '.claude', 'helpers', 'graft-hooks.cjs')), false, 'init 이 만든 helpers 는 지운다');
+  assert.equal(rd(root, 'graft/NOTES.md'), 'mine\n');
+  assert.match(r.out, /KEEP graft\/ — graft 연결 전부터 있던 디렉토리/);
+  assert.equal(rd(root, '.mcp.json'), MCP);
+  assert.match(r.out, /KEEP \.mcp\.json — 추적 파일이라 건드리지 않는다/);
+  assert.ok(!git(root, 'status', '--porcelain').includes('.mcp.json'), '커밋된 .mcp.json 이 바뀌지 않는다');
+});
+
+test('remove — settings.json 에 graft 몫이 다시 들어와 있으면(업그레이드 뒤 localize 안 함) 멈추고 아무것도 지우지 않는다', () => {
+  const root = repo({ '.claude/settings.json': '{}\n' });
+  run(root, 'prepare'); simulateGraft(root); run(root, 'localize');
+  simulateGraft(root); // 업그레이드 뒤 reconcileWiring → runInit
+  const localBefore = rd(root, '.claude/settings.local.json'), exBefore = exclude(root);
+  const r = run(root, 'remove');
+  assert.equal(r.code, 1, r.out);
+  assert.match(r.out, /FAIL settings\.json 에 graft 몫이 있다.*localize 를 먼저 다시 실행한 뒤 remove 한다/);
+  assert.ok(existsSync(path.join(root, '.claude', 'helpers', 'graft-hooks.cjs')), 'helpers 를 지우지 않았다');
+  assert.equal(rd(root, '.claude/settings.local.json'), localBefore);
+  assert.equal(exclude(root), exBefore);
+  assert.ok(existsSync(path.join(path.resolve(root, git(root, 'rev-parse', '--git-path', 'harness-kit-graft').trim()), 'state.json')), '체크포인트를 남긴다');
+  assert.equal(run(root, 'localize').code, 0);
+  assert.equal(run(root, 'remove').code, 0, 'localize 를 다시 돌리면 걷어낼 수 있다');
 });
 
 test('settings.local.json 이 추적 중이면 prepare 가 멈춘다', () => {
@@ -305,11 +411,13 @@ test('stripGraft — graft 가 아닌 statusLine·allow·훅은 남기고, init 
   assert.equal(count, 1 + 5 + 1 + 4, 'subagentStatusLine 1 · 훅 그룹 5 · footer 1 · allow 4');
 });
 
-test('exclude 블록 — 없으면 넣고 있으면 그대로 두며, 지우면 블록 밖 줄만 남는다', () => {
+test('exclude 블록 — 없으면 넣고, 있으면 빠진 줄만 끝 표시 앞에 덧붙이며(이미 다 있으면 그대로), 지우면 블록 밖 줄만 남는다', () => {
   const a = addBlock('*.log\r\n', ['/graft/']);
   assert.match(a, /^\*\.log\r\n# harness-kit graft-localize:begin\r\n# graft [^\r\n]*\r\n\/graft\/\r\n# harness-kit graft-localize:end\r\n$/);
-  assert.equal(addBlock(a, ['/graft/', '/.mcp.json']), a);
-  assert.equal(removeBlock(a).text, '*.log\r\n');
+  const b = addBlock(a, ['/graft/', '/.mcp.json']);
+  assert.equal(b, a.replace('/graft/\r\n# harness-kit graft-localize:end', '/graft/\r\n/.mcp.json\r\n# harness-kit graft-localize:end'));
+  assert.equal(addBlock(b, ['/.mcp.json', '/graft/']), b, '이미 다 있으면 그대로');
+  assert.equal(removeBlock(b).text, '*.log\r\n');
 });
 
 test('.gitignore — graft 가 인정하는 줄이 이미 있으면 블록을 더하지 않는다', () => {
