@@ -287,7 +287,7 @@ harness-kit 이 **사용자 전역(`~/.claude`)에 쓰는 유일한 항목**이�
 | D9 가 「사용」 | 합치기 사용 |
 
 - 선택지 — 바뀌는 것
-  - **합치기 사용 (전역 설정 바꿈)** — `statusline-setup.mjs install` 이 합치기 스크립트를 `~/.claude/harness-kit/statusline-combined.cjs` 로 복사하고(플러그인 캐시 경로는 판마다 바뀌어 가리키지 않는다), 지금 명령을 `~/.claude/harness-kit/statusline.json` 의 `base` 로 남기며, 전역 settings.json 을 백업한 뒤 `statusLine.command` 하나만 바꾼다. 전역 영수증은 `~/.claude/harness-kit/receipt.json` 이다(레포 영수증과 따로). 8-2단계의 `localize --statusline` 이 같은 명령을 그 레포의 `settings.local.json` 에도 넣어, graft 업그레이드가 graft 전용 상태 줄을 다시 넣어도 가려지게 한다(local 이 project 보다 앞선다).
+  - **합치기 사용 (전역 설정 바꿈)** — `statusline-setup.mjs install` 이 합치기 스크립트를 `~/.claude/harness-kit/statusline-combined.cjs` 로 복사하고(플러그인 캐시 경로는 판마다 바뀌어 가리키지 않는다), 지금 명령을 `~/.claude/harness-kit/statusline.json` 의 `base` 로, 그 명령을 돌릴 셸을 `shell` 에 절대경로로 남기며(설치 때 한 번 정한다 — Windows: `CLAUDE_CODE_GIT_BASH_PATH` → `where git` 옆 `bin\bash.exe` → PowerShell, 그 밖: `$SHELL` → `/bin/sh`. Claude Code 의 PATH 는 System32 가 앞이라 이름으로 찾은 bash 가 WSL bash 였다), 전역 settings.json 을 백업한 뒤 `statusLine.command` 하나만 바꾼다. 전역 영수증은 `~/.claude/harness-kit/receipt.json` 이다(레포 영수증과 따로). 8-2단계의 `localize --statusline` 이 같은 명령을 그 레포의 `settings.local.json` 에도 넣어, graft 업그레이드가 graft 전용 상태 줄을 다시 넣어도 가려지게 한다(local 이 project 보다 앞선다).
   - **안 씀** — 전역 설정을 바꾸지 않는다. graft 상태 줄은 보이지 않고, graft 업그레이드 뒤 `settings.json` 에 다시 들어온 graft 상태 줄은 `localize` 를 다시 돌려야 빠진다.
-- 되돌리기는 레포 걷어내기와 따로 묻는다(harness-uninstall 0-2단계). 지금 값이 우리가 쓴 값과 같을 때만 원래 값으로 되돌린다.
+- 되돌리기는 레포 걷어내기와 따로 묻는다(harness-uninstall 0-2단계). 지금 값이 우리가 쓴 값과 같을 때만 원래 값으로 되돌리고, 사본 스크립트·`statusline.json` 은 남긴다(레포 `settings.local.json` 이 가리킬 수 있다).
 - 체크포인트에 `D10` 으로 적는다 — `slots: []`, `recs`. 영수증 `local.statusline` 에는 전역 영수증 위치를 `~/` 꼴로만 적는다.

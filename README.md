@@ -44,8 +44,8 @@ graft(전역 npm `@nanonets/graft`)는 Node 판 조건(`engines.node`)이 있다
 harness-kit 은 레포 안에만 쓴다. 예외가 하나 있다: `harness-install` 의 선택 항목 「전역 상태 줄」(D10, 기본 끔)을 고르면 `~/.claude/settings.json` 의 `statusLine.command` 를 합치기 스크립트(`~/.claude/harness-kit/statusline-combined.cjs` — 원래 명령의 출력 + 그 레포에 graft 상태 줄 헬퍼가 있으면 그 출력)로 바꾼다.
 
 - 왜 전역인가: 플러그인은 상태 줄을 줄 수 없다 — 플러그인 settings 에서 효력이 있는 키는 `agent`·`subagentStatusLine` 뿐이다(공식 plugins manifest-reference 「settings」). 상태 줄은 세션에 하나라 원래 줄과 graft 줄을 함께 보이려면 그 명령을 바꿔야 한다.
-- 바꾸기 전에 전역 settings.json 을 `~/.claude/harness-kit/backup/` 에 백업하고, 원래 명령은 `~/.claude/harness-kit/statusline.json` 의 `base` 로, 바꾼 기록은 `~/.claude/harness-kit/receipt.json`(레포 영수증과 따로)에 남긴다. 이미 다른 합치기 스크립트를 가리키면 덮어쓰지 않고 묻는다.
-- 되돌리기는 `harness-uninstall` 이 레포 걷어내기와 따로 묻고, 지금 값이 harness-kit 이 쓴 값과 같을 때만 원래 값으로 되돌린다(`plugins/harness-kit/scripts/statusline-setup.mjs restore`).
+- 바꾸기 전에 전역 settings.json 을 `~/.claude/harness-kit/backup/` 에 백업하고, 원래 명령은 `~/.claude/harness-kit/statusline.json` 의 `base` 로, 그 명령을 돌릴 셸은 설치 때 한 번 정해 같은 파일의 `shell` 에 절대경로로(Windows: `CLAUDE_CODE_GIT_BASH_PATH` → git 옆 `bin\bash.exe` → PowerShell), 바꾼 기록은 `~/.claude/harness-kit/receipt.json`(레포 영수증과 따로)에 남긴다. 이미 다른 합치기 스크립트를 가리키거나, 원래 명령을 그 셸로 한 번 돌려 종료 0 + 출력이 나오지 않으면 아무것도 쓰지 않고 묻는다. 실행 중 원래 명령이 실패하면 그 자리에 `statusline base 실패(exit N)` 한 줄이 나온다.
+- 되돌리기는 `harness-uninstall` 이 레포 걷어내기와 따로 묻고, 지금 값이 harness-kit 이 쓴 값과 같을 때만 원래 값으로 되돌린다(`plugins/harness-kit/scripts/statusline-setup.mjs restore`). 되돌리는 것은 전역 `statusLine` 값뿐이다 — graft 를 쓰는 레포의 `settings.local.json` 상태 줄이 그 사본을 계속 쓰므로 `~/.claude/harness-kit/` 의 사본·`statusline.json` 은 남는다. 지우려면 각 레포에서 graft 연결을 걷어 낸 뒤 손으로 지운다.
 
 ### graft 를 업그레이드한 뒤
 

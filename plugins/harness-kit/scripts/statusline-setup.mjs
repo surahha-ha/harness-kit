@@ -8,13 +8,20 @@
  * 사용: node statusline-setup.mjs <status|install|restore> [--home <디렉토리>]
  *   status    지금 전역 statusLine · 우리 것인가 · 영수증 유무
  *   install   statusline-combined.cjs 를 <홈>/.claude/harness-kit/ 로 복사 · 원래 명령을 statusline.json 의 base 로 ·
+ *             base 를 돌릴 셸을 여기서 한 번 정해 statusline.json 의 shell 에 절대경로로 적는다(실행 때는 찾지 않는다) ·
  *             전역 settings.json 을 백업한 뒤 statusLine.command 만 바꾸고 JSON 대조 · 영수증 <홈>/.claude/harness-kit/receipt.json
- *             지금 값이 이미 합치기 스크립트(우리 것이 아닌 비슷한 것 포함)를 가리키면 바꾸지 않고 종료코드 3
- *   restore   지금 statusLine.command 가 영수증에 적힌 우리 값과 같을 때만 원래 값으로 되돌린다. 다르면 손대지 않고 종료코드 3
+ *             지금 값이 이미 합치기 스크립트(우리 것이 아닌 비슷한 것 포함)를 가리키거나, base 를 그 셸로 한 번 돌려
+ *             종료 0 + 출력이 나오지 않으면 아무것도 쓰지 않고(폴더도 만들지 않고) 종료코드 3
+ *   restore   지금 statusLine.command 가 영수증에 적힌 우리 값과 같을 때만 원래 값으로 되돌린다. 다르면 손대지 않고 종료코드 3.
+ *             사본 스크립트·statusline.json 은 남긴다 — localize --statusline 이 레포 settings.local.json 에서 그 사본을 가리킨다
  *
- * --home 은 시험용이다(실제 사용자 홈을 건드리지 않는다). 종료코드: 0 통과 · 1 FAIL · 2 사용 오류 · 3 멈춤(출력에 이유 — 사용자에게 묻는다)
+ * 셸(pickShell): Windows 는 CLAUDE_CODE_GIT_BASH_PATH → `where git` 의 git.exe 위치에서 <Git>\bin\bash.exe → PowerShell 절대경로,
+ *   그 밖은 $SHELL → /bin/sh. Claude Code 와 같은 PATH(System32 가 앞)에서 이름으로 bash 를 찾으면 WSL bash 가 잡혀 base 줄이 사라졌다.
+ * --home 은 시험용이다(실제 사용자 홈을 건드리지 않는다). 시험용 바꿔치기: HARNESS_KIT_STATUSLINE_SHELL(셸 배열 JSON — pickShell 대신)
+ * 종료코드: 0 통과 · 1 FAIL · 2 사용 오류 · 3 멈춤(출력에 이유 — 사용자에게 묻는다)
  */
 import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync, rmSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -33,6 +40,33 @@ export function paths(home) {
 }
 /** 이미 상태 줄을 합치는 명령으로 보이는가 — 우리 것이 아니면 덮어쓰지 않고 묻는다. */
 export const looksCombined = (cmd) => typeof cmd === 'string' && /statusline-combined|graft-statusline/i.test(cmd);
+
+/** base 를 돌릴 셸 — [절대경로, ...인자]. base 명령은 맨 뒤 인자로 붙는다. gitExes 는 `where git` 결과. */
+export function pickShell({ platform = process.platform, env = process.env, gitExes = [], exists = existsSync } = {}) {
+  if (platform !== 'win32') return [env.SHELL || '/bin/sh', '-c'];
+  const w = path.win32;
+  const bash = [env.CLAUDE_CODE_GIT_BASH_PATH, ...gitExes.flatMap((g) => [w.join(g, '..', '..', 'bin', 'bash.exe'), w.join(g, '..', '..', '..', 'bin', 'bash.exe')])]
+    .find((p) => p && exists(p));
+  if (bash) return [bash, '-c'];
+  return [w.join(env.SystemRoot || env.windir || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'), '-NoProfile', '-Command'];
+}
+function installShell() {
+  if (process.env.HARNESS_KIT_STATUSLINE_SHELL) return JSON.parse(process.env.HARNESS_KIT_STATUSLINE_SHELL);
+  let gitExes = [];
+  if (process.platform === 'win32') {
+    const r = spawnSync('where', ['git'], { encoding: 'utf8', windowsHide: true });
+    gitExes = (r.stdout || '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  }
+  return pickShell({ gitExes });
+}
+/** base 를 그 셸로 한 번 돌려 본다 — 종료 0 이고 출력이 있어야 통과(null). 아니면 이유. */
+export function tryBase(shell, base, cwd) {
+  const input = JSON.stringify({ model: { display_name: 'harness-kit' }, cwd, workspace: { current_dir: cwd, project_dir: cwd } });
+  const r = spawnSync(shell[0], [...shell.slice(1), base], { input, encoding: 'utf8', timeout: 8000, windowsHide: true });
+  if (r.error) return r.error.code === 'ETIMEDOUT' ? '8초 안에 끝나지 않음' : `실행 못 함(${r.error.code})`;
+  if (r.status !== 0) return `종료코드 ${r.status}${r.stderr && r.stderr.trim() ? ` — ${r.stderr.trim().split(/\r?\n/)[0]}` : ''}`;
+  return r.stdout.trim() ? null : '출력이 비어 있음';
+}
 
 /** statusLine.command 만 바꾼 텍스트 — 원래 명령 문자열이 한 번만 나오면 그 자리만 바꿔 서식을 그대로 둔다. */
 export function setCommandText(text, obj, from, to) {
@@ -85,34 +119,45 @@ function main(argv) {
     try { s = readSettings(); } catch (e) { console.log(`FAIL 전역 settings.json 을 JSON 으로 읽지 못했다 — 손대지 않는다(${e.message})`); return 1; }
     const curLine = isObj(s.obj.statusLine) ? s.obj.statusLine : null;
     const cur = curLine && typeof curLine.command === 'string' ? curLine.command : null;
-    mkdirSync(P.dir, { recursive: true });
-    if (cur === P.command) {
-      copyFileSync(source, P.script);
-      console.log(`OK   이미 설치돼 있다 — 스크립트 사본만 지금 판으로 맞췄다(${posix(P.script)})`);
-      return 0;
-    }
-    if (looksCombined(cur)) {
+    const again = cur === P.command;
+    if (!again && looksCombined(cur)) {
       console.log(`STOP 전역 statusLine 이 이미 상태 줄을 합치는 명령으로 보인다: ${cur}`);
       console.log('     덮어쓰지 않는다 — 사용자에게 보이고 묻는다(그 스크립트를 그대로 쓸지 · 그 원래 명령을 base 로 옮겨 바꿀지)');
       return 3;
     }
+    // 검사 먼저, 쓰기 나중 — 여기까지는 아무것도 쓰지 않는다
+    let base = cur;
+    if (again) { try { base = JSON.parse(readFileSync(P.config, 'utf8')).base ?? null; } catch { console.log(`FAIL 이미 설치돼 있는데 설정을 읽지 못했다(${posix(P.config)}) — restore 뒤 다시 install`); return 1; } }
+    const shell = installShell();
+    const why = base === null ? null : tryBase(shell, base, home);
+    if (why) {
+      console.log(`STOP base 명령을 ${shell[0]} 로 한 번 돌렸더니 ${why}: ${base}`);
+      console.log('     아무것도 바꾸지 않았다 — 이 셸로 도는 명령인지 사용자에게 보이고 묻는다(Claude Code 가 상태 줄을 돌리는 셸과 같아야 한다)');
+      return 3;
+    }
+    const config = JSON.stringify({ base, shell }, null, 2) + '\n';
+    if (again) {
+      copyFileSync(source, P.script);
+      writeFileSync(P.config, config, 'utf8');
+      console.log(`OK   이미 설치돼 있다 — 스크립트 사본을 지금 판으로 맞추고 셸을 다시 적었다(${shell[0]})`);
+      return 0;
+    }
+    const next = setCommandText(s.text, s.obj, cur, P.command);
+    const after = JSON.parse(next.text.replace(/^﻿/, ''));
+    if (!onlyStatusLineChanged(s.obj, after) || after.statusLine.command !== P.command) { console.log('FAIL 바꾼 결과가 statusLine.command 말고도 다르다 — 쓰지 않았다'); return 1; }
     const at = stamp();
     mkdirSync(P.backupDir, { recursive: true });
     const backup = s.existed ? path.join(P.backupDir, `settings-${at}.json`) : null;
     if (backup) copyFileSync(P.settings, backup);
     copyFileSync(source, P.script);
-    writeFileSync(P.config, JSON.stringify({ base: cur }, null, 2) + '\n', 'utf8');
-    const next = setCommandText(s.text, s.obj, cur, P.command);
-    const after = JSON.parse(next.text.replace(/^﻿/, ''));
-    if (!onlyStatusLineChanged(s.obj, after) || after.statusLine.command !== P.command) { console.log('FAIL 바꾼 결과가 statusLine.command 말고도 다르다 — 쓰지 않았다'); return 1; }
-    mkdirSync(path.dirname(P.settings), { recursive: true });
+    writeFileSync(P.config, config, 'utf8');
     writeFileSync(P.settings, next.text, 'utf8');
     if (existsSync(P.receipt)) copyFileSync(P.receipt, path.join(P.backupDir, `receipt-${at}.json`));
     const receipt = { schema: 1, tool: 'harness-kit statusline-setup', installedAt: new Date().toISOString(), settings: posix(P.settings), settingsExisted: s.existed,
       original: { statusLine: curLine }, wrote: { statusLine: after.statusLine }, backup: backup && posix(backup), files: [posix(P.script), posix(P.config)] };
     writeFileSync(P.receipt, JSON.stringify(receipt, null, 2) + '\n', 'utf8');
     console.log(`OK   전역 statusLine.command → ${P.command} (${next.inPlace ? '그 자리만 바꿈' : '다시 씀 — 키 순서·서식 확인'})`);
-    console.log(`OK   base = ${cur === null ? '없음(graft 줄만 나온다)' : cur} → ${posix(P.config)}`);
+    console.log(`OK   base = ${cur === null ? '없음(graft 줄만 나온다)' : `${cur} (셸 ${shell[0]} 로 돌려 확인)`} → ${posix(P.config)}`);
     console.log(`백업: ${backup ? posix(backup) : '없음(전역 settings.json 이 없었다)'} · 영수증: ${posix(P.receipt)}`);
     return 0;
   }
@@ -137,9 +182,9 @@ function main(argv) {
     copyFileSync(P.settings, path.join(P.backupDir, `settings-before-restore-${at}.json`));
     writeFileSync(P.settings, text, 'utf8');
     copyFileSync(P.receipt, path.join(P.backupDir, `receipt-restored-${at}.json`));
-    for (const f of [P.script, P.config, P.receipt]) if (existsSync(f)) rmSync(f);
-    console.log(`OK   전역 statusLine 을 원래 값으로 되돌렸다: ${orig ? orig.command : '(없음 — 키를 지움)'}`);
-    console.log(`OK   합치기 스크립트·설정·영수증을 지웠다(사본: ${posix(P.backupDir)})`);
+    rmSync(P.receipt);
+    console.log(`OK   전역 statusLine 을 원래 값으로 되돌렸다: ${orig ? orig.command : '(없음 — 키를 지움)'} · 영수증은 ${posix(P.backupDir)} 로 옮겼다`);
+    console.log(`KEEP 합치기 스크립트 사본·statusline.json 은 남긴다(${posix(P.dir)}). graft 를 쓰는 레포의 settings.local.json statusLine 이 이 사본을 계속 쓴다 — 지우려면 각 레포에서 graft 연결 제거 후 수동 삭제`);
     return 0;
   }
   console.error('사용: node statusline-setup.mjs <status|install|restore> [--home <디렉토리>]');

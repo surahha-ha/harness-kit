@@ -92,7 +92,7 @@ header 는 `graft 연결 처리` 다. 질문 첫 문장: 「이 PC 에서만 켜
 | 사용자 요청이 graft 까지 걷어 내라고 했다 | 걷어 냄 |
 | 그 밖(0-2단계는 목적 질문보다 앞이라 목적으로 가를 수 없다) | 권장 없음 — graft 를 이 폴더에서 계속 쓸지에 따라 고른다(고정 순서는 걷어 냄 → 걷어 내되 그래프는 남김 → 남김) |
 
-- **걷어 냄 (백업 남음)** — `graft-localize.mjs remove`: settings.local.json 의 graft 몫(훅 · 상태 줄 · 권한 · `disabledMcpjsonServers` 의 graft)을 떼고, helpers·skill, init 이 새로 만든 `.mcp.json`·`.ignore`, `graft/`, info/exclude 블록을 지운다. info/exclude 는 worktree 끼리 공유라, 다른 worktree 에서 graft 를 쓰면 그쪽 helpers 등이 미추적으로 보일 수 있다(출력의 경고 한 줄 · `/graft/` 는 `.gitignore` 에 있어 영향 없음). 이어지는 항목 질문에서 `.gitignore` 의 `/graft/` 블록은 「지움」이 권장된다.
+- **걷어 냄** — `graft-localize.mjs remove`: settings.local.json 의 graft 몫(훅 · 상태 줄 · 권한 · `disabledMcpjsonServers` 의 graft)을 떼고, helpers·skill, init 이 새로 만든 `.mcp.json`·`.ignore`, `graft/`, info/exclude 블록을 지운다. info/exclude 는 worktree 끼리 공유라, 다른 worktree 에서 graft 를 쓰면 그쪽 helpers 등이 미추적으로 보일 수 있다(출력의 경고 한 줄 · `/graft/` 는 `.gitignore` 에 있어 영향 없음). 다 걷으면 `git-path harness-kit-graft/`(스냅숏·체크포인트·백업)째 지우고, FAIL 이 있으면 남긴다. 이어지는 항목 질문에서 `.gitignore` 의 `/graft/` 블록은 「지움」이 권장된다.
 - **걷어 내되 그래프는 남김** — 같은데 `--keep-graph` 로 `graft/` 를 남긴다(큰 레포에서 다시 짓는 시간이 아까울 때).
 - **남김** — 아무것도 바꾸지 않는다. `.gitignore` 의 `/graft/` 블록도 「남김」이 권장된다.
 
@@ -105,7 +105,7 @@ header 는 `전역 상태줄 처리` 다. 질문 첫 문장: 「이 PC 의 모�
 | 이 PC 의 다른 레포에 graft 상태 줄 헬퍼가 있을 수 있다(늘 — 스크립트는 다른 레포를 보지 않는다) | 남김 — 헬퍼가 없는 레포에서는 원래 줄만 나와 해가 없다 |
 
 - **남김 (권장)** — 전역 설정을 바꾸지 않는다. 나중에 `statusline-setup.mjs restore` 로 되돌릴 수 있다고 보고에 적는다.
-- **되돌림** — 지금 전역 `statusLine.command` 가 harness-kit 이 쓴 값과 같을 때만 원래 값으로 되돌리고, `~/.claude/harness-kit/` 의 합치기 스크립트·설정·영수증을 지운다(사본은 `~/.claude/harness-kit/backup/`). 다르면 손대지 않는다(종료코드 3).
+- **되돌림** — 지금 전역 `statusLine.command` 가 harness-kit 이 쓴 값과 같을 때만 원래 값으로 되돌리고 영수증을 `~/.claude/harness-kit/backup/` 으로 옮긴다. 합치기 스크립트 사본·`statusline.json` 은 남긴다 — graft 를 쓰는 레포의 `settings.local.json` 상태 줄이 그 사본을 계속 쓴다. 지우려면 각 레포에서 graft 연결을 걷어 낸 뒤 손으로 지운다. 다르면 손대지 않는다(종료코드 3).
 
 ## 런타임 산출물 — 계측 증거 (`runtime`)
 

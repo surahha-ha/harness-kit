@@ -157,7 +157,7 @@ D6 을 D4 앞에 묻는다. 플러그인을 끄면 그 플러그인이 막던 �
 
 D9·D10 이 둘 다 「안 씀」(또는 건너뜀)이면 이 단계는 없다. `S=${CLAUDE_SKILL_DIR}/../../scripts` 라 할 때, 순서는 D10 먼저다 — `localize --statusline` 이 D10 의 전역 영수증에서 명령을 읽는다.
 
-1. **전역 상태 줄(D10 = 합치기 사용)** — `node "$S/statusline-setup.mjs" install`. 종료코드 3(이미 다른 합치기 스크립트를 가리킴)이면 출력의 명령을 보이고 D10 표대로 다시 묻는다 — 스크립트가 덮어쓰지 않는다. 출력의 백업·영수증 경로를 보고에 옮긴다.
+1. **전역 상태 줄(D10 = 합치기 사용)** — `node "$S/statusline-setup.mjs" install`. 종료코드 3 이면 아무것도 쓰지 않은 것이다 — 이미 다른 합치기 스크립트를 가리키면 출력의 명령을 보이고 D10 표대로 다시 묻고, 원래 명령을 기록할 셸로 돌려 보니 실패·빈 출력이면 그 셸과 이유를 보이고 묻는다. 출력의 백업·영수증 경로를 보고에 옮긴다.
 2. **graft 준비(D9 = 사용)** — `node "$S/graft-localize.mjs" prepare <레포 루트>`. graft 확인 · Node 판 확인(graft 설치본의 `engines.node` 와 지금 Node — 못 미치면 「Node <요구> 필요, 현재 <판>」으로 종료코드 3, 못 읽으면 `WARN` 만 내고 진행) · init 전 `settings.json`·`.mcp.json`·`.gitignore`·`.ignore`·`settings.local.json` 스냅숏(`git rev-parse --git-path harness-kit-graft/`) · `.gitignore` 에 `/graft/` 표시 블록(TEMPLATES.md §3 꼴, 출력이 그 파일의 몇 번째 블록인지 낸다 — 체크포인트 `edits` 에 `block` 으로). 종료코드 3 이면 graft 가 없거나 Node 판이 모자라다 — 출력의 설치 안내(`npm view @nanonets/graft engines` → `node --version` 과 비교 → 모자라면 Node 먼저 올린 뒤 `npm i -g @nanonets/graft`)만 보고에 옮기고 이 항목을 건너뛴다. 종료코드 1 이면(`settings.local.json` 이 추적 중) 멈추고 보고한다.
    - `/graft/` 를 `.gitignore` 에 미리 넣는 이유: graft build 는 `.gitignore` 텍스트만 보고 그 줄이 없으면 **매 build(= 매 턴)** 표시 없이 덧붙인다. `.git/info/exclude`·`core.excludesFile` 은 보지 않는다.
 3. **graft 연결** — 레포 루트에서 `graft init . --no-agents --no-global --no-build -y` → `graft build .`. 기본값의 init 은 추적 파일(`AGENTS.md`·`.cursor/`)을 건드리고, `--no-global` 없이는 사용자 홈의 다른 에이전트 설정에 쓴다.

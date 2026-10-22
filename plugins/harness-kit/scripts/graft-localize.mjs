@@ -11,7 +11,8 @@
  *                                 --statusline 이면 전역 상태 줄 합치기(statusline-setup.mjs)가 쓴 명령을 settings.local.json 의 statusLine 에 넣는다.
  *                                 다시 돌려도 같은 결과다 — graft 업그레이드 뒤 settings.json 에 graft 키가 다시 들어오면 이것만 다시 돌린다.
  *   status                        settings.json 에 graft 몫이 다시 들어왔는가 · 로컬 쪽 상태
- *   remove [--keep-graph]         걷어내기 — settings.local.json 의 graft 몫 · helpers·skill · 새로 생긴 .mcp.json·.ignore · graft/ · exclude 블록
+ *   remove [--keep-graph]         걷어내기 — settings.local.json 의 graft 몫 · helpers·skill · 새로 생긴 .mcp.json·.ignore · graft/ · exclude 블록 ·
+ *                                 FAIL 이 없으면 git-path harness-kit-graft/(스냅숏·체크포인트·백업)째
  *
  * check·prepare 는 graft 가 있으면 설치본 package.json 의 engines.node 를 지금 Node 판과 대어 본다 — 못 미치면 graft 가 있어도
  * 쓸 수 없다고 보고 종료코드 3. engines 를 못 읽거나 해석하지 못하면 WARN 만 내고 진행한다.
@@ -279,7 +280,9 @@ function main(argv) {
 
   const graftVersion = () => {
     if ('HARNESS_KIT_GRAFT_VERSION' in process.env) return process.env.HARNESS_KIT_GRAFT_VERSION || null;
-    try { return execFileSync('graft', ['--version'], { encoding: 'utf8', shell: process.platform === 'win32', windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] }).trim() || null; } catch { return null; }
+    // Windows 의 graft 는 npm 이 만든 graft.cmd 라 cmd 로 명시 실행한다(shell:true + 인자 배열은 DEP0190)
+    const [file, a] = process.platform === 'win32' ? [process.env.ComSpec || 'cmd.exe', ['/d', '/c', 'graft', '--version']] : ['graft', ['--version']];
+    try { return execFileSync(file, a, { encoding: 'utf8', windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] }).trim() || null; } catch { return null; }
   };
   const nodeVersion = process.env.HARNESS_KIT_NODE_VERSION || process.version;
   const graftPkgPath = () => {
@@ -517,8 +520,9 @@ function main(argv) {
       console.log('WARN info/exclude 는 워크트리끼리 공유된다 — 다른 워크트리에서 graft 를 쓰면 그쪽 graft 산출물(helpers 등)이 미추적으로 보일 수 있다. /graft/ 는 .gitignore 에 있어 영향 없음');
     }
     console.log('INFO .gitignore 의 /graft/ 표시 블록은 harness-uninstall 항목 질문(무시목록)에서 정한다');
-    if (existsSync(bdir)) console.log(`백업: ${bdir.split(path.sep).join('/')}`);
-    if (!fail && existsSync(statePath)) rmSync(statePath);
+    // 다 걷었으면 스냅숏·체크포인트·이번 백업이 든 git-path harness-kit-graft/ 째 지운다. FAIL 이 있으면 되돌릴 근거로 남긴다
+    if (!fail) { rmSync(stateDir, { recursive: true, force: true }); console.log(`OK   스냅숏·체크포인트 지움(${stateDir.split(path.sep).join('/')})`); }
+    else if (existsSync(bdir)) console.log(`백업: ${bdir.split(path.sep).join('/')}`);
     console.log(`failures=${fail}`);
     return fail ? 1 : 0;
   }

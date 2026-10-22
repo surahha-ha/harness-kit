@@ -153,8 +153,11 @@ test('remove — localize 가 만든 것을 걷어 내고 settings.json 은 건�
   run(root, 'prepare');
   simulateGraft(root);
   run(root, 'localize');
+  const stateDir = path.resolve(root, git(root, 'rev-parse', '--git-path', 'harness-kit-graft').trim());
+  assert.ok(existsSync(path.join(stateDir, 'before')), '전제: prepare 가 스냅숏을 떴다');
   const r = run(root, 'remove');
   assert.equal(r.code, 0, r.out);
+  assert.equal(existsSync(stateDir), false, 'git-path harness-kit-graft/(스냅숏) 가 남았다');
   for (const p of ['.claude/settings.local.json', '.claude/helpers', '.claude/skills', '.mcp.json', '.ignore', 'graft']) assert.ok(!existsSync(path.join(root, p)), `${p} 가 남았다`);
   assert.equal(rd(root, '.claude/settings.json'), SETTINGS_CRLF);
   assert.ok(!exclude(root).includes('graft-localize:begin'));
