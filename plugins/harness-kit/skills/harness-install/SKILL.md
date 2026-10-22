@@ -56,6 +56,7 @@ description: 지금 레포에 harness-agent 게이트(.harness/ 훅)와 harness-
 - CI 에서 테스트가 도는지, lint·format 도구와 포매터가 `.harness/` 를 건드리는지
 - 기존 Claude 설정 — `.claude/` 의 agents·commands·skills·hooks, 레포 `CLAUDE.md` 의 커밋 규칙·trailer 규칙, 레포 안 플러그인 디렉토리와 마켓플레이스 파일
 - 설정 파일을 덮어쓰는 setup 스크립트나 배달용 settings 사본
+- 앞선 걷어내기 백업에 남은 docs-setup 칸 — `node "${CLAUDE_SKILL_DIR}/../docs-setup/scripts/config-slots.mjs" backups <레포 루트>`(D8-2 의 근거, 읽기만 한다)
 
 접속 정보·비밀번호는 위치(파일:행)만 적고 값은 옮기지 않는다.
 
@@ -65,7 +66,7 @@ description: 지금 레포에 harness-agent 게이트(.harness/ 훅)와 harness-
 
 [DECISIONS.md](DECISIONS.md) 의 질문을 1단계 근거와 함께 하나씩 묻는다. 일괄 기본값을 제시하고 "이대로 갈까요" 로 묶지 않는다. 답이 다음 질문의 선택지를 바꾸는 순서로 묻는다.
 
-설치 위치(D1) → 공유 자원(D2 · 서버 기동 D2-2) → 단위 테스트 범위(D3) → **플러그인 겹침(D6 · 끄면 사라지는 가드 D6-2)** → 위험 명령(D4) → 커밋 정책(D5) → 나머지 칸(D7) → kit 이 읽는 칸(D8)
+설치 위치(D1) → 공유 자원(D2 · 서버 기동 D2-2) → 단위 테스트 범위(D3) → **플러그인 겹침(D6 · 끄면 사라지는 가드 D6-2)** → 위험 명령(D4) → 커밋 정책(D5) → 나머지 칸(D7) → kit 이 읽는 칸(D8 · 문서 칸 되살리기 D8-2)
 
 D6 을 D4 앞에 묻는다. 플러그인을 끄면 그 플러그인이 막던 명령이 이 레포에서 무방비가 되는데, D4 를 먼저 정하면 그 빈자리가 D4 후보에 들지 못한다 — 시험 설치에서 볼륨 삭제를 「막지 않음」으로 정한 뒤에야 D6 이 그 가드를 없앤다는 것을 알았다.
 
@@ -99,6 +100,7 @@ D6 을 D4 앞에 묻는다. 플러그인을 끄면 그 플러그인이 막던 �
 - 정규식·명령 문자열은 Write/Edit 도구로 쓴다. 셸로 다루면 방금 만든 규칙에 자기가 걸린다.
 - 근거 없는 칸은 `null` + 주석 「미확정 — 무엇을 확인하면 채운다」.
 - **kit 자산이 읽는 칸은 비워 두지 않는다.** 키가 없으면 그 자산이 멈추고 묻고, `null` 이면 그 단계를 말없이 건너뛴다. 칸마다 DECISIONS.md D8 대로 묻거나 근거로 채우고, `null` 로 두는 칸에는 **그 null 이 끄는 자산과 단계**를 주석에 적는다(`archiveDir: null, // 아카이브 폴더 없음 — archive-cycle ④ 레포 문서 이동이 건너뛴다. docs-setup 에서 정함`). 시험 설치에서 `docs.archiveDir: null` 이 주석 없이 남아 archive-cycle 의 문서 이동이 조용히 꺼졌다.
+- D8-2 답이 「되살림」·「골라 되살림」이면 위 칸을 다 쓴 뒤 `node "${CLAUDE_SKILL_DIR}/../docs-setup/scripts/config-slots.mjs" restore <레포 루트> --backup <백업> [--slots …]` 를 돌린다(`backups` 의 「되살리기:」 줄). 스크립트가 표시 붙은 칸 줄만 바꾸거나 넣고, import 해 값이 같은지 본 뒤 아니면 원래 판으로 되돌린다. 표시 줄은 Edit 로 손대지 않는다.
 
 **완료 기준:** `node --check harness.config.mjs` 통과 · 머리 줄을 뺀 본문이 example 과 다름(CHECKS.md §5) · `--status` 가 「활성」(deny·ask·공유자원 중 1개 이상)이고 「프로브 설정됨」 · 비밀번호 0건 · 절대경로·사용자 홈 경로 0건 · 열거형 슬롯 값이 전부 README 목록 안 · `node "${CLAUDE_SKILL_DIR}/scripts/install.mjs" slots <레포 루트>` 가 `failures=0`(kit 이 읽는 칸에 「없음」 0 · 주석에 꺼지는 자산이 없는 null 0).
 
@@ -152,6 +154,7 @@ D6 을 D4 앞에 묻는다. 플러그인을 끄면 그 플러그인이 막던 �
 ## 9. 영수증과 커밋 — 경로 지정, 같은 명령에서 브랜치 조건
 
 - 커밋 전에 **영수증**을 쓴다: 체크포인트의 원본·결정 답·`created`·`edits` 를 초안 JSON 으로 옮겨 scratchpad 에 Write 하고(꼴은 [TEMPLATES.md](TEMPLATES.md) §9), `node "${CLAUDE_SKILL_DIR}/scripts/write-manifest.mjs" <레포 루트> <초안>` 을 돌린다. 스크립트가 파일·블록·줄의 sha256 을 채우고, 적힌 것이 실제로 있는지와 개인 경로가 없는지 대조한 뒤 레포 루트에 `harness.install.json` 을 쓴다. `FAIL` 이 있으면 쓰지 않는다 — 초안이나 작업본을 고쳐 다시 돌린다.
+- D8-2 로 칸을 되살렸으면 영수증 뒤에 `node "${CLAUDE_SKILL_DIR}/../docs-setup/scripts/config-slots.mjs" record <레포 루트>` 를 돌려 `owners["docs-setup"]` 에 그 칸을 적는다. 설치 칸(`files`·`edits`·`settings`)은 건드리지 않는다.
 - 영수증 뒤에 설치 파일을 고쳤으면 영수증을 다시 쓴다. 영수증의 sha256 과 다른 파일은 harness-uninstall 이 「설치 뒤 손댄 파일」로 따로 묻는다.
 - 2단계에서 정한 커밋 정책대로 한다. 레포 규칙이 「커밋하지 않고 메시지만」이면 메시지만 건넨다. 영수증도 커밋 대상이다.
 - 신규 파일은 `git add -N -- <경로>` 먼저, 커밋은 `git commit -F <메시지파일> -- <경로…>` 로만 한다. 같은 명령 안에서 브랜치·toplevel 을 조건으로 건다(꼴은 [TEMPLATES.md](TEMPLATES.md) §5).

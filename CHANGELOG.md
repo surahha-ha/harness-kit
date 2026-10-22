@@ -3,6 +3,15 @@
 매니페스트에 `version` 필드를 두지 않는다 — 판은 main 커밋 SHA 로 갈린다. 절은 병합 단위로 적는다.
 (0.1.0 까지는 `plugin.json` 과 `marketplace.json` 의 명시 버전을 함께 올렸다.)
 
+## 미발행 — 문서 셋업 스킬
+
+- 스킬 추가: `docs-setup`(SKILL·DECISIONS·TEMPLATES·`scripts/` observe·refs·links) — 레포에 아카이브 폴더·`docs/README.md` 성격표·`CLAUDE.md` 작업 라우팅·문서 규약 표를 세우고, 「아직 일을 시키는가」로 판정한 끝난 문서를 배너와 함께 옮긴다. `project.docs.archiveDir`·`pathValidator`·`autoloaded`·`project.memory.slugs` 를 채우고 harness-agent `docs.always`·`docs.archive` 를 맞춰 `archive-cycle` 이 바로 돌게 하며, 메모리 규약(인덱스 한 줄 형식·연표 접기·핸드오프 보관 수·정리 시점 — 수치는 판단값)을 `CLAUDE.md` 에 넣는다. 결정은 하나씩 묻고 관찰에서 계산한 권장을 보인다. 이동은 `git mv` 없이 백업 → 이동 → 참조 고침(지시 문서는 따로 묻는다) → 기준선 대비 링크 검사 → 경로 지정 커밋 순이고, 체크포인트로 이어받는다
+- 「이관 후 접기」 문서는 옮기지 않고 archive-cycle 이관 대상으로 넘긴다. 아카이브가 아닌 이동은 권장하지 않는다
+- docs-setup 이 채운 config 칸이 재설치·설치 단계 변경 뒤에도 남게 한다 — 칸마다 줄 끝 `// harness-kit:docs-setup` 표시(문서 칸이 없는 config 에는 표시 붙은 블록째)와 영수증 `owners["docs-setup"]`(설치 칸은 그대로) · `scripts/config-slots.mjs`(list·record·backups·restore). harness-uninstall 은 그 칸을 후보와 따로 보고하고 백업 `index.json` 에 `docsSetup` 으로 적으며, harness-install D8-2 가 최신 백업에서 되살릴지 묻는다(가리키는 폴더·파일이 남아 있으면 권장 「되살림」). 옮긴 문서·배너·성격표·`CLAUDE.md` 표가 걷어내기 후보가 되지 않는지 `scripts/boundary.mjs`(uninstall 과 같은 판정 함수)로 보고, `scripts/boundary.test.mjs` 가 설치 → docs-setup → 걷어내기 → 새 설치(표준·라이트 꼴) → 되살리기를 시험한다
+- 옮긴 뒤 커밋 전에 `observe.mjs` 가 지워진 옛 경로를 읽다 멈추던 것(작업본에 없는 추적 파일을 목록에서 뺀다)과, `links.mjs` 가 아카이브 배너의 옛 경로 표기를 새 깨짐으로 세던 것(배너 줄의 경로는 출처 표기로 본다)을 고친다
+- `links.mjs`·`refs.mjs`·`observe.mjs` 가 함께 쓰는 `lib.mjs` 의 `mdLinks` 가 인라인 코드 스팬 안의 링크 꼴(`` `[제목](파일.md)` `` — TEMPLATES 메모리 규약 절의 예시)을 링크로 세어 적용한 레포마다 깨진 링크로 보고하던 것을 고친다 — 줄마다 코드 스팬을 같은 길이 공백으로 가린 뒤 링크를 뽑고(`maskCodeSpans`), 펜스 안은 전처럼 뺀다. 백틱 속 레포 경로 문자열 판정(links 의 path · refs 의 경로)은 그대로다. `scripts/links.test.mjs` 가 스팬·펜스 안 링크 꼴 0 · 본문 깨진 링크 1 · 경로 판정 유지를 시험한다
+- 실제 레포 시험 적용에서 찾은 결함을 고친다 — `refs.mjs` 가 링크 글자에 적힌 옛 경로(`[docs/a.md](a.md)`)를 대상만 고치고 글자는 남기던 것, 지시 문서(`CLAUDE.md`·`.claude/`·`harness.config.mjs`) 줄까지 자동으로 고쳐 3단계 질문이 사후 확인이 되던 것(이제 `instr` 로 따로 내고 자동 고침 수에서 뺀다), 계획 없는 판이 「자동 고침」이라 적던 것을 고치고, 4단계용 `--after`(배너 출처·새 경로 표기는 정상으로, 남은 옛 경로만 목록)를 더한다. `observe.mjs` 가 `.claude/`·하위 `CLAUDE.md` 의 미커밋 변경을 세지 않던 것, archiveDir 와 같고 모두 배너를 단 `docs.archive` 칸을 「어긋남?」으로 내던 것을 고친다. 펜스는 연 글자와 같은 글자로만 닫는다(`fenceTracker`). 체크포인트·계획·기준선은 scratchpad 가 아니라 git 디렉토리에 두고 `skillDir`·시계에서 읽은 `updated` 를 적으며, 재개는 스킬을 다시 불러서 한다. 질문 전에 후보·칸·판단값 표를 본문에 내고, header 를 「대상+동작」으로 정하며, 쉬운 말 풀이표·「권장 이유」·「권장 없음」을 harness-install 질문 꼴에 맞춘다. `scripts/refs.test.mjs`·`observe.test.mjs` 를 더하고 `links.test.mjs` 에 펜스 글자 경우를 넣는다
+
 ## 미발행 — 하네스 설치 시험 반영
 
 - `harness-install` 에 `scripts/install.mjs` 를 더한다 — `precheck`(트리 종류·worktree 여부·다른 세션을 timestamp 있는 마지막 user·assistant 기록으로 동시·최근·오래됨으로 가름) · `settings-snap`·`settings-eol`·`after-cli`(settings 의 줄끝·BOM·끝 개행을 손대기 전 판대로 되살리고, CLI 가 다시 쓴 파일을 손본 직후 스냅숏으로 되덮음) · `test-select`(테스트 제외 패턴을 소스 트리에 대어 빠지는 것을 펼치고 실행 결과와 대조 — 디렉토리 일치로 하위 패키지까지 빠지는 것을 잡는다) · `slots`(kit 자산이 읽는 슬롯을 모아 빈 키와 이유 없는 `null` 을 실패로 셈) · `plugin-hooks`(끌 플러그인의 훅 목록). CHECKS §6 안에 있던 `answer-trace.mjs` 를 `scripts/` 로 꺼낸다
