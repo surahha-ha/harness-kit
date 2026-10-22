@@ -7,12 +7,13 @@
  *   prepare                       graft init 전에 — graft 확인 · settings.json·.mcp.json·.gitignore·.ignore 스냅숏 · .gitignore 에 /graft/ 표시 블록
  *   localize [--statusline] [--home <디렉토리>]
  *                                 graft init·build 뒤에 — settings.json 의 graft 몫을 settings.local.json 으로 옮기고(timeout 은 초로),
- *                                 settings.json 을 init 전 내용으로 되돌리며, .mcp.json 을 정리하고 info/exclude 에 로컬 산출물 블록을 쓴다.
+ *                                 settings.json 을 기준 판(추적 중이면 git index 판, 미추적이면 스냅숏 — 성공할 때마다 갱신)으로 되돌리며, .mcp.json 을 정리하고 info/exclude 에 로컬 산출물 블록을 쓴다.
  *                                 --statusline 이면 전역 상태 줄 합치기(statusline-setup.mjs)가 쓴 명령을 settings.local.json 의 statusLine 에 넣는다.
  *                                 다시 돌려도 같은 결과다 — graft 업그레이드 뒤 settings.json 에 graft 키가 다시 들어오면 이것만 다시 돌린다.
  *   status                        settings.json 에 graft 몫이 다시 들어왔는가 · 로컬 쪽 상태
  *   remove [--keep-graph]         걷어내기 — settings.local.json 의 graft 몫 · helpers·skill · 새로 생긴 .mcp.json·.ignore · graft/ · exclude 블록 ·
- *                                 FAIL 이 없으면 git-path harness-kit-graft/(스냅숏·체크포인트·백업)째
+ *                                 FAIL 이 없으면 스냅숏·체크포인트(백업 backup-* 은 남긴다). prepare 전부터 있던 것과 추적 파일은 건드리지 않는다.
+ *                                 settings.json 에 graft 몫이 다시 들어와 있으면 아무것도 지우지 않고 FAIL(localize 먼저)
  *
  * check·prepare 는 graft 가 있으면 설치본 package.json 의 engines.node 를 지금 Node 판과 대어 본다 — 못 미치면 graft 가 있어도
  * 쓸 수 없다고 보고 종료코드 3. engines 를 못 읽거나 해석하지 못하면 WARN 만 내고 진행한다.
@@ -158,6 +159,16 @@ export function foreignHooks(s) {
   return out;
 }
 
+/**
+ * init 전 판(graft 몫 뺀 것)과 지금(graft 몫 뺀 것)의 잎 대조 — 객체는 키로 내려가고 배열·원시값은 통째로 한 잎, 빈 객체·빈 배열(graft 몫을 떼고 남은 그릇)은 잎이 없다.
+ * @returns {{ lost: string[], added: string[] }} lost: ref 에만 있거나 값이 다른 잎 · added: now 에만 있거나 값이 다른 잎
+ */
+export function diffLeaves(ref, now) {
+  const leaves = (v, pre, out) => { if (isObj(v)) { for (const [k, x] of Object.entries(v)) leaves(x, pre ? `${pre}.${k}` : k, out); } else if (!(Array.isArray(v) && !v.length)) out[pre] = canon(v); return out; };
+  const a = leaves(ref || {}, '', {}), b = leaves(now || {}, '', {});
+  return { lost: Object.keys(a).filter((k) => a[k] !== b[k]), added: Object.keys(b).filter((k) => a[k] !== b[k]) };
+}
+
 // ── 텍스트 꼴 ────────────────────────────────────────────────────────────────
 export const eolOf = (t) => (/\r\n/.test(t) ? '\r\n' : '\n');
 const BOM = '﻿';
@@ -171,11 +182,18 @@ export function jsonText(obj, like = '') {
   t = t.replace(/\n/g, eolOf(like || '\n'));
   return (like.startsWith(BOM) ? BOM : '') + t;
 }
-/** exclude 블록이 없으면 끝에 넣고, 있으면 그대로 둔다(멱등). */
+/** exclude 블록이 없으면 끝에 넣고, 있으면 블록에 빠진 줄만 끝 표시 앞에 덧붙인다(합집합 · 멱등). */
 export function addBlock(text, entries) {
-  if (blockEntries(text)) return text;
+  const have = blockEntries(text);
   const eol = eolOf(text || '\n');
   const lines = (text || '').split(/\r?\n/);
+  if (have) {
+    const add = entries.filter((x) => !have.includes(x));
+    if (!add.length) return text;
+    const b = lines.findIndex((l) => l.trim() === EXCLUDE_BEGIN);
+    lines.splice(lines.findIndex((l, i) => i > b && l.trim() === EXCLUDE_END), 0, ...add);
+    return lines.join(eol);
+  }
   if (lines.length && lines[lines.length - 1] === '') lines.pop();
   return [...lines, EXCLUDE_BEGIN, '# graft 로컬 산출물 — 이 PC·이 트리 전용(harness-kit graft-localize)', ...entries, EXCLUDE_END].join(eol) + eol;
 }
@@ -332,7 +350,9 @@ function main(argv) {
         if (info.exists) { const dst = path.join(dir, rel); mkdirSync(path.dirname(dst), { recursive: true }); copyFileSync(abs(rel), dst); }
         snap.files[rel] = info;
       }
-      snap.preexisting = Object.fromEntries(['.claude/helpers/graft-hooks.cjs', '.claude/helpers/graft-statusline.cjs', '.claude/skills/graft', 'graft'].map((p) => [p, exists(p)]));
+      // remove 가 지우지 않을 것 — init 전부터 있던 helpers/graft-*.cjs · skill · graft/
+      const helpers = exists('.claude/helpers') && statSync(abs('.claude/helpers')).isDirectory() ? readdirSync(abs('.claude/helpers')).filter((n) => /^graft-[^/]*\.cjs$/.test(n)).map((n) => `.claude/helpers/${n}`) : [];
+      snap.preexisting = Object.fromEntries([...new Set(['.claude/helpers/graft-hooks.cjs', '.claude/helpers/graft-statusline.cjs', ...helpers, '.claude/skills/graft', 'graft'])].map((p) => [p, exists(p)]));
       s = { tool: 'harness-kit graft-localize', root: root.split(path.sep).join('/'), graftVersion: v, snapshot: snap };
       saveState(s);
       console.log(`OK   스냅숏 → ${dir.split(path.sep).join('/')} (${Object.entries(snap.files).map(([k, x]) => `${k}:${x.exists ? (x.tracked ? '추적' : '미추적') : '없음'}`).join(' · ')})`);
@@ -357,20 +377,31 @@ function main(argv) {
     const snapDir = path.join(stateDir, 'before');
     const snapText = (rel) => (s.snapshot.files[rel] && s.snapshot.files[rel].exists ? readFileSync(path.join(snapDir, rel), 'utf8') : null);
 
-    // ① settings.json — graft 몫을 떼고, 떼어 낸 결과가 init 전 판과 같으면 그 바이트로 되돌린다
+    // ① settings.json — graft 몫을 떼고, 떼어 낸 결과가 기준 판과 같으면 그 바이트로 되돌린다.
+    //    기준 판: 추적 중이면 git index 판(팀원 커밋을 따라간다), 미추적이면 스냅숏(localize 가 성공할 때마다 그 결과로 갱신)
     const curText = exists(SETTINGS) ? read(SETTINGS) : null;
     const cur = curText === null ? {} : parseJsonText(curText);
-    const baseText = snapText(SETTINGS);
+    const settingsTracked = tracked(SETTINGS);
+    const refName = settingsTracked ? 'git index 판' : '스냅숏';
+    const baseText = settingsTracked ? tryGit('cat-file', '--filters', `:${SETTINGS}`) ?? snapText(SETTINGS) : snapText(SETTINGS);
     const base = baseText === null ? null : parseJsonText(baseText);
     const baseClean = base ? stripGraft(base, null) : null;
     const { stripped, moved, count } = stripGraft(cur, base);
+    // graft 밖 키 대조 — graft 는 읽지 못한 settings.json(BOM 등)을 {} 에서 다시 쓰므로, 빠진 키는 기준 판 바이트로 되살리고 더해진 키(사용자 편집)는 멈춘다
+    const d = diffLeaves(baseClean ? baseClean.stripped : {}, stripped);
     let settingsOut = curText;
-    if (base && baseClean.count === 0 && sameJson(stripped, base)) settingsOut = baseText;
+    if (d.added.length) bad(`settings.json: ${refName}에 없던(또는 값이 다른) graft 밖 키 — ${d.added.join(' · ')}. ${settingsTracked ? '커밋하지 않은 편집' : '스냅숏 뒤에 고친 것'}으로 보고 아무것도 쓰지 않는다 — git diff 로 보고 graft 몫만 손으로 지우거나, ${settingsTracked ? '편집을 커밋하거나 되돌린' : '고친 것을 되돌린'} 뒤 다시 돌린다`);
+    else if (d.lost.length && baseClean.count) bad(`settings.json: graft 밖 키가 빠졌다(${d.lost.join(' · ')}) — ${refName}에도 graft 몫이 있어 그 바이트로 되살릴 수 없다. ${settingsTracked ? 'git show :.claude/settings.json' : `스냅숏 ${path.join(snapDir, SETTINGS).split(path.sep).join('/')}`} 를 보고 손으로 되살린다`);
+    else if (d.lost.length) {
+      settingsOut = baseText;
+      console.log(`WARN settings.json 에서 graft 밖 키가 빠졌다(${d.lost.join(' · ')}) — graft 가 이 파일을 읽지 못해(BOM 등) 새로 쓴 것으로 보고 ${refName} 바이트로 되살린다. graft 몫은 그대로 settings.local.json 으로 옮긴다`);
+    } else if (base && baseClean.count === 0 && sameJson(stripped, base)) settingsOut = baseText;
     else if (!base && !Object.keys(stripped).length) settingsOut = null;
     else if (count) {
       settingsOut = jsonText(stripped, baseText ?? curText ?? '');
-      console.log('WARN settings.json 이 init 전 판과 graft 몫 말고도 다르다 — graft 몫만 떼고 다시 썼다(서식은 원래 파일 꼴). git diff 로 확인한다');
+      console.log('WARN settings.json 이 기준 판과 graft 몫 말고도 다르다 — graft 몫만 떼고 다시 썼다(서식은 원래 파일 꼴). git diff 로 확인한다');
     }
+    if (fail) { console.log(`failures=${fail} — 아무 파일도 쓰지 않았다`); return 1; }
     const projectStatusLine = isObj(stripped.statusLine) && !isGraftLine(stripped.statusLine);
 
     // ② settings.local.json — graft 몫을 합친다(timeout 은 초로)
@@ -388,8 +419,9 @@ function main(argv) {
     // ③ 기계 대조 — 이벤트별 graft 아닌 훅 · 다른 키 · graft 몫 0
     const after = settingsOut === null ? {} : parseJsonText(settingsOut);
     if (stripGraft(after, null).count) bad('settings.json 에 graft 몫이 남는다');
-    for (const ev of new Set([...Object.keys(foreignHooks(cur)), ...Object.keys(foreignHooks(after))])) {
-      if (!sameJson(foreignHooks(cur)[ev], foreignHooks(after)[ev])) bad(`settings.json ${ev}: graft 가 아닌 훅이 옮기기 전과 다르다`);
+    const hooksRef = baseText !== null && settingsOut === baseText ? base : cur; // 기준 판 바이트로 되돌리면 그 판이 기준
+    for (const ev of new Set([...Object.keys(foreignHooks(hooksRef)), ...Object.keys(foreignHooks(after))])) {
+      if (!sameJson(foreignHooks(hooksRef)[ev], foreignHooks(after)[ev])) bad(`settings.json ${ev}: graft 가 아닌 훅이 옮기기 전과 다르다`);
     }
     if (!sameJson(stripped, after) && !(base && sameJson(after, base))) bad('settings.json: graft 몫 밖의 키가 옮기기 전과 다르다');
     const lAfter = parseJsonText(newLocalText);
@@ -409,7 +441,12 @@ function main(argv) {
     if (settingsOut !== curText) {
       if (settingsOut === null) rmSync(abs(SETTINGS)); else writeFileSync(abs(SETTINGS), settingsOut, 'utf8');
     }
-    console.log(`OK   settings.json — graft 몫 ${count}개 뗌 · ${settingsOut === baseText ? 'init 전 바이트로 되돌림' : settingsOut === null ? 'init 전에 없던 파일이라 지움' : count ? '다시 씀(위 WARN)' : '바뀐 것 없음'}`);
+    console.log(`OK   settings.json — graft 몫 ${count}개 뗌 · ${settingsOut === baseText ? `${refName} 바이트로 되돌림` : settingsOut === null ? 'init 전에 없던 파일이라 지움' : count ? '다시 씀(위 WARN)' : '바뀐 것 없음'}`);
+    // 미추적이면 다음 비교 기준을 이번 결과로 — 처음 스냅숏이 낡아 그 뒤의 변경을 되돌리지 않게
+    if (!settingsTracked && settingsOut !== null) {
+      const dst = path.join(snapDir, SETTINGS); mkdirSync(path.dirname(dst), { recursive: true }); writeFileSync(dst, settingsOut, 'utf8');
+      s.snapshot.files[SETTINGS] = { exists: true, tracked: false };
+    }
     s.local = { statusLine: statusLine ? statusLine.command : (s.local && s.local.statusLine) || null, localExisted: s.local ? s.local.localExisted : localText !== null };
 
     // ⑤ .mcp.json — init 전에 없었으면 로컬 전용, 추적 파일이었으면 init 전 내용으로
@@ -420,8 +457,9 @@ function main(argv) {
         const before = snapText(MCP), now = read(MCP);
         const nowJ = loadJsonFile(MCP), beforeJ = parseJsonText(before);
         const minus = clone(nowJ); if (minus && isObj(minus.mcpServers)) delete minus.mcpServers[GRAFT_MCP];
+        const beforeMinus = clone(beforeJ); if (isObj(beforeMinus.mcpServers)) delete beforeMinus.mcpServers[GRAFT_MCP]; // 팀이 커밋한 graft 서버를 init 이 바꿔 썼어도 init 전 바이트로
         if (now === before) console.log('OK   .mcp.json — 추적 파일, init 전과 같음');
-        else if (sameJson(minus, beforeJ) || sameJson(nowJ, beforeJ)) { writeFileSync(abs(MCP), before, 'utf8'); console.log('OK   .mcp.json — 추적 파일이라 init 전 바이트로 되돌림'); }
+        else if (sameJson(minus, beforeMinus)) { writeFileSync(abs(MCP), before, 'utf8'); console.log('OK   .mcp.json — 추적 파일이라 init 전 바이트로 되돌림'); }
         else if (minus) { writeFileSync(abs(MCP), jsonText(minus, before), 'utf8'); console.log('WARN .mcp.json — init 전 판과 graft 서버 말고도 달라 graft 서버만 뺐다'); }
       } else if (!mcpBefore.exists) { exclude.push('/.mcp.json'); console.log('OK   .mcp.json — init 이 새로 만든 파일이라 로컬 전용(exclude)'); }
       else console.log('INFO .mcp.json — init 전부터 미추적 파일이었다. 그대로 두고 graft 서버는 settings.local.json 에서 끈다');
@@ -440,9 +478,11 @@ function main(argv) {
     const keep = exclude.filter((e) => { const t = tracked(e.replace(/^\//, '').replace(/\/$/, '')); if (t) console.log(`WARN exclude 에서 뺐다(추적 중인 경로): ${e}`); return !t; });
     const exPath = gitPath('info/exclude');
     const exText = existsSync(exPath) ? readFileSync(exPath, 'utf8') : '';
+    const exOld = blockEntries(exText);
     const exNew = addBlock(exText, keep);
     if (exNew !== exText) { mkdirSync(path.dirname(exPath), { recursive: true }); writeFileSync(exPath, exNew, 'utf8'); }
-    console.log(`OK   info/exclude 블록${exNew === exText ? '(이미 있어 그대로 둠)' : ''} — ${blockEntries(exNew).join(' · ')}`);
+    const exAdded = exOld ? keep.filter((e) => !exOld.includes(e)) : [];
+    console.log(`OK   info/exclude 블록${exNew === exText ? '(이미 있어 그대로 둠)' : exOld ? `(빠진 줄 덧붙임: ${exAdded.join(' · ')})` : ''} — ${blockEntries(exNew).join(' · ')}`);
     s.exclude = { path: exPath.split(path.sep).join('/'), entries: blockEntries(exNew) };
     s.localizedAt = new Date().toISOString();
     saveState(s);
@@ -471,8 +511,14 @@ function main(argv) {
     const bdir = path.join(stateDir, `backup-${stamp}`);
     const backup = (rel, from = abs(rel)) => { const dst = path.join(bdir, rel); mkdirSync(path.dirname(dst), { recursive: true }); copyFileSync(from, dst); };
     const untrackedFiles = (rel) => { if (!exists(rel)) return []; if (!statSync(abs(rel)).isDirectory()) return tracked(rel) ? [] : [rel]; const out = []; const go = (r) => { for (const e of readdirSync(abs(r), { withFileTypes: true })) { const p = `${r}/${e.name}`; e.isDirectory() ? go(p) : !tracked(p) && out.push(p); } }; go(rel); return out; };
-    // settings.local.json
-    if (exists(LOCAL)) {
+    // settings.json 에 graft 몫이 다시 들어왔으면(업그레이드 뒤 localize 를 안 돌림) 걷어내기 전에 멈춘다 — 헬퍼만 지우면 매 턴 실패하는 훅이 커밋 파일에 남는다
+    const cur = exists(SETTINGS) ? loadJsonFile(SETTINGS) : null;
+    if (cur && stripGraft(cur, null).count) { bad('settings.json 에 graft 몫이 있다(graft 업그레이드가 다시 넣었다) — localize 를 먼저 다시 실행한 뒤 remove 한다. 아무것도 지우지 않았다'); console.log(`failures=${fail}`); return 1; }
+    const pre = (s.snapshot && s.snapshot.preexisting) || {};
+    const wasThere = (p) => !!pre[p] || (p.startsWith('.claude/skills/graft/') && !!pre['.claude/skills/graft']);
+    // settings.local.json — 추적 중이면 커밋 파일이라 건드리지 않는다
+    if (exists(LOCAL) && tracked(LOCAL)) console.log(`KEEP ${LOCAL} — 추적 파일이라 건드리지 않는다`);
+    else if (exists(LOCAL)) {
       const text = read(LOCAL), j = parseJsonText(text);
       const { local, count } = stripLocal(j, s.local && s.local.statusLine);
       if (count) {
@@ -482,19 +528,20 @@ function main(argv) {
         if (!sameJson(foreignHooks(j), foreignHooks(local))) bad(`${LOCAL}: graft 가 아닌 훅이 바뀌었다`);
       } else console.log(`INFO ${LOCAL} — graft 몫 없음`);
     }
-    const cur = exists(SETTINGS) ? loadJsonFile(SETTINGS) : null;
-    if (cur && stripGraft(cur, null).count) console.log('WARN settings.json 에 graft 몫이 있다(graft 업그레이드가 다시 넣었다) — 커밋 파일이라 여기서 지우지 않는다. git diff 로 보고 되돌린다');
-    // helpers · skill
-    const files = [...untrackedFiles('.claude/helpers').filter((p) => /\/graft-[^/]*\.cjs$/.test(p)), ...untrackedFiles('.claude/skills/graft')];
+    // helpers · skill — prepare 전부터 있던 것은 남긴다
+    const all = [...untrackedFiles('.claude/helpers').filter((p) => /\/graft-[^/]*\.cjs$/.test(p)), ...untrackedFiles('.claude/skills/graft')];
+    const files = all.filter((p) => !wasThere(p));
+    for (const p of all.filter(wasThere)) console.log(`KEEP ${p} — graft 연결 전부터 있던 파일`);
     for (const p of files) { backup(p); rmSync(abs(p)); }
     for (const d of ['.claude/skills/graft', '.claude/helpers', '.claude/skills']) if (exists(d) && statSync(abs(d)).isDirectory() && !readdirSync(abs(d)).length) rmdirSync(abs(d));
     console.log(`OK   helpers·skill ${files.length}개 지움${files.length ? ` (${files.join(' · ')})` : ''}`);
     // .mcp.json
-    if (exists(MCP)) {
+    if (exists(MCP) && tracked(MCP)) console.log('KEEP .mcp.json — 추적 파일이라 건드리지 않는다');
+    else if (exists(MCP)) {
       const j = loadJsonFile(MCP);
       const servers = j && isObj(j.mcpServers) ? Object.keys(j.mcpServers) : [];
       const was = s.snapshot && s.snapshot.files[MCP];
-      if (!tracked(MCP) && servers.length === 1 && servers[0] === GRAFT_MCP && (!was || !was.exists) && Object.keys(j).length === 1) { backup(MCP); rmSync(abs(MCP)); console.log('OK   .mcp.json — graft 서버뿐인 새 파일이라 지움'); }
+      if (servers.length === 1 && servers[0] === GRAFT_MCP && (!was || !was.exists) && Object.keys(j).length === 1) { backup(MCP); rmSync(abs(MCP)); console.log('OK   .mcp.json — graft 서버뿐인 새 파일이라 지움'); }
       else if (servers.includes(GRAFT_MCP)) { backup(MCP); const t = read(MCP); delete j.mcpServers[GRAFT_MCP]; writeFileSync(abs(MCP), jsonText(j, t), 'utf8'); console.log('OK   .mcp.json — graft 서버만 뺐다'); }
     }
     // .ignore
@@ -508,6 +555,7 @@ function main(argv) {
     // graft/
     if (exists('graft')) {
       if (args.includes('--keep-graph')) console.log('KEEP graft/ — --keep-graph');
+      else if (pre.graft) console.log('KEEP graft/ — graft 연결 전부터 있던 디렉토리');
       else if (tracked('graft')) console.log('WARN graft/ 에 추적 중인 파일이 있어 지우지 않는다');
       else { rmSync(abs('graft'), { recursive: true, force: true }); console.log('OK   graft/ 지움(다시 만드는 산출물이라 백업하지 않는다)'); }
     }
@@ -517,12 +565,16 @@ function main(argv) {
     if (ex.removed) {
       backup('info-exclude', exPath); writeFileSync(exPath, ex.text, 'utf8');
       console.log('OK   info/exclude 블록 지움');
-      console.log('WARN info/exclude 는 워크트리끼리 공유된다 — 다른 워크트리에서 graft 를 쓰면 그쪽 graft 산출물(helpers 등)이 미추적으로 보일 수 있다. /graft/ 는 .gitignore 에 있어 영향 없음');
+      console.log('WARN info/exclude 는 워크트리끼리 공유된다 — 다른 워크트리에서 graft 를 쓰면 그쪽 graft 산출물(helpers 등)이 미추적으로 보일 수 있다. /graft/ 는 .gitignore 에 있어 영향 없음. 그쪽 helpers 에는 개인 절대경로가 들어 있어 git add -A 로 커밋하지 않게 주의');
     }
     console.log('INFO .gitignore 의 /graft/ 표시 블록은 harness-uninstall 항목 질문(무시목록)에서 정한다');
-    // 다 걷었으면 스냅숏·체크포인트·이번 백업이 든 git-path harness-kit-graft/ 째 지운다. FAIL 이 있으면 되돌릴 근거로 남긴다
-    if (!fail) { rmSync(stateDir, { recursive: true, force: true }); console.log(`OK   스냅숏·체크포인트 지움(${stateDir.split(path.sep).join('/')})`); }
-    else if (existsSync(bdir)) console.log(`백업: ${bdir.split(path.sep).join('/')}`);
+    // 다 걷었으면 스냅숏(before/)·체크포인트(state.json)만 지운다 — 다음 prepare 가 새 스냅숏을 뜬다. 백업(backup-*)은 남긴다. FAIL 이 있으면 되돌릴 근거로 다 남긴다
+    if (!fail) {
+      rmSync(path.join(stateDir, 'before'), { recursive: true, force: true }); rmSync(statePath, { force: true });
+      if (existsSync(stateDir) && !readdirSync(stateDir).length) rmdirSync(stateDir);
+      console.log(`OK   스냅숏·체크포인트 지움(${stateDir.split(path.sep).join('/')}) — 백업은 남긴다`);
+    }
+    if (existsSync(bdir)) console.log(`백업: ${bdir.split(path.sep).join('/')}`);
     console.log(`failures=${fail}`);
     return fail ? 1 : 0;
   }

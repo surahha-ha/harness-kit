@@ -4,6 +4,6 @@
   "description": "Shared Claude Code plugin marketplace. `npm run scan` runs the forbidden-info gate over every tracked file.",
   "scripts": {
     "scan": "node tools/scan-forbidden.mjs --all",
-    "test": "node --test \"tests/*.test.mjs\""
+    "test": "cd tests && node --test"
   }
 }

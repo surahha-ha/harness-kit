@@ -180,10 +180,11 @@ function main(argv) {
     mkdirSync(P.backupDir, { recursive: true });
     const at = stamp();
     copyFileSync(P.settings, path.join(P.backupDir, `settings-before-restore-${at}.json`));
-    writeFileSync(P.settings, text, 'utf8');
+    const drop = r.settingsExisted === false && !Object.keys(after).length; // install 전에 없던 파일이 다시 빈 객체면 지워 원상태로
+    if (drop) rmSync(P.settings); else writeFileSync(P.settings, text, 'utf8');
     copyFileSync(P.receipt, path.join(P.backupDir, `receipt-restored-${at}.json`));
     rmSync(P.receipt);
-    console.log(`OK   전역 statusLine 을 원래 값으로 되돌렸다: ${orig ? orig.command : '(없음 — 키를 지움)'} · 영수증은 ${posix(P.backupDir)} 로 옮겼다`);
+    console.log(`OK   전역 statusLine 을 원래 값으로 되돌렸다: ${orig ? orig.command : '(없음 — 키를 지움)'}${drop ? ' · install 전에 없던 settings.json 이라 파일을 지웠다' : ''} · 영수증은 ${posix(P.backupDir)} 로 옮겼다`);
     console.log(`KEEP 합치기 스크립트 사본·statusline.json 은 남긴다(${posix(P.dir)}). graft 를 쓰는 레포의 settings.local.json statusLine 이 이 사본을 계속 쓴다 — 지우려면 각 레포에서 graft 연결 제거 후 수동 삭제`);
     return 0;
   }
