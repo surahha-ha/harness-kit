@@ -13,15 +13,21 @@
  *   status                        settings.json 에 graft 몫이 다시 들어왔는가 · 로컬 쪽 상태
  *   remove [--keep-graph]         걷어내기 — settings.local.json 의 graft 몫 · helpers·skill · 새로 생긴 .mcp.json·.ignore · graft/ · exclude 블록
  *
- * 종료코드: 0 통과 · 1 FAIL 있음 · 2 사용 오류 · 3 건너뜀(graft 없음 등 — 출력에 이유)
- * 시험용 바꿔치기: HARNESS_KIT_GRAFT_VERSION(graft --version 대신 쓸 값, 빈 문자열이면 「없음」)
+ * signal·prepare 는 graft 가 있으면 설치본 package.json 의 engines.node 를 지금 Node 판과 대어 본다 — 못 미치면 graft 가 있어도
+ * 쓸 수 없다고 보고 종료코드 3. engines 를 못 읽거나 해석하지 못하면 WARN 만 내고 진행한다.
+ * 설치본 찾기: `npm root -g` 아래 @nanonets/graft → 없으면 graft 실행 파일 위치(실경로의 위 디렉토리 · 옆 node_modules).
+ *
+ * 종료코드: 0 통과 · 1 FAIL 있음 · 2 사용 오류 · 3 건너뜀(graft 없음 · Node 판 모자람 등 — 출력에 이유)
+ * 시험용 바꿔치기: HARNESS_KIT_GRAFT_VERSION(graft --version 대신 쓸 값, 빈 문자열이면 「없음」) ·
+ *   HARNESS_KIT_GRAFT_PKG(graft 설치본 package.json 경로, 빈 문자열이면 「못 찾음」 — HARNESS_KIT_GRAFT_VERSION 을 바꿔치면
+ *   이 값이 없을 때 실제 설치본을 찾지 않는다) · HARNESS_KIT_NODE_VERSION(process.version 대신 쓸 값)
  *
  * Node 내장 모듈만 쓴다. git 에는 쓰지 않는다(add·commit 을 부르지 않는다) — info/exclude 만 고친다.
  * 근거(graft 0.12.1): settings-merge.js 가 settings.json 에 statusLine·subagentStatusLine·훅 5개·footerLinksRegexes·
  * permissions.allow 를 넣고(timeout 은 ms 처럼 8000·10000·15000), init.js 가 settings.json 을 2칸 들여쓰기 LF 로 통째로 다시 쓴다.
  */
-import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync, rmSync, readdirSync, statSync, rmdirSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync, rmSync, readdirSync, statSync, rmdirSync, realpathSync } from 'node:fs';
+import { execFileSync, execSync } from 'node:child_process';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -206,12 +212,65 @@ export function addGitignoreBlock(text) {
 }
 
 /** 권장 계산 — DECISIONS.md D9 규칙표와 같은 순서. */
-export function recommend({ codeFiles, trackedFiles, commits30, graftVersion }) {
+export function recommend({ codeFiles, trackedFiles, commits30, graftVersion, engineIssue = null }) {
   if (!graftVersion) return { rec: null, why: 'graft 가 이 PC 에 없다 — 이 항목은 설치 안내만 하고 건너뛴다(전역 npm 설치는 스킬이 하지 않는다)', skip: true };
+  if (engineIssue) return { rec: null, why: `graft ${graftVersion} 가 있지만 ${engineIssue} — 이 PC 에서는 쓸 수 없어 안내만 하고 건너뛴다(Node 업그레이드는 스킬이 하지 않는다)`, skip: true };
   const ratio = trackedFiles ? codeFiles / trackedFiles : 0;
   if (codeFiles < SIGNAL.skipFiles || ratio < SIGNAL.skipCodeRatio) return { rec: 'skip', why: `코드 파일 ${codeFiles}개(추적 파일의 ${Math.round(ratio * 100)}%) — 작거나 문서 위주라 매 프롬프트 주입이 잡음이 된다` };
   if (codeFiles >= SIGNAL.useFiles && commits30 >= SIGNAL.useCommits30) return { rec: 'use', why: `코드 파일 ${codeFiles}개 · 최근 30일 커밋 ${commits30}개 — 크고 작업이 잦아 관련 노드 주입이 탐색 호출을 줄인다` };
   return { rec: null, why: `코드 파일 ${codeFiles}개 · 최근 30일 커밋 ${commits30}개 — 사용 문턱(${SIGNAL.useFiles}개·${SIGNAL.useCommits30}커밋)과 안 씀 문턱(${SIGNAL.skipFiles}개 미만 또는 코드 비율 1/3 미만) 사이` };
+}
+
+// ── graft 의 Node 조건(engines.node) ─────────────────────────────────────────
+export const GRAFT_PKG = '@nanonets/graft';
+/** 설치 안내 — 요구 판 숫자는 박지 않는다(graft 판마다 다를 수 있다). 숫자는 조사 판과 함께 예시로만. */
+export const INSTALL_HINT = `설치 안내(사용자가 직접): ① npm view ${GRAFT_PKG} engines 로 요구 Node 판을 확인한다(예: 조사 판 0.12.1 기준 node >=20) ② node --version 과 비교한다 ③ 모자라면 Node 를 먼저 올린 뒤 npm i -g ${GRAFT_PKG} — 설치 뒤 새 세션에서 다시 묻는다`;
+const cmpVer = (a, b) => (a[0] - b[0]) || (a[1] - b[1]) || (a[2] - b[2]);
+
+/** engines.node 범위식 해석 — `>=X[.Y[.Z]]` · `^X[.Y[.Z]]`(X ≥ 1) 만 본다. 그 밖(||·공백 범위·~·x·<·^0)은 null. */
+export function parseNodeRange(range) {
+  const m = /^\s*(>=|\^)\s*v?(\d+)(?:\.(\d+))?(?:\.(\d+))?\s*$/.exec(String(range ?? ''));
+  if (!m) return null;
+  const min = [Number(m[2]), Number(m[3] ?? 0), Number(m[4] ?? 0)];
+  if (m[1] === '>=') return { min, below: null };
+  return min[0] > 0 ? { min, below: [min[0] + 1, 0, 0] } : null;
+}
+
+/** 지금 Node 판이 범위를 채우는가 — ok 가 true·false, 해석하지 못하면 null. why 는 보고 문구. */
+export function checkNodeEngine(range, nodeVersion) {
+  const r = parseNodeRange(range);
+  const m = /^v?(\d+)\.(\d+)\.(\d+)/.exec(String(nodeVersion ?? '').trim());
+  if (!r) return { ok: null, why: `Node 조건 "${range}" 을 해석하지 못했다(>=X · ^X 꼴만 본다)` };
+  if (!m) return { ok: null, why: `Node 판 "${nodeVersion}" 을 해석하지 못했다` };
+  const v = m.slice(1).map(Number);
+  const ok = cmpVer(v, r.min) >= 0 && (!r.below || cmpVer(v, r.below) < 0);
+  return { ok, why: ok ? `Node ${range.trim()} 충족, 현재 ${nodeVersion}` : `Node ${range.trim()} 필요, 현재 ${nodeVersion}` };
+}
+
+/** graft 설치본 package.json 찾기 — npmRoot(`npm root -g`) 아래 → graft 실행 파일 위치. name 이 @nanonets/graft 인 것만 받는다. */
+export function findGraftPackage({ npmRoot = null, exePaths = [] } = {}) {
+  const isGraft = (p) => { try { return JSON.parse(readFileSync(p, 'utf8').replace(/^﻿/, '')).name === GRAFT_PKG; } catch { return false; } };
+  const sub = path.join(...GRAFT_PKG.split('/'), 'package.json');
+  if (npmRoot) { const p = path.join(npmRoot, sub); if (isGraft(p)) return p; }
+  for (const exe of exePaths) {
+    let real; try { real = realpathSync(exe); } catch { continue; }
+    // Windows npm shim(graft.cmd)은 <prefix>/node_modules 옆에 있고, 유닉스 bin 링크의 실경로는 패키지 안(dist/cli.js)이다
+    for (let d = path.dirname(real), i = 0; i < 8; i++) {
+      for (const p of [path.join(d, 'package.json'), path.join(d, 'node_modules', sub)]) if (isGraft(p)) return p;
+      const up = path.dirname(d); if (up === d) break; d = up;
+    }
+  }
+  return null;
+}
+
+/** 설치본의 engines.node 와 지금 Node 판 — state: ok · unmet · unknown(못 찾음·못 읽음·해석 못 함 — 진행한다). */
+export function graftEngine(pkgPath, nodeVersion) {
+  if (!pkgPath) return { state: 'unknown', why: 'graft 설치본 package.json 을 찾지 못했다' };
+  let range;
+  try { range = JSON.parse(readFileSync(pkgPath, 'utf8').replace(/^﻿/, '')).engines?.node; } catch (e) { return { state: 'unknown', why: `${pkgPath.split(path.sep).join('/')} 를 읽지 못했다(${e.code || e.name})` }; }
+  if (typeof range !== 'string' || !range.trim()) return { state: 'unknown', why: 'graft package.json 에 engines.node 가 없다' };
+  const c = checkNodeEngine(range, nodeVersion);
+  return { state: c.ok === null ? 'unknown' : c.ok ? 'ok' : 'unmet', range: range.trim(), why: c.why };
 }
 
 // ── 실행부 ───────────────────────────────────────────────────────────────────
@@ -241,6 +300,25 @@ function main(argv) {
     if ('HARNESS_KIT_GRAFT_VERSION' in process.env) return process.env.HARNESS_KIT_GRAFT_VERSION || null;
     try { return execFileSync('graft', ['--version'], { encoding: 'utf8', shell: process.platform === 'win32', windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] }).trim() || null; } catch { return null; }
   };
+  const nodeVersion = process.env.HARNESS_KIT_NODE_VERSION || process.version;
+  const graftPkgPath = () => {
+    if ('HARNESS_KIT_GRAFT_PKG' in process.env) return process.env.HARNESS_KIT_GRAFT_PKG || null;
+    if ('HARNESS_KIT_GRAFT_VERSION' in process.env) return null; // 바꿔친 graft 에는 실제 설치본이 없다
+    const quiet = { encoding: 'utf8', windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] };
+    const out = (f) => { try { return f(); } catch { return ''; } };
+    const npmRoot = out(() => execSync('npm root -g', quiet)).trim() || null; // npm 은 Windows 에서 .cmd 라 셸로 부른다
+    const found = findGraftPackage({ npmRoot });
+    if (found) return found;
+    const exePaths = out(() => (process.platform === 'win32' ? execFileSync('where', ['graft'], quiet) : execFileSync('which', ['-a', 'graft'], quiet)))
+      .split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    return findGraftPackage({ exePaths });
+  };
+  /** graft 가 있을 때 Node 조건 확인 — 못 읽으면 WARN 만. */
+  const engineCheck = (v) => {
+    const e = graftEngine(graftPkgPath(), nodeVersion);
+    if (e.state === 'unknown') console.log(`WARN graft ${v} 의 Node 조건(engines.node)을 확인하지 못했다 — ${e.why}. 확인 없이 진행한다(직접 확인: npm view ${GRAFT_PKG} engines · node --version)`);
+    return e;
+  };
   const loadJsonFile = (rel) => { try { return parseJsonText(read(rel)); } catch { return undefined; } };
   const homeDir = () => path.resolve(opt('--home') || os.homedir());
 
@@ -249,16 +327,21 @@ function main(argv) {
     const codeFiles = files.filter((f) => CODE_EXT.has(path.extname(f).slice(1).toLowerCase())).length;
     const commits30 = Number((tryGit('rev-list', '--count', '--since=30.days', 'HEAD') || '0').trim()) || 0;
     const v = graftVersion();
-    const r = recommend({ codeFiles, trackedFiles: files.length, commits30, graftVersion: v });
-    console.log(`D9 관찰: 추적 파일 ${files.length}개 · 코드 파일 ${codeFiles}개 · 최근 30일 커밋 ${commits30}개 · graft ${v || '없음'}`);
+    const e = v ? engineCheck(v) : null;
+    const unmet = e && e.state === 'unmet' ? e.why : null;
+    const r = recommend({ codeFiles, trackedFiles: files.length, commits30, graftVersion: v, engineIssue: unmet });
+    console.log(`D9 관찰: 추적 파일 ${files.length}개 · 코드 파일 ${codeFiles}개 · 최근 30일 커밋 ${commits30}개 · graft ${v ? (unmet ? `${v}(쓸 수 없음 — ${unmet})` : v) : '없음'}`);
     console.log(`D9 권장: ${r.rec === 'use' ? '사용 (로컬 전용)' : r.rec === 'skip' ? '안 씀' : '권장 없음'} — ${r.why}`);
-    if (r.skip) { console.log('INFO 설치 안내: npm i -g @nanonets/graft (사용자가 직접) — 설치 뒤 새 세션에서 다시 묻는다'); return 3; }
+    if (r.skip) { console.log(`INFO ${INSTALL_HINT}`); return 3; }
     return 0;
   }
 
   if (cmd === 'prepare') {
     const v = graftVersion();
-    if (!v) { console.log('SKIP graft 가 이 PC 에 없다(graft --version 실패) — 설치 안내: npm i -g @nanonets/graft. 이 항목을 건너뛴다'); return 3; }
+    if (!v) { console.log(`SKIP graft 가 이 PC 에 없다(graft --version 실패) — 이 항목을 건너뛴다. ${INSTALL_HINT}`); return 3; }
+    const e = engineCheck(v);
+    if (e.state === 'unmet') { console.log(`SKIP graft ${v} 가 있지만 ${e.why} — 이 PC 에서는 쓸 수 없어 이 항목을 건너뛴다. ${INSTALL_HINT}`); return 3; }
+    if (e.state === 'ok') console.log(`OK   graft ${v} 의 ${e.why}`);
     if (tracked(LOCAL)) { bad(`${LOCAL} 이 추적 중이다 — graft 몫(개인 경로가 든 상태 줄 포함)을 옮기면 커밋된다. 이 레포에서는 로컬 전용 연결을 할 수 없다`); console.log(`failures=${fail}`); return 1; }
     let s = loadState();
     if (s && s.snapshot) console.log(`INFO 스냅숏이 이미 있다(${s.snapshot.at}) — 덮지 않는다(재실행·업그레이드 뒤에도 기준은 처음 판)`);

@@ -7,7 +7,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { fixTimeout, recommend, stripGraft, upsertBlock, removeBlock, addGitignoreBlock } from '../plugins/harness-kit/scripts/graft-localize.mjs';
+import { fixTimeout, recommend, stripGraft, upsertBlock, removeBlock, addGitignoreBlock, checkNodeEngine, findGraftPackage, graftEngine } from '../plugins/harness-kit/scripts/graft-localize.mjs';
 
 // 이 PC 의 git 전역·시스템 설정(전역 ignore · autocrlf)이 판정에 섞이지 않게 비운다 — 스크립트를 띄우는 자식에도 물려준다
 const EMPTY_GITCONFIG = path.join(mkdtempSync(path.join(os.tmpdir(), 'hk-gitcfg-')), 'gitconfig');
@@ -181,6 +181,108 @@ test('graft 가 없으면 prepare 는 건너뛴다(종료코드 3) — 아무것
   const r = spawnSync(process.execPath, [SCRIPT, 'prepare', root], { encoding: 'utf8', env: { ...process.env, HARNESS_KIT_GRAFT_VERSION: '' } });
   assert.equal(r.status, 3);
   assert.equal(git(root, 'status', '--porcelain'), '');
+  assert.match(r.stdout, /npm view @nanonets\/graft engines/, '설치 안내에 요구 Node 판 확인 방법');
+  assert.match(r.stdout, /node --version/);
+  assert.match(r.stdout, /Node 를 먼저 올린 뒤 npm i -g @nanonets\/graft/);
+});
+
+// ── Node 조건(engines.node) — graft 설치본 package.json 경로와 Node 판을 바꿔쳐서 본다 ──
+function graftPkg(pkg) {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'hk-graftpkg-'));
+  const p = path.join(dir, 'package.json');
+  writeFileSync(p, JSON.stringify(pkg));
+  return p;
+}
+function runNode(root, cmd, pkgPath, nodeVersion) {
+  const env = { ...process.env, HARNESS_KIT_GRAFT_VERSION: '0.12.1', HARNESS_KIT_GRAFT_PKG: pkgPath, HARNESS_KIT_NODE_VERSION: nodeVersion };
+  const r = spawnSync(process.execPath, [SCRIPT, cmd, root], { encoding: 'utf8', env });
+  return { code: r.status, out: r.stdout + r.stderr };
+}
+const stateDirOf = (root) => path.resolve(root, git(root, 'rev-parse', '--git-path', 'harness-kit-graft').trim());
+
+test('Node 조건 불충족 — graft 가 있어도 prepare 는 건너뛰고(종료코드 3) 아무것도 쓰지 않는다', () => {
+  const root = repo({ '.claude/settings.json': '{}\n' });
+  const r = runNode(root, 'prepare', graftPkg({ name: '@nanonets/graft', engines: { node: '>=20' } }), 'v18.19.0');
+  assert.equal(r.code, 3);
+  assert.match(r.out, /Node >=20 필요, 현재 v18\.19\.0/);
+  assert.match(r.out, /npm view @nanonets\/graft engines/);
+  assert.equal(git(root, 'status', '--porcelain'), '');
+  assert.equal(existsSync(stateDirOf(root)), false, '스냅숏을 뜨지 않는다');
+});
+
+test('Node 조건 불충족 — signal 도 건너뜀(종료코드 3)으로 낸다', () => {
+  const root = repo({ 'a.js': '1\n' });
+  const r = runNode(root, 'signal', graftPkg({ name: '@nanonets/graft', engines: { node: '>=20' } }), 'v18.19.0');
+  assert.equal(r.code, 3);
+  assert.match(r.out, /D9 권장: 권장 없음 — graft 0\.12\.1 가 있지만 Node >=20 필요, 현재 v18\.19\.0/);
+});
+
+test('Node 조건 충족 — prepare 가 진행하고 OK 줄을 낸다', () => {
+  const root = repo({ '.claude/settings.json': '{}\n' });
+  const r = runNode(root, 'prepare', graftPkg({ name: '@nanonets/graft', engines: { node: '>=20' } }), 'v20.0.0');
+  assert.equal(r.code, 0);
+  assert.match(r.out, /OK {3}graft 0\.12\.1 의 Node >=20 충족, 현재 v20\.0\.0/);
+  assert.doesNotMatch(r.out, /WARN/);
+  assert.equal(existsSync(stateDirOf(root)), true);
+});
+
+test('Node 조건을 읽지 못하면 WARN 만 내고 진행한다 — 파일 없음 · engines 없음 · 해석 못 하는 범위식', () => {
+  const cases = [
+    [path.join(os.tmpdir(), 'hk-no-such-dir', 'package.json'), /WARN graft 0\.12\.1 의 Node 조건\(engines\.node\)을 확인하지 못했다 — .*읽지 못했다/],
+    ['', /WARN .*package\.json 을 찾지 못했다/],
+    [graftPkg({ name: '@nanonets/graft' }), /WARN .*engines\.node 가 없다/],
+    [graftPkg({ name: '@nanonets/graft', engines: { node: '>=18 <22' } }), /WARN .*">=18 <22" 을 해석하지 못했다/],
+  ];
+  for (const [pkgPath, warn] of cases) {
+    const root = repo({ '.claude/settings.json': '{}\n' });
+    const r = runNode(root, 'prepare', pkgPath, 'v16.0.0');
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, warn);
+  }
+});
+
+test('checkNodeEngine — >=X · >=X.Y.Z · ^X 만 판정하고 그 밖은 null', () => {
+  assert.equal(checkNodeEngine('>=20', 'v20.0.0').ok, true);
+  assert.equal(checkNodeEngine('>=20', 'v24.14.0').ok, true);
+  assert.equal(checkNodeEngine('>=20', 'v19.9.9').ok, false);
+  assert.equal(checkNodeEngine('>=20.10.0', 'v20.9.5').ok, false);
+  assert.equal(checkNodeEngine('>= 20.10', 'v20.10.0').ok, true);
+  assert.equal(checkNodeEngine('^20', 'v20.5.1').ok, true);
+  assert.equal(checkNodeEngine('^20', 'v21.0.0').ok, false, '^ 는 다음 주 판 미만');
+  assert.equal(checkNodeEngine('^20.3', 'v20.2.0').ok, false);
+  assert.equal(checkNodeEngine('>=20', 'v22.0.0-nightly2024').ok, true);
+  assert.equal(checkNodeEngine('>=18 <22', 'v20.0.0').ok, null);
+  assert.equal(checkNodeEngine('^18 || ^20', 'v20.0.0').ok, null);
+  assert.equal(checkNodeEngine('20.x', 'v20.0.0').ok, null);
+  assert.equal(checkNodeEngine('>=20', 'garbage').ok, null);
+  assert.equal(checkNodeEngine('>=20', 'v18.0.0').why, 'Node >=20 필요, 현재 v18.0.0');
+});
+
+test('findGraftPackage — npm root -g 아래 · 실행 파일 옆 node_modules · 실행 파일 위 디렉토리, 이름이 다른 package.json 은 받지 않는다', () => {
+  const put = (p, obj) => { mkdirSync(path.dirname(p), { recursive: true }); writeFileSync(p, JSON.stringify(obj)); return p; };
+  const base = mkdtempSync(path.join(os.tmpdir(), 'hk-findgraft-'));
+  const G = { name: '@nanonets/graft', engines: { node: '>=20' } };
+  // npm root -g
+  const inRoot = put(path.join(base, 'root', 'node_modules', '@nanonets', 'graft', 'package.json'), G);
+  assert.equal(findGraftPackage({ npmRoot: path.join(base, 'root', 'node_modules') }), inRoot);
+  // Windows npm shim — <prefix>/graft.cmd 옆 <prefix>/node_modules/@nanonets/graft
+  const shim = path.join(base, 'prefix', 'graft.cmd');
+  const beside = put(path.join(base, 'prefix', 'node_modules', '@nanonets', 'graft', 'package.json'), G);
+  mkdirSync(path.dirname(shim), { recursive: true }); writeFileSync(shim, '@echo off\n');
+  assert.equal(findGraftPackage({ npmRoot: path.join(base, 'empty'), exePaths: [shim] }), beside, 'npm root 에 없으면 실행 파일 위치로');
+  // 실경로가 패키지 안(dist/cli.js)
+  const pkgDir = path.join(base, 'lib', 'graft');
+  const inside = put(path.join(pkgDir, 'package.json'), G);
+  const cli = path.join(pkgDir, 'dist', 'cli.js'); mkdirSync(path.dirname(cli), { recursive: true }); writeFileSync(cli, '');
+  assert.equal(findGraftPackage({ exePaths: [cli] }), inside);
+  // 다른 이름
+  const other = path.join(base, 'other');
+  put(path.join(other, 'node_modules', '@nanonets', 'graft', 'package.json'), { name: 'not-graft' });
+  assert.equal(findGraftPackage({ npmRoot: path.join(other, 'node_modules'), exePaths: [path.join(base, 'missing.cmd')] }), null);
+  // 찾은 파일로 판정
+  assert.equal(graftEngine(inRoot, 'v18.0.0').state, 'unmet');
+  assert.equal(graftEngine(inRoot, 'v20.1.0').state, 'ok');
+  assert.equal(graftEngine(null, 'v20.1.0').state, 'unknown');
 });
 
 test('fixTimeout — 1000 이상은 ms 로 보고 초로 올림, 그 밖은 그대로', () => {

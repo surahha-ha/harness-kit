@@ -90,6 +90,7 @@
 
 ## §8-2 선택 항목 — graft · 전역 상태 줄
 
+- **graft 는 Node engines 조건이 있다 — 설치 실패·런타임 오류가 Node 버전 때문일 수 있다.** graft 의 `package.json` 은 `engines.node` 로 Node 판을 요구한다(예: 조사 판 0.12.1 기준 `>=20`). 실제로 graft 를 깔 때 Node 를 먼저 올려야 했다. `graft --version` 이 돈다고 쓸 수 있는 것이 아니다 — `signal`·`prepare` 가 설치본의 `engines.node` 를 지금 Node 와 대어 보고, 못 미치면 건너뛴다(종료코드 3). 요구 판은 `npm view @nanonets/graft engines` 로 그때그때 확인하고 문서에 숫자를 박지 않는다.
 - **graft init 은 settings.json 을 통째로 다시 쓴다.** 2칸 들여쓰기·LF 로 쓰므로 CRLF·다른 들여쓰기 파일은 내용이 같아도 바이트가 바뀐다. 손으로 graft 키만 지우면 서식 차이가 diff 로 남는다 — `localize` 가 init 전 스냅숏 바이트로 되돌린다. 스냅숏은 `prepare` 에서만 뜨므로 **init 전에 prepare 를 빠뜨리지 않는다.**
 - **settings 병합은 이벤트별로 기계 대조한다.** 무충돌로 보이는 병합이 같은 이벤트 배열의 훅을 잃은 사고가 있었다. `localize` 는 옮기기 전·뒤 graft 가 아닌 훅을 이벤트별로 대조하고, 어긋나면 아무 파일도 쓰지 않는다.
 - **graft 의 훅 timeout 은 ms 로 적혀 있다.** Claude Code 는 초로 읽어 15000 이 네 시간 넘는 한도가 된다 — 멈춘 훅을 끊지 못한다. 옮길 때 초로 교정한다(DECISIONS.md D9).

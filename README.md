@@ -37,6 +37,8 @@
 
 `harness-install` 의 선택 항목 「graft 사용」(D9)이 넣는 graft 훅도 플러그인 훅이 아니다 — 그 레포의 `.claude/settings.local.json`(커밋되지 않음)에만 들어간다.
 
+graft(전역 npm `@nanonets/graft`)는 Node 판 조건(`engines.node`)이 있다 — 예: 조사 판 0.12.1 기준 `>=20`. 깔기 전에 `npm view @nanonets/graft engines` 로 요구 판을 보고 `node --version` 과 비교해, 모자라면 Node 를 먼저 올린 뒤 `npm i -g @nanonets/graft` 로 깐다. 이미 깔려 있어도 지금 Node 가 그 조건에 못 미치면 `harness-install` 은 graft 항목을 건너뛴다.
+
 ### 사용자 전역에 쓰는 것 — 상태 줄 하나뿐
 
 harness-kit 은 레포 안에만 쓴다. 예외가 하나 있다: `harness-install` 의 선택 항목 「전역 상태 줄」(D10, 기본 끔)을 고르면 `~/.claude/settings.json` 의 `statusLine.command` 를 합치기 스크립트(`~/.claude/harness-kit/statusline-combined.cjs` — 원래 명령의 출력 + 그 레포에 graft 상태 줄 헬퍼가 있으면 그 출력)로 바꾼다.

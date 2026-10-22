@@ -69,7 +69,7 @@ description: 지금 레포에 harness-agent 게이트(.harness/ 훅)와 harness-
 
 설치 위치(D1) → 공유 자원(D2 · 서버 기동 D2-2) → 단위 테스트 범위(D3) → **플러그인 겹침(D6 · 끄면 사라지는 가드 D6-2)** → 위험 명령(D4) → 커밋 정책(D5) → 나머지 칸(D7) → kit 이 읽는 칸(D8) → graft 사용(D9) → 전역 상태 줄(D10)
 
-D9 의 근거는 `node "${CLAUDE_SKILL_DIR}/../../scripts/graft-localize.mjs" signal <레포 루트>` 가 낸다(종료코드 3 이면 graft 가 없어 묻지 않는다). D10 은 D9 가 「사용」일 때만 묻는다.
+D9 의 근거는 `node "${CLAUDE_SKILL_DIR}/../../scripts/graft-localize.mjs" signal <레포 루트>` 가 낸다(종료코드 3 이면 graft 가 없거나 지금 Node 가 graft 의 `engines.node` 에 못 미쳐 묻지 않는다 — 출력의 설치 안내를 보고에 옮긴다). D10 은 D9 가 「사용」일 때만 묻는다.
 
 D6 을 D4 앞에 묻는다. 플러그인을 끄면 그 플러그인이 막던 명령이 이 레포에서 무방비가 되는데, D4 를 먼저 정하면 그 빈자리가 D4 후보에 들지 못한다 — 시험 설치에서 볼륨 삭제를 「막지 않음」으로 정한 뒤에야 D6 이 그 가드를 없앤다는 것을 알았다.
 
@@ -158,7 +158,7 @@ D6 을 D4 앞에 묻는다. 플러그인을 끄면 그 플러그인이 막던 �
 D9·D10 이 둘 다 「안 씀」(또는 건너뜀)이면 이 단계는 없다. `S=${CLAUDE_SKILL_DIR}/../../scripts` 라 할 때, 순서는 D10 먼저다 — `localize --statusline` 이 D10 의 전역 영수증에서 명령을 읽는다.
 
 1. **전역 상태 줄(D10 = 합치기 사용)** — `node "$S/statusline-setup.mjs" install`. 종료코드 3(이미 다른 합치기 스크립트를 가리킴)이면 출력의 명령을 보이고 D10 표대로 다시 묻는다 — 스크립트가 덮어쓰지 않는다. 출력의 백업·영수증 경로를 보고에 옮긴다.
-2. **graft 준비(D9 = 사용)** — `node "$S/graft-localize.mjs" prepare <레포 루트>`. graft 확인 · init 전 `settings.json`·`.mcp.json`·`.gitignore`·`.ignore`·`settings.local.json` 스냅숏(`git rev-parse --git-path harness-kit-graft/`) · `.gitignore` 에 `/graft/` 표시 블록(TEMPLATES.md §3 꼴, 출력이 그 파일의 몇 번째 블록인지 낸다 — 체크포인트 `edits` 에 `block` 으로). 종료코드 3 이면 graft 가 없다 — 설치 안내만 하고 이 항목을 건너뛴다. 종료코드 1 이면(`settings.local.json` 이 추적 중) 멈추고 보고한다.
+2. **graft 준비(D9 = 사용)** — `node "$S/graft-localize.mjs" prepare <레포 루트>`. graft 확인 · Node 판 확인(graft 설치본의 `engines.node` 와 지금 Node — 못 미치면 「Node <요구> 필요, 현재 <판>」으로 종료코드 3, 못 읽으면 `WARN` 만 내고 진행) · init 전 `settings.json`·`.mcp.json`·`.gitignore`·`.ignore`·`settings.local.json` 스냅숏(`git rev-parse --git-path harness-kit-graft/`) · `.gitignore` 에 `/graft/` 표시 블록(TEMPLATES.md §3 꼴, 출력이 그 파일의 몇 번째 블록인지 낸다 — 체크포인트 `edits` 에 `block` 으로). 종료코드 3 이면 graft 가 없거나 Node 판이 모자라다 — 출력의 설치 안내(`npm view @nanonets/graft engines` → `node --version` 과 비교 → 모자라면 Node 먼저 올린 뒤 `npm i -g @nanonets/graft`)만 보고에 옮기고 이 항목을 건너뛴다. 종료코드 1 이면(`settings.local.json` 이 추적 중) 멈추고 보고한다.
    - `/graft/` 를 `.gitignore` 에 미리 넣는 이유: graft build 는 `.gitignore` 텍스트만 보고 그 줄이 없으면 **매 build(= 매 턴)** 표시 없이 덧붙인다. `.git/info/exclude`·`core.excludesFile` 은 보지 않는다.
 3. **graft 연결** — 레포 루트에서 `graft init . --no-agents --no-global --no-build -y` → `graft build .`. 기본값의 init 은 추적 파일(`AGENTS.md`·`.cursor/`)을 건드리고, `--no-global` 없이는 사용자 홈의 다른 에이전트 설정에 쓴다.
 4. **로컬 전용으로 옮기기** — `node "$S/graft-localize.mjs" localize <레포 루트>`(D10 을 켰으면 `--statusline`). 이 스크립트가 graft 가 `settings.json` 에 넣은 것(graft 훅 · `subagentStatusLine` · graft `statusLine` · graft 권한 `Bash(graft:*)` 등 · `footerLinksRegexes`)을 `settings.local.json` 으로 옮기고(훅 timeout 은 초로 교정), `settings.json` 을 init 전 바이트로 되돌리며, `.mcp.json` 을 정리하고(init 전에 없었으면 로컬 전용 · 추적 파일이었으면 init 전 바이트로) `settings.local.json` 에 `disabledMcpjsonServers: ["graft"]` 를 넣고, `git rev-parse --git-path info/exclude` 에 로컬 산출물 블록(`/graft/` · `/.claude/helpers/graft-*.cjs` · `/.claude/skills/graft/` · 새로 생긴 `.mcp.json`·`.ignore`)을 쓴다. 추적 중인 경로는 exclude 에 넣지 않는다. 이벤트별 기계 대조가 어긋나면 아무 파일도 쓰지 않고 `failures=N` 으로 끝난다.
@@ -185,6 +185,6 @@ graft 업그레이드 뒤에는 `node "$S/graft-localize.mjs" status <레포 루
 
 ## 보고
 
-마지막 응답에 담는다: 원본 SHA · 변경 파일 목록 · 영수증 경로 · 결정별 답 표(「권장」 열 — 권장대로 / 권장과 다름 / 권장 없음) · `null` 로 둔 칸과 그 이유, **그 null 이 끄는 kit 자산**(`install.mjs slots` 의 목록) · D6-2 에서 「막지 않음」으로 남긴 빈자리 · 6단계 결과(남긴 HOLE 포함) · 7단계 상태 · 8-2단계 결과(D9·D10 — graft 판 · 옮긴 graft 몫과 timeout 교정 · exclude 블록 · 전역 백업·영수증 경로, 또는 「graft 없음 — 건너뜀」) · 사용자가 할 일(발동 확인, 제외 규칙 실행 확인, 첫 사용자 설치, 미정 결정, graft 업그레이드 뒤 `localize` 재실행).
+마지막 응답에 담는다: 원본 SHA · 변경 파일 목록 · 영수증 경로 · 결정별 답 표(「권장」 열 — 권장대로 / 권장과 다름 / 권장 없음) · `null` 로 둔 칸과 그 이유, **그 null 이 끄는 kit 자산**(`install.mjs slots` 의 목록) · D6-2 에서 「막지 않음」으로 남긴 빈자리 · 6단계 결과(남긴 HOLE 포함) · 7단계 상태 · 8-2단계 결과(D9·D10 — graft 판 · 옮긴 graft 몫과 timeout 교정 · exclude 블록 · 전역 백업·영수증 경로, 또는 「graft 없음 — 건너뜀」·「Node 판 모자람 — 건너뜀」) · 사용자가 할 일(발동 확인, 제외 규칙 실행 확인, 첫 사용자 설치, 미정 결정, graft 업그레이드 뒤 `localize` 재실행).
 
 보고를 건넨 뒤 체크포인트 파일을 지운다 — 원본 SHA 는 config 머리 줄에 남는다. 체크포인트가 남아 있으면 다음 0단계가 그 트리를 「중단된 설치」로 본다.

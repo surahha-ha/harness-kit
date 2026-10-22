@@ -254,11 +254,13 @@ harness-kit 의 스킬·커맨드·에이전트는 config `project` 블록의 �
 graft(전역 npm 패키지 `@nanonets/graft`)는 레포의 코드 그래프를 `graft/` 에 만들고, 훅으로 **매 프롬프트마다 관련 코드 위치를 대화에 붙이고** 턴 끝에 그래프를 다시 짓는다. 코드가 크고 작업이 잦은 레포에서만 이득이다 — 작고 문서 위주인 레포에서는 붙는 내용이 잡음이었다(실측).
 
 - 질문 첫 문장: 「이 레포의 코드 지도(graft)를 만들어, 질문할 때마다 관련 코드 위치를 자동으로 붙여 줄까요? 이 PC·이 폴더에서만 켜지고 커밋되지 않습니다.」
-- 근거: `node "${CLAUDE_SKILL_DIR}/../../scripts/graft-localize.mjs" signal <레포 루트>` 의 `D9 관찰`·`D9 권장` 두 줄 — 추적 파일 수 · 코드 파일 수(확장자 기준) · 최근 30일 커밋 수 · `graft --version`.
+- 근거: `node "${CLAUDE_SKILL_DIR}/../../scripts/graft-localize.mjs" signal <레포 루트>` 의 `D9 관찰`·`D9 권장` 두 줄 — 추적 파일 수 · 코드 파일 수(확장자 기준) · 최근 30일 커밋 수 · `graft --version` · graft 가 있으면 그 설치본의 Node 조건.
+- 사전 조건 — **Node 판.** graft 는 `package.json` 의 `engines.node` 로 Node 판을 요구한다(예: 조사 판 0.12.1 기준 `>=20`, 판마다 다를 수 있어 숫자를 여기 박지 않는다). 못 미치는 Node 에서는 설치가 실패하거나 깔려 있어도 런타임 오류가 난다 — 실제로 graft 를 깔 때 Node 를 먼저 올려야 했다. `signal`·`prepare` 는 graft 가 있으면 설치본 `package.json`(`npm root -g` 아래 `@nanonets/graft`, 없으면 graft 실행 파일 위치로 찾는다)의 `engines.node` 를 지금 `node --version` 과 대어 본다. 판정하는 범위식은 `>=X`·`>=X.Y.Z`·`^X` 꼴뿐이고, 못 읽거나 해석하지 못하면 `WARN` 만 내고 진행한다.
 
 | 관찰 | 권장 |
 | - | - |
-| graft 가 이 PC 에 없다(`graft --version` 실패) | 묻지 않는다 — 설치 안내(`npm i -g @nanonets/graft`, 사용자가 직접)만 하고 보고에 「graft 없음 — 건너뜀」. 전역 npm 설치를 스킬이 하지 않는다 |
+| graft 가 이 PC 에 없다(`graft --version` 실패) | 묻지 않는다 — 설치 안내만 하고 보고에 「graft 없음 — 건너뜀」. 안내: `npm view @nanonets/graft engines` 로 요구 Node 판 확인 → `node --version` 과 비교 → 모자라면 Node 를 먼저 올린 뒤 `npm i -g @nanonets/graft`(사용자가 직접). 전역 npm 설치·Node 업그레이드를 스킬이 하지 않는다 |
+| graft 가 있지만 지금 Node 가 그 설치본의 `engines.node` 에 못 미친다 | 묻지 않는다 — 깔려 있어도 쓸 수 없다고 보고(「Node <요구> 필요, 현재 <판>」) 위와 같은 안내만 하고 보고에 「Node 판 모자람 — 건너뜀」 |
 | 코드 파일 150개 미만, 또는 코드 파일이 추적 파일의 1/3 미만(문서 위주) | 안 씀 |
 | 코드 파일 500개 이상이고 최근 30일 커밋 20개 이상 | 사용 — 이 PC 에서만 |
 | 그 사이 | 권장 없음 — 크기와 작업 빈도가 문턱 사이다 |

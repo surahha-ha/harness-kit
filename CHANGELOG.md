@@ -11,6 +11,7 @@
 - 영수증(`write-manifest.mjs`)에 `local`(커밋되지 않는 로컬 항목 — 해시 없음, 상대경로·`~/`·`git-path:` 꼴만)을 더한다(TEMPLATES §9)
 - `harness-uninstall` 에 0-2단계(scan 전)를 더한다 — graft 로컬 연결 걷어내기(`graft-localize.mjs remove`, 그래프만 남기기 가능)와 전역 상태 줄 되돌리기를 레포 걷어내기와 따로 묻는다. scan 은 graft 가 아직 연결된 트리에서 `.gitignore` 의 `/graft/` 블록을 「남김」으로 권한다
 - 시험을 더한다 — `npm test`(`tests/*.test.mjs`, node:test · 임시 git 레포·임시 홈, git 전역 설정을 비워 돈다)
+- D9 사전 점검에 Node 판 확인을 더한다 — `graft-localize.mjs` 의 `signal`·`prepare` 가 graft 설치본(`npm root -g` 아래, 없으면 실행 파일 위치)의 `engines.node` 를 지금 Node 와 대어 보고(`>=X`·`>=X.Y.Z`·`^X`), 못 미치면 graft 가 있어도 「Node <요구> 필요, 현재 <판>」으로 건너뛴다(종료코드 3). 못 읽거나 해석하지 못하면 `WARN` 만 내고 진행한다. 설치 안내에 `npm view @nanonets/graft engines` → `node --version` 비교 → 모자라면 Node 먼저 올리기를 넣는다
 
 ## 미발행 — 하네스 설치 시험 반영
 
