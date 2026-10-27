@@ -1,6 +1,6 @@
 ---
 name: harness-uninstall
-description: 지금 레포에서 harness-install 이 넣은 것만 걷어 낸다 — 사전 확인 → 후보 뽑기(영수증 또는 알려진 구조) → 결정 질문 → 백업 → 걷어내기 → 플러그인 키(마지막 결정)와 이 트리의 설치 기록 → 검증 → 경로 지정 커밋. 재설치는 이 스킬 → 새 세션 → harness-install 순서다. Triggers on "하네스 제거해줘", "하네스 걷어내", "하네스 삭제", "harness-uninstall", "하네스 재설치", "하네스 다시 설치", "하네스 제거 이어서". 중간에 끊긴 설치(체크포인트가 남은 것)의 정리는 harness-install 0단계의 「초기화」가 맡는다.
+description: 지금 레포에서 harness-install 이 넣은 것만 걷어 낸다 — 사전 확인 → 후보 뽑기(영수증 또는 알려진 구조) → 결정 질문 → 백업 → 걷어내기 → 플러그인 키(마지막 결정)와 이 트리의 설치 기록 → 검증 → 경로 지정 커밋. 재설치는 이 스킬 → 새 세션 → harness-install 순서다. 계측 설치를 라이트로 낮추는 것(범위 밖 훅·칸·안내절만 바꾸기)도 이 스킬이 한다. Triggers on "하네스 제거해줘", "하네스 걷어내", "하네스 삭제", "harness-uninstall", "하네스 재설치", "하네스 다시 설치", "하네스 제거 이어서". 중간에 끊긴 설치(체크포인트가 남은 것)의 정리는 harness-install 0단계의 「초기화」가 맡는다.
 ---
 
 # harness-uninstall — 넣은 것만, 블록과 키 단위로
@@ -15,6 +15,8 @@ description: 지금 레포에서 harness-install 이 넣은 것만 걷어 낸다
 **docs-setup 이 만든 것은 걷어 내지 않는다** — 옮긴 문서와 배너 · `docs/README.md` 성격표 · `CLAUDE.md` 의 작업 라우팅·문서 규약·메모리 규약 절은 설치 표시가 없어 후보가 되지 않는다(시험: docs-setup `scripts/boundary.test.mjs`). config 안의 docs-setup 칸(줄 끝 `// harness-kit:docs-setup`)은 config 와 함께 지워지지만 후보가 아니라 **따로 보고**한다 — scan 표 위 「docs-setup 칸 N개」 줄과 verify 요약. 값은 백업 `files/harness.config.mjs` 와 `index.json` 의 `docsSetup` 에 남고, 새 설치 뒤 docs-setup 을 다시 돌리거나 harness-install D8-2 가 최신 백업에서 되살린다.
 
 기준은 둘 중 하나다. 레포 루트에 **영수증**(`harness.install.json`, harness-install 9단계가 쓴다)이 있으면 영수증이 기준이다. 없으면 **알려진 구조**로 후보를 뽑고 항목마다 확인받는다.
+
+**설치 범위**(라이트 · 계측, harness-install D0)는 영수증의 `tier` 에서 읽는다. `tier` 가 없는 schema 1 영수증은 계측으로 읽는다(그때까지의 설치는 모두 전체 설치였다 — `WARN` 한 줄). 범위는 「있어야 할 것 · 남은 것」을 가르는 데 쓰인다 — 라이트 설치에 관찰 훅이 없는 것은 경고가 아니고, 라이트 영수증인데 관찰 훅이 settings 에 있으면 그 후보 근거에 「범위 밖 — 남은 것」이 붙는다. 목적이 **범위 낮추기**(계측 → 라이트)면 걷어내기가 아니라 아래 「범위 낮추기」 절의 짧은 길을 간다.
 
 걷어내기를 끝까지 지배하는 말 여섯 개:
 
@@ -55,6 +57,8 @@ description: 지금 레포에서 harness-install 이 넣은 것만 걷어 낸다
 
 영수증에 `local` 이 있거나, 영수증이 없어도 `.claude/helpers/graft-hooks.cjs` 가 있거나 `git rev-parse --git-path harness-kit-graft/state.json` 이 있으면 graft 로컬 연결이 있다. `S=${CLAUDE_SKILL_DIR}/../../scripts` 라 할 때 상태는 `node "$S/graft-localize.mjs" status <루트>` 와 `node "$S/statusline-setup.mjs" status` 로 본다.
 
+**범위 낮추기(1-2단계)면 이 단계를 건너뛴다.** graft 로컬 연결·전역 상태 줄(harness-install D9·D10)은 설치 범위와 따로인 선택 항목이고, 범위 낮추기는 `.gitignore`(`/graft/` 블록 포함)를 건드리지 않는다. graft 훅은 `settings.local.json` 에 있고 `.harness/` 를 가리키지 않아 범위 밖 훅 후보에도 들지 않는다.
+
 - **scan 보다 먼저 한다.** graft 훅을 남긴 채 `.gitignore` 의 `/graft/` 블록을 지우면 다음 graft build 가 표시 없는 줄을 다시 덧붙인다. 또 graft 몫을 뺀 `settings.local.json` 을 백업·검증의 기준으로 삼아야 6단계 대조(하네스가 아닌 훅이 백업과 같은가)가 맞는다.
 - **graft 로컬 연결** — [DECISIONS.md](DECISIONS.md) 「graft 로컬 연결」을 묻는다. 「걷어 냄」이면 `node "$S/graft-localize.mjs" remove <루트>`(그래프 데이터를 남기려면 `--keep-graph`). `failures=0` 이면 스냅숏·체크포인트를 지우고 이번 백업 `git-path harness-kit-graft/backup-<시각>/` 은 남기며(출력의 `백업:` 줄), FAIL 이 있으면 다 남긴다(그래프 `graft/` 는 다시 만드는 산출물이라 백업하지 않는다). `failures=0` 이어야 다음으로 간다. info/exclude 블록은 worktree 끼리 공유인데도 지운다 — 출력의 `WARN` 한 줄(다른 worktree 의 graft 산출물이 미추적으로 보일 수 있음 · 그 helpers 의 개인 절대경로를 `git add -A` 로 커밋하지 않게)을 사용자에게 옮긴다. `KEEP` 줄(연결 전부터 있던 파일 · 추적 파일)도 옮긴다. settings.json 에 graft 몫이 다시 들어와 있으면 remove 는 아무것도 지우지 않고 FAIL(종료코드 1)로 멈춘다 — `graft-localize.mjs localize <루트>` 를 먼저 다시 돌리고 remove 를 다시 한다.
 - **전역 상태 줄** — 전역 영수증(`~/.claude/harness-kit/receipt.json`)이 있을 때만 DECISIONS.md 「전역 상태 줄 되돌리기」를 따로 묻는다. 「되돌림」이면 `node "$S/statusline-setup.mjs" restore`. 지금 값이 우리가 쓴 값과 다르면 스크립트가 손대지 않고 종료코드 3 으로 멈춘다 — 그 사실만 보고한다. 되돌리는 것은 전역 `statusLine` 값뿐이고 사본 스크립트·`statusline.json` 은 남는다 — 출력의 `KEEP` 줄(graft 를 쓰는 레포의 `settings.local.json` 이 그 사본을 계속 쓴다)을 사용자에게 옮긴다. 이 PC 의 다른 레포도 같은 전역 줄을 쓰므로 레포 걷어내기가 저절로 되돌리지 않는다.
@@ -75,6 +79,27 @@ description: 지금 레포에서 harness-install 이 넣은 것만 걷어 낸다
 
 **완료 기준:** 체크포인트에 계획이 있고, 표의 후보마다 header·상태·권장(또는 「권장 없음」)·근거가 있다. `WARN` 줄은 하나씩 사용자에게 옮겼다. 표에 없는데 하네스로 보이는 것을 찾았으면 손으로 지우지 않고 보고에 적는다.
 
+## 1-2. 범위 낮추기 — 계측 → 라이트 (목적이 그것일 때만)
+
+`U scan <루트> --tier light` — 지금 범위(영수증 `tier`, schema 1 이면 계측)보다 낮은 범위를 주면 걷어내기 계획 대신 **범위 낮추기 계획**을 뽑는다(목적 `lower` — 목적 질문은 없다). 범위 올리기(라이트 → 계측)는 하지 않는다 — 걷어 낸 뒤 새 세션에서 harness-install 을 계측으로 돌린다(스크립트가 종료코드 2 로 거절한다).
+
+후보는 넷뿐이다. 골격 사본 · config 파일 · `.gitignore` · 보조 파일 · 계측 로그 · 플러그인 키는 후보가 아니다 — 남는다.
+
+| 후보 | header | 권장 | 하는 일 |
+| - | - | - | - |
+| 범위 밖 하네스 훅(실행 뒤 · 실패 · 턴 시작 · 턴 종료) | `PostTool훅 삭제` 류 | 지움 | settings 에서 그 훅만 지운다. 실행 전 가드는 남는다(계획의 `tier.keep` — verify 가 남았는지 본다) |
+| 범위 밖 config 칸(영수증 `config.slots` 중 `tier: instrumented`) | `설정칸 되돌림 N` | 되돌림 · 설치 뒤 값이 바뀌었으면 권장 없음 · docs-setup 표시 칸은 남김만 | 칸 값을 설치 전 값(example 원문)으로 바꾸고 꼬리 주석도 example 판으로. example 에 없던 칸은 칸째 지운다. 여러 줄 배열 칸도 같다. 되돌린 config 를 import 해 보고 못 읽으면 통째로 원래 판으로 돌려 놓는다 |
+| 「개발 하네스」 절(Markdown 표시 블록) | `안내절 교체` | 새 판을 받기 전에는 권장 없음 → 받으면 바꿈 | harness-install TEMPLATES.md §4 의 라이트 판을 이 레포 값으로 채워 scratchpad 에 Write 한 뒤 `U block <루트> <후보 id> <파일>` 로 넘긴다(첫 줄 begin 표시 · 끝 줄 end 표시 · 안에 표시 없음). 블록을 통째로 바꾼다 — 줄끝은 파일 것을 따른다 |
+| 영수증 | `영수증 갱신` | 갱신 | `tier` · 훅 · `config.slots` · config 해시 · 바꾼 블록 해시를 고치고 `tierChanges` 한 줄 · D0 답을 적는다. 다음 걷어내기의 기준이다 |
+
+- 칸을 되돌리지 않고 훅만 빼면, 증거 슬롯이 채워진 채 그 칸을 읽는 턴 종료 훅이 없는 「설정 ≠ 연결」 상태가 된다 — 칸 되돌리기가 훅 지우기와 함께 가는 이유다.
+- 영수증에 `config.slots` 가 없으면(schema 1 · `--example` 없이 쓴 영수증) 칸 후보를 뽑지 않고 `WARN` 으로 범위 밖 칸 목록을 낸다 — 그 칸은 손으로 example 값으로 되돌린다.
+- 이어지는 단계는 같다 — 항목 질문(2단계, 목적·런타임·플러그인 질문은 없다) → `U answer` → `U backup` → `U apply` → `U verify` → 보고 → `U finish`. 5단계(kit 키 · 설치 기록)와 7단계 질문의 「제거」 문구는 해당하지 않는다 — 커밋한다면 메시지는 「범위를 라이트로 낮춘다」 꼴이다.
+- verify 는 걷어내기 판정에 더해 본다: 되돌린 칸이 설치 전 값인가 · 바꾼 블록이 새 판 그대로 있는가 · 라이트 범위 훅이 남았는가 · 영수증 `tier` 가 `light` 이고 범위 밖 훅이 없는가.
+- 낮춘 뒤 `harness-install` 의 `install.mjs hooks <루트>` 가 영수증 범위(라이트)로 `failures=0` 이어야 한다.
+
+**완료 기준:** `U verify` 가 `failures=0` 이고, 설정칸 · 안내절 · 영수증 범위 `OK` 줄이 있다. 바꾸지 않은 후보(남김)는 그 이유와 함께 보고에 있다.
+
 ## 2. 결정 질문 — 권장과 함께 묻는다
 
 [DECISIONS.md](DECISIONS.md) 의 순서(목적 → 런타임 산출물 → 항목 → 설치 뒤 손댄 것)로 묻는다. 다른 세션 확인은 0단계에서 이미 따로 물었다. 플러그인 키와 설치 기록은 5단계, 커밋은 7단계에서 묻는다.
@@ -84,7 +109,7 @@ description: 지금 레포에서 harness-install 이 넣은 것만 걷어 낸다
 - **권장이 없는 질문**(표의 권장이 「권장 없음」인 칸 · 목적 · 다른 세션 확인)은 본문 첫 줄에 「권장 없음 — <무엇에 따라> 고릅니다」를 쓰고, 어느 라벨에도 「(권장)」을 붙이지 않으며, 선택지는 DECISIONS.md 에 적힌 고정 순서로 둔다. 사용자가 「권장대로」라고 답해도 이 질문들은 채우지 않고 따로 다시 묻는다 — 첫 선택지를 권장으로 읽은 사고가 있었다(PITFALLS §2).
 - **영수증이 없으면 후보마다 질문 하나**다. 영수증이 있으면 상태가 `clean` 인 같은 종류(훅 5개 등)를 한 질문에 묶을 수 있고(header 는 번호 없는 꼴), `modified`·`extra` 는 따로 묻는다.
 - 질문을 보내기 전에 본문·라벨·설명의 한글을 한 번 다시 읽는다 — 시험에서 받침이 틀린 낱말과 같은 낱말을 두 번 쓴 문장이 선택지 설명과 보고에 그대로 나갔다(PITFALLS §2).
-- 답을 받을 때마다 `U answer <루트> <id>=<값> …` 로 적는다(목적은 `purpose=reinstall|remove`). 사용자가 「나머지는 모두 권장대로」라고 하면 그때만 `U answer <루트> --recommended` — 권장이 없는 칸은 `keep` 으로 채워지고 스크립트가 그 목록을 출력한다(보고에 옮긴다). 목적(`purpose`)은 채우지 않는다 — 목적이 미정이면 스크립트가 그렇다고 출력하고 플러그인 키도 비워 둔다.
+- 답을 받을 때마다 `U answer <루트> <id>=<값> …` 로 적는다(목적은 `purpose=reinstall|remove` · 범위 낮추기는 scan 이 정해 목적을 묻지 않는다 · 칸은 `revert|keep` · 안내절은 `replace|keep` · 영수증은 `update`). 사용자가 「나머지는 모두 권장대로」라고 하면 그때만 `U answer <루트> --recommended` — 권장이 없는 칸은 `keep` 으로 채워지고 스크립트가 그 목록을 출력한다(보고에 옮긴다). 목적(`purpose`)은 채우지 않는다 — 목적이 미정이면 스크립트가 그렇다고 출력하고 플러그인 키도 비워 둔다.
 
 **완료 기준:** `U status` 의 플러그인 외 모든 후보에 답이 있고, 각 답이 사용자 답과 같다. 내가 고른 값은 하나도 없다. 권장 없는 질문에 「(권장)」이 붙은 선택지를 보이지 않았다.
 

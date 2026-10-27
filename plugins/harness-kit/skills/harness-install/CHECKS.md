@@ -7,6 +7,8 @@
 `settings-check.mjs` — 사용: `node settings-check.mjs <레포 루트> [--before <백업>] [--parents <부모1 settings> <부모2 settings>]`
 (부모 판은 `git show <커밋>:.claude/settings.json` 을 리다이렉션으로 scratchpad 에 받아 둔다. `--before` 에는 5단계 before 스냅숏 `$(git rev-parse --git-path harness-install-settings/before)/files/.claude/settings.json` 을 준다 — 훅·최상위 키에 더해 줄끝·BOM 도 편집 전과 대조한다.)
 
+**하네스 훅은 범위대로 따로 본다:** `node "${CLAUDE_SKILL_DIR}/scripts/install.mjs" hooks <레포 루트>` — 그 범위(`--tier` 가 없으면 체크포인트 `tier` → 영수증 `tier` → 계측)의 훅이 각 이벤트에 정확히 1번, 범위 밖 하네스 훅 0번, PreToolUse·PostToolUse·PostToolUseFailure matcher 에 Bash·PowerShell 이 둘 다 있는지. 표에 없는 하네스 훅(`.harness/` 를 가리키는데 끝이 TEMPLATES §1 꼴이 아님)도 실패다. 끝 줄 `hooks: failures=N`.
+
 ```js
 import { readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
@@ -59,18 +61,8 @@ for (const e of list) {
 }
 console.log(`INFO 훅 ${list.length}개`);
 
-const want = [
-  ['PreToolUse', 'danger-guard.mjs"'], ['PostToolUse', 'danger-guard.mjs" --post'],
-  ['PostToolUseFailure', 'danger-guard.mjs" --post'], ['Stop', 'turn-end.mjs"'], ['UserPromptSubmit', 'turn-start.mjs"'],
-];
-for (const [ev, tail] of want) {
-  const n = list.filter((e) => e.startsWith(`${ev} |`) && e.includes('/.harness/') && e.endsWith(tail)).length;
-  n === 1 ? console.log(`OK   ${ev} 하네스 훅 1개`) : bad(`${ev} 하네스 훅 ${n}개`);
-  if (ev.startsWith('Pre') || ev.startsWith('Post')) {
-    const g = (cur.json.hooks[ev] || []).find((x) => (x.hooks || []).some((h) => h.command.includes('/.harness/')));
-    if (!g || !/Bash/.test(g.matcher || '') || !/PowerShell/.test(g.matcher || '')) bad(`${ev} matcher 가 Bash·PowerShell 둘 다가 아님`);
-  }
-}
+// 하네스 훅의 수·범위·matcher 는 여기서 보지 않는다 — `install.mjs hooks <레포 루트>` 가 설치 범위(체크포인트 tier)대로 본다.
+// 라이트에서 관찰 훅 넷이 없는 것은 실패가 아니고, 계측에서는 다섯 다 정확히 1번이어야 한다.
 
 const before = opt('--before');
 if (before) {
@@ -107,6 +99,14 @@ process.exit(fail ? 1 : 0);
 | `node .harness/turn-end.mjs --status` | 발동 전 「stop 이벤트 없음」 · 증거 슬롯을 채웠으면 그 유형 수 | 1 (발동 전 정상) |
 | `node .harness/turn-start.mjs --status` | 발동 전 「이벤트 없음」 | 1 (발동 전 정상) |
 
+범위마다 기대가 다른 줄 — 라이트는 골격을 통째로 복사했지만 관찰 훅을 걸지 않았다.
+
+| 명령 | 라이트 | 계측 |
+| - | - | - |
+| `danger-guard.mjs --status` | 위와 같다 | 위와 같다 |
+| `turn-end.mjs --status` · `turn-start.mjs --status` | 「이벤트 없음」(1)이 **계속** 정상이다 — 훅이 없어 쌓이지 않는다. 모듈 오류만 보면 된다 | 발동 전 1 · 7단계 뒤 이벤트 1건 이상 |
+| `test-first.mjs --status` · `drift-watch.mjs --status` | 위와 같다(꺼짐 · 미러 없음) | 2단계 답대로 |
+
 config 를 채우기 **전**(3단계 끝, example 복사 직후)의 danger-guard 는 「설정됨 · 규칙 없음」(1)이어야 한다. 4단계 뒤에도 이 줄이면 config 가 안 채워진 것이다.
 
 ## §3 발동 확인 안내문 — 사용자에게 그대로 건넨다
@@ -117,7 +117,7 @@ config 를 채우기 **전**(3단계 끝, example 복사 직후)의 danger-guard
 > 2. 에이전트에게 이렇게 요청합니다: 「Bash 도구로 `echo <토큰>` 을 실행하고, 이어서 PowerShell 도구로 같은 명령을 실행해 줘」.
 >    두 번 모두 「차단됨 — 검증 전용 프로브 규칙입니다…」 서명이 뜨면 성공입니다. 그냥 출력되면 그 셸 경로에 훅이 안 걸린 것입니다.
 >    PowerShell 도구가 없는 환경이면 Bash 만 확인하고 그렇다고 적습니다.
-> 3. 같은 세션에서 `node .harness/turn-end.mjs --status` 와 `node .harness/turn-start.mjs --status` 를 실행해 이벤트가 1건 이상인지 봅니다.
+> 3. (계측만) 같은 세션에서 `node .harness/turn-end.mjs --status` 와 `node .harness/turn-start.mjs --status` 를 실행해 이벤트가 1건 이상인지 봅니다. 라이트는 이 훅을 걸지 않아 이 줄을 건넨 안내문에서 뺍니다.
 > 4. `/plugin` 에서 harness-kit 이 켜져 있고, 이 레포에서 끄기로 한 플러그인이 꺼져 있는지 봅니다.
 > 5. 헤드리스(`claude -p`)나 `!` 로 직접 친 명령은 훅을 타지 않으므로 확인으로 치지 않습니다.
 
@@ -246,7 +246,9 @@ git -C "$R" status --short -- .harness harness.config.mjs
    - **권장 표시** — 권장이 있으면 첫 선택지 라벨 끝에 「(권장)」, 그 설명 첫 줄에 「권장 이유: …」(규칙표 인용이 아니라 이 레포의 관찰). 권장이 없으면 질문에 「권장 없음 — …」이 있고 「(권장)」이 어디에도 없다.
    - **쉬운 말** — 질문 첫 문장에 풀이표 왼쪽의 말(`deny`·`trailer`·`간접`·`빈자리`·`--stop`)이 풀이 없이 나오지 않는다. 사용자가 되물은 질문은 그 용어와 함께 적는다.
 
-`node "${CLAUDE_SKILL_DIR}/scripts/answer-trace.mjs" <레포 루트> <example 사본>` — ①~⑤ 를 돈다. example 사본은 §5 ② 에서 꺼낸 `$T/example.mjs` 다. 체크포인트는 대상 트리의 `git rev-parse --git-path harness-install-state.json` 에서 읽고, 대상 레포에는 아무것도 쓰지 않는다. 출력 줄: `OK`(답 = 값) · `FAIL`(①②④ 어긋남 · recs 누락) · `SAME`(③) · `NOREC`·`DIFF`(⑤). 종료코드는 FAIL 이 있을 때만 1.
+`node "${CLAUDE_SKILL_DIR}/scripts/answer-trace.mjs" <레포 루트> <example 사본>` — ①~⑥ 을 돈다. example 사본은 §5 ② 에서 꺼낸 `$T/example.mjs` 다. 체크포인트는 대상 트리의 `git rev-parse --git-path harness-install-state.json` 에서 읽고, 대상 레포에는 아무것도 쓰지 않는다. 출력 줄: `OK`(답 = 값 · 설치 범위) · `FAIL`(①②④ 어긋남 · recs 누락 · 체크포인트 `tier` 없음) · `SAME`(③) · `TIER`(③ 중 라이트의 범위 밖 칸 — example 기본값이 의도다. 「고침 / 의도」를 따로 가리지 않아도 된다) · `AUTO`(범위 때문에 묻지 않고 채운 답 — 보고의 결정 표에 「범위로 정함」) · `NOREC`·`DIFF`(⑤). 종료코드는 FAIL 이 있을 때만 1.
+
+- ⑥ **설치 범위** — 체크포인트 `tier`(D0 답)가 없으면 실패다. 라이트면 ③ 의 계측 칸(`scripts/tiers.mjs` 의 `INSTRUMENTED_SLOTS`)이 `SAME` 이 아니라 `TIER` 로 나온다. 범위 안 칸의 `SAME` 은 그대로 가린다.
 
 ## §7 영수증 — 9단계
 
@@ -256,9 +258,11 @@ git -C "$R" status --short -- .harness harness.config.mjs
 - 파일마다 `edits` 의 block·line 수가 그 파일의 표시 수와 같다 · 닫히지 않은 시작 표시가 없다
 - `replace` 의 `after` 가 그 파일에 `count` 번 나온다(줄끝은 파일 것을 따른다)
 - `settings.hooks` 의 훅이 그 이벤트·matcher·명령 그대로 있고, `settings.keys` 의 값이 settings.json 의 값과 같다
+- 초안에 `tier`(`light` · `instrumented`)가 있고, `settings.hooks` 가 그 범위의 훅과 맞다 — 범위 밖 훅이 있거나 범위 훅이 빠지면 실패
+- `--example <example 사본>` 을 넘기면 설치가 바꾼 config 칸마다 설치 전 값을 `config.slots` 에 적는다(그 칸 값을 읽지 못하면 실패). 넘기지 않으면 `INFO` 한 줄 — 범위 낮추기에서 칸을 되돌릴 기준이 없다
 - 문자열 값에 드라이브 경로 · `/Users/`·`/home/` · 사용자 홈이 없다 · `source.sha` 가 40자 SHA 다
 
-출력 `OK harness.install.json — 파일 N · 고친 곳 M · 훅 K · 키 L` 의 N 이 `.harness/`(런타임 산출물 제외)·config·보조 파일 수의 합과 같아야 한다.
+출력 `OK harness.install.json — 범위 <라이트|계측> · 파일 N · 고친 곳 M · 훅 K · 키 L · config 칸 C(계측 칸 I)` 의 N 이 `.harness/`(런타임 산출물 제외)·config·보조 파일 수의 합과 같아야 한다.
 
 ## §8 테스트 제외 확인 — 「빠질 것만 빠지고, 돌 것은 돌았나」
 

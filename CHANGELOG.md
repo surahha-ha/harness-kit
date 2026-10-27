@@ -3,6 +3,17 @@
 매니페스트에 `version` 필드를 두지 않는다 — 판은 main 커밋 SHA 로 갈린다. 절은 병합 단위로 적는다.
 (0.1.0 까지는 `plugin.json` 과 `marketplace.json` 의 명시 버전을 함께 올렸다.)
 
+## 미발행 — 하네스 설치 범위
+
+- `harness-install` 에 설치 범위 D0(header `하네스 설치범위`)을 맨 앞 결정으로 더한다 — **라이트**(권장: 실행 전 가드 훅 하나 · 사고 근거가 있는 deny·ask·공유 자원 · 공유DB 테스트 제외 init script · 짧은 「개발 하네스」 절 · 영수증 · harness-kit 켜기)와 **계측**(마지막 선택지·권장 없음 — 하네스 개발 설치처용, 지금까지의 전체 설치). 골격은 두 범위 모두 통째로 복사하고, 범위가 가르는 것은 settings 훅 · config 칸 · CLAUDE.md 절의 판뿐이다(로그만 끄는 스위치는 없다). 범위 표는 `scripts/tiers.mjs` 하나에 둔다. 표준은 비교 창 판정 뒤의 몫으로 넣지 않는다. 라이트면 계측 칸 질문(턴 종료 감사 · 증거 슬롯 · 사본 감시)은 묻지 않고 범위대로 채워 체크포인트에 `auto` 로 남기고, kit 문서·메모리 칸은 키 없이 둔다(DECISIONS D0 「뒤 질문」 표). TEMPLATES 에 라이트 훅 블록(§1) · 라이트 절과 라이트 config 꼴(§4) · 체크포인트 `tier`(§7) · D0·문서 구조 질문 꼴과 풀이표 줄(§8)을 더한다
+- 점검을 범위대로 한다 — `install.mjs slots` 는 라이트의 문서·메모리 칸 「키 없음」을 실패 대신 `DEFER` 로 내고(키 없음 = 쓸 때 묻는다는 규칙은 그대로), 새 `install.mjs hooks` 가 그 범위의 훅이 각 이벤트에 정확히 1번 · 범위 밖 훅 0번 · matcher 에 Bash·PowerShell 인지 본다(CHECKS §1 의 훅 5개 고정 대조를 이것으로 바꾼다). `answer-trace.mjs` 는 체크포인트 `tier` 가 없으면 실패하고, 라이트의 범위 밖 칸을 `TIER` 로, 범위로 채운 답을 `AUTO` 로 낸다. CHECKS §2·§3 에 범위별 기대값(라이트는 턴 종료 확인을 건네지 않는다)을 적는다
+- 영수증을 schema 2 로 올린다 — `write-manifest.mjs` 가 초안의 `tier` 를 필수로 받아 settings 훅이 그 범위와 맞는지 보고, `--example <example 사본>` 을 받으면 설치가 바꾼 config 칸마다 `config.slots`(`path`·`tier`·설치 전 값 원문·꼬리 주석·설치 뒤 해시)를 적는다. `tier` 없는 schema 1 영수증은 계측으로 읽는다
+- `harness-uninstall` 에 범위 낮추기(계측 → 라이트)를 더한다 — `scan --tier light` 가 범위 밖 훅 지우기 · 범위 밖 config 칸을 설치 전 값으로 되돌리기(`config.slots` 기준 · 여러 줄 배열 칸 포함 · 되돌린 뒤 import 확인, 못 읽으면 원래 판으로) · 「개발 하네스」 절을 새 판으로 통째로 바꾸기(새 `block` 명령으로 받는다 · 줄끝은 파일 것) · 영수증 갱신(`tier`·훅·칸·해시 · `tierChanges` · D0)만 후보로 뽑고, 골격·config 파일·로그·플러그인 키는 남긴다. 범위 올리기는 거절하고 「걷어 낸 뒤 새 세션에서 설치」로 안내한다. 걷어내기 scan 도 영수증 범위로 「있어야 할 훅 · 범위 밖에 남은 훅」을 가른다. `edit.mjs` 의 블록 연산이 새 판으로 바꾸기를 받고, 같은 판의 블록 둘을 같은 범위로 두 번 잡던 것을 막는다
+- docs-setup 칸의 여러 줄 배열을 읽는다 — `config-slots.mjs` 의 `ownedSlots` 가 여는 줄·닫는 줄 어디에 표시가 붙은 여러 줄 배열 칸도 칸 하나(걸친 줄 범위)로 내고, `slotValue`·`revertSlot`·`leafSlots` 를 더한다. 영수증 없는 걷어내기가 config 를 import 하지 못해 글로 읽을 때, 표시 줄 하나만 빼던 탓에 배열 안 문서 경로를 보조 파일 후보로 잡던 것을 고친다
+- 설치 끝에 10단계 문서 구조 질문(header `문서구조 맞추기`)을 더한다 — 새 `install.mjs docs-hookup` 이 문서 수 · `archiveDir` · 문서 칸 null·키 없음을 관찰해, 문서가 있는데 아카이브 칸이 비었거나 문서 칸이 비면 「진행」(docs-setup 으로 넘긴다), 문서가 2개 이하인 새 레포면 「나중에」를 권하고 「권장 이유」 줄을 낸다. 답은 체크포인트 `docsHookup` 에만 적는다
+- 선택 항목 D9(graft 로컬 연결)·D10(전역 상태 줄)은 범위와 따로다 — 두 범위에서 같게 묻고(DECISIONS D0 「뒤 질문」 표에 한 줄), 묻는 순서는 D0 → … → D8(D8-2) → D9 → D10 이다. graft 훅은 `settings.local.json` 에 들고 `.harness/` 를 가리키지 않아 `install.mjs hooks` 의 범위 훅 수와 영수증 범위 대조에 들지 않으므로 그 점검은 바꾸지 않는다. 범위 낮추기는 harness-uninstall 0-2단계(graft·전역 상태 줄)를 건너뛰고 `.gitignore` 의 `/graft/` 블록을 건드리지 않는다
+- 시험: `harness-install/scripts/tiers.test.mjs`(범위 표 · slots DEFER · hooks · write-manifest tier·config.slots · answer-trace TIER·AUTO·D0) · `harness-uninstall/scripts/scenarios.test.mjs`(임시 레포 시나리오 — 라이트·계측 설치 → 걷어내기 → 설치 전과 같음 · 계측 → 라이트 낮추기 결과가 라이트 설치와 바이트까지 같음 · schema 1 을 계측으로 · 여러 줄 배열 칸 · 문서 구조 권장 두 갈래 · CRLF settings 유지 · graft 로컬 연결이 있는 계측 → 라이트 낮추기에서 `/graft/` 블록·`settings.local.json` graft 훅·영수증 `local` 이 그대로 남음). `boundary.test.mjs` 와 `tests/install-local-items.test.mjs` 의 영수증 초안에 `tier` 를 넣고, `boundary.test.mjs` 의 기대 schema 를 2 로 바꾼다
+
 ## 미발행 — 출처 대장
 
 - 출처 대장 [SOURCES.md](SOURCES.md) 를 더한다 — 플러그인·저장소 도구 자산마다 구분(외부 유래 · 외부 유래 후 개작 · 자체 작성 · 출처 미확인)과 원본 레포·경로·SHA·반입 커밋·근거를 적고, 0.1.0 초기 자산 14건은 비공개 레포에서 일반화한 것(외부 유래 후 개작)으로 적고 원본 경로·SHA 는 비운다(사용자 확인)

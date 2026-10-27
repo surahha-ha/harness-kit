@@ -127,27 +127,96 @@ const lineBody = (l) => l.replace(/\r$/, '');
 const getPath = (obj, p) => p.split('.').reduce((o, k) => (o == null ? undefined : o[k]), obj);
 const hasPath = (obj, p) => { const ks = p.split('.'); let o = obj; for (const k of ks) { if (o == null || typeof o !== 'object' || !(k in o)) return false; o = o[k]; } return true; };
 
-/** 표시가 붙은 줄을 칸으로 푼다. 칸이 아닌 표시 · 여러 줄 칸 · 모르는 칸은 errors/warnings 로 낸다. */
+/** 값이 여러 줄에 걸친 배열 칸인가 — `always: [` … `],` 꼴(설치·손 편집이 이렇게 쓴다). */
+const multiLineArray = (p) => !p.object && p.valueStart && p.valueStart.v === '[' && p.endLine !== p.keyLine;
+
+/**
+ * 표시가 붙은 줄을 칸으로 푼다. 칸이 아닌 표시 · 여러 줄 칸 · 모르는 칸은 errors/warnings 로 낸다.
+ * 여러 줄 배열은 여는 줄(`always: [ // 표시`)이나 닫는 줄(`], // 표시`)의 표시를 그 칸 하나로 받는다 —
+ * slots[].lines 가 그 칸이 걸친 줄(1 부터, 양끝 포함)이다.
+ */
 export function ownedSlots(text) {
   const { props } = scanConfig(text);
-  const byLine = new Map();
-  for (const p of props.values()) if (!byLine.has(p.keyLine)) byLine.set(p.keyLine, p);
+  const byLine = new Map(), byEnd = new Map();
+  for (const p of props.values()) {
+    if (!byLine.has(p.keyLine)) byLine.set(p.keyLine, p);
+    if (multiLineArray(p) && !byEnd.has(p.endLine)) byEnd.set(p.endLine, p);
+  }
   const lines = splitKeep(text);
   const slots = [], blocks = [], errors = [], warnings = [];
   lines.forEach((raw, i) => {
     const l = lineBody(raw);
     const m = MARK_RE.exec(l);
     if (!m) return;
-    const p = byLine.get(i);
+    const p = byLine.get(i) || byEnd.get(i);
     if (!p) { errors.push(`${i + 1}행: 표시가 칸 줄에 있지 않다 — 칸 줄 끝 주석으로 옮긴다`); return; }
     const comment = l.slice(m.index);
     if (p.object && p.openLine === p.closeLine) { errors.push(`${i + 1}행 ${p.path}: 한 줄 객체에 표시가 붙었다 — 칸마다 제 줄로 나누고 그 줄에 표시를 단다`); return; }
     if (p.object) { blocks.push({ path: p.path, line: i + 1, comment }); return; }
-    if (p.endLine !== i) { errors.push(`${i + 1}행 ${p.path}: 값이 여러 줄이다 — 칸 하나는 한 줄에 쓴다`); return; }
+    if (p.endLine !== i && !multiLineArray(p)) { errors.push(`${i + 1}행 ${p.path}: 값이 여러 줄이다 — 칸 하나는 한 줄에 쓴다`); return; }
     if (!OWNED.includes(p.path)) warnings.push(`${i + 1}행 ${p.path}: docs-setup 이 채우는 칸이 아닌데 표시가 붙었다`);
-    slots.push({ path: p.path, line: i + 1, text: l, comment });
+    slots.push({ path: p.path, line: i + 1, text: lineBody(lines[p.keyLine]), comment, lines: [p.keyLine + 1, p.endLine + 1] });
   });
   return { slots, blocks, errors, warnings };
+}
+
+// ── 칸 값의 원문 · 되돌리기 — 여러 줄 배열·객체도 원문 그대로 다룬다 ─────────────────
+
+const normNl = (s) => s.replace(/\r\n/g, '\n');
+/** 칸이 끝나는 줄의 종결자(`,`) 뒤 주석 — 그 줄에 다른 칸이 없을 때만. */
+const noteFrom = (p) => (p.term && p.term.line === p.endLine && p.term.v === ',' ? p.term.e : p.valueEnd.e);
+function trailingNote(text, p) {
+  const rest = text.slice(noteFrom(p), lineEnd(text, p.endLine)).replace(/\r$/, '');
+  return /^\s*(\/\/.*)?$/.test(rest) ? rest.trim() : null;
+}
+/**
+ * 칸의 값 원문(여는 글자부터 닫는 글자까지, 안의 주석 포함)과 그 칸이 걸친 줄.
+ * @returns {{ path, source, note, keyLine, endLine, alone, object } | null} note — 끝 줄의 꼬리 주석(없으면 '', 다른 칸과 한 줄이면 null)
+ */
+export function slotValue(text, slotPath) {
+  const { props } = scanConfig(text);
+  const p = props.get(slotPath);
+  if (!p || !p.valueStart || !p.valueEnd) return null;
+  const lead = text.slice(lineStart(text, p.keyLine), p.keyTok.s);
+  const note = trailingNote(text, p);
+  return { path: slotPath, source: normNl(text.slice(p.valueStart.s, p.valueEnd.e)), note, keyLine: p.keyLine, endLine: p.endLine, alone: !lead.trim() && note !== null, object: !!p.object };
+}
+/** config 의 칸 목록 — 값이 객체면 그 아래 칸으로 내려가고, 배열·글자·정규식은 칸 하나로 본다. */
+export function leafSlots(text) {
+  const { props } = scanConfig(text);
+  return [...props.values()].filter((p) => !p.object).map((p) => p.path);
+}
+/**
+ * 칸을 설치 전 판으로 되돌린다 — before 는 example 의 값 원문(null 이면 「example 에 없던 칸」이라 칸째 지운다).
+ * 값이 여러 줄이어도(배열·객체) 그 범위만 바꾼다. 칸이 다른 칸과 한 줄에 있으면 값만 바꾸고 꼬리 주석은 두며,
+ * 칸째 지우기는 칸이 제 줄에 따로 있을 때만 한다(아니면 오류).
+ * @returns {{ text: string, action: 'reverted'|'removed'|'unchanged'|'absent' }}
+ */
+export function revertSlot(text, slotPath, before, beforeNote = null) {
+  const eol = /\r\n/.test(text) ? '\r\n' : '\n';
+  const { props } = scanConfig(text);
+  const p = props.get(slotPath);
+  if (!p) return { text, action: 'absent' };
+  if (!p.valueStart || !p.valueEnd) throw new Error(`${slotPath}: 값을 읽지 못했다`);
+  const note = trailingNote(text, p);
+  const lead = text.slice(lineStart(text, p.keyLine), p.keyTok.s);
+  if (before == null) {
+    if (lead.trim() || note === null) throw new Error(`${slotPath}: 칸이 다른 칸과 한 줄에 있어 칸째 지우지 못한다(${p.keyLine + 1}행) — 손으로 본다`);
+    const lines = splitKeep(text);
+    lines.splice(p.keyLine, p.endLine - p.keyLine + 1);
+    return { text: lines.join('\n'), action: 'removed' };
+  }
+  const want = normNl(before).replace(/\n/g, eol);
+  let out = text.slice(0, p.valueStart.s) + want + text.slice(p.valueEnd.e);
+  // 꼬리 주석 — 칸이 끝 줄에 혼자 있으면 example 의 꼬리 주석으로 맞춘다(설치 답을 적은 주석이 남지 않게)
+  if (note !== null && beforeNote !== null && note !== beforeNote) {
+    const q = scanConfig(out).props.get(slotPath);
+    const from = noteFrom(q);
+    const end = lineEnd(out, q.endLine);
+    const cr = out.slice(from, end).endsWith('\r') ? '\r' : '';
+    out = out.slice(0, from) + (beforeNote ? ` ${beforeNote}` : '') + cr + out.slice(end);
+  }
+  return { text: out, action: out === text ? 'unchanged' : 'reverted' };
 }
 
 export async function importConfig(file) {

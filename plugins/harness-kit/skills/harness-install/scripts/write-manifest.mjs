@@ -2,10 +2,13 @@
 /**
  * harness-install 9단계 — 설치 영수증(harness.install.json)을 쓴다.
  *
- * 사용: node write-manifest.mjs <레포 루트> <초안 JSON>
+ * 사용: node write-manifest.mjs <레포 루트> <초안 JSON> [--example <harness.config.example.mjs 사본>]
  *   초안은 메인이 체크포인트에서 옮겨 Write 로 쓴다(꼴은 TEMPLATES.md §9). 이 스크립트는
  *   ① 디렉토리 항목을 파일로 펴고 ② 파일·블록·줄의 sha256 을 채우고 ③ 적힌 것이 실제로 있는지 대조한 뒤
  *   ④ 개인 경로가 없을 때만 레포 루트에 영수증을 쓴다. 하나라도 어긋나면 쓰지 않고 종료코드 1.
+ *   ⑤ 초안의 tier(설치 범위 — light|instrumented)를 적고, 그 범위와 settings 훅이 맞는지 본다(schema 2).
+ *   ⑥ --example 을 주면 config 칸마다 설치 전 값(example 원문)을 config.slots 에 적는다 — 걷어내기가
+ *      범위를 낮출 때(계측 → 라이트) 그 칸을 이 값으로 되돌린다(harness-uninstall 의 칸 되돌리기).
  *
  * sha256 은 줄끝을 LF 로 맞춘 UTF-8 내용의 해시다 — autocrlf 트리에서는 같은 파일이 PC 마다 CRLF·LF 로 다르다.
  * 블록·줄의 해시는 harness-uninstall 이 같은 방식으로 계산해 「설치 뒤 손댄 것」을 가른다.
@@ -14,9 +17,14 @@ import { readFileSync, writeFileSync, existsSync, readdirSync, statSync } from '
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import os from 'node:os';
+import { LABEL, RANK, hookSpec, hooksFor, normTier, tierOfSlot } from './tiers.mjs';
+import { scanConfig, slotValue } from '../../docs-setup/scripts/config-slots.mjs';
 
-const [rootArg, draftArg] = process.argv.slice(2);
-if (!rootArg || !draftArg) { console.error('사용: node write-manifest.mjs <레포 루트> <초안 JSON>'); process.exit(2); }
+const argv = process.argv.slice(2);
+const exIdx = argv.indexOf('--example');
+const exampleArg = exIdx >= 0 ? argv[exIdx + 1] : null;
+const [rootArg, draftArg] = argv.filter((_, i) => exIdx < 0 || (i !== exIdx && i !== exIdx + 1));
+if (!rootArg || !draftArg) { console.error('사용: node write-manifest.mjs <레포 루트> <초안 JSON> [--example <example 사본>]'); process.exit(2); }
 const root = path.resolve(rootArg);
 const draft = JSON.parse(readFileSync(path.resolve(draftArg), 'utf8'));
 const OUT = 'harness.install.json';
@@ -107,13 +115,48 @@ if (st) {
   }
 }
 
+// ⑤ 범위 — 초안의 tier 와 settings 의 하네스 훅이 맞는가(그 범위의 훅은 다 있고, 범위 밖 훅은 없다)
+const tier = normTier(draft.tier);
+if (!tier) bad(`tier 가 없거나 모르는 값(${JSON.stringify(draft.tier ?? null)}) — 설치 범위(D0) 답을 light(라이트)·instrumented(계측)로 적는다`);
+if (tier && st) {
+  const hs = (st.hooks || []).map((h) => ({ h, spec: hookSpec(h.event, h.command) }));
+  for (const { h, spec } of hs) if (spec && RANK[spec.tier] > RANK[tier]) bad(`${LABEL[tier]} 범위인데 ${spec.what} 훅이 있다: ${h.event} | ${h.command}`);
+  for (const spec of hooksFor(tier)) if (!hs.some((x) => x.spec === spec)) bad(`${LABEL[tier]} 범위의 ${spec.what} 훅(${spec.event})이 settings.hooks 에 없다`);
+}
+
+// ⑥ config 칸 — 설치가 바꾼 칸마다 설치 전 값(example 원문)과 범위
+let slots = null;
+const cfgFile = files.find((f) => f.role === 'config');
+if (exampleArg && cfgFile) {
+  const ex = readFileSync(path.resolve(exampleArg), 'utf8').replace(/^\uFEFF/, ''), cf = read(cfgFile.path).replace(/^\uFEFF/, '');
+  const E = scanConfig(ex).props, C = scanConfig(cf).props;
+  const parentOf = (p) => p.split('.').slice(0, -1).join('.');
+  const has = (M, p) => p === '' || M.has(p);
+  slots = [];
+  const entry = (p, e, c) => {
+    const ev = e && slotValue(ex, p), cv = c && slotValue(cf, p);
+    if ((e && !ev) || (c && !cv)) { bad(`config 칸 ${p} 의 값을 읽지 못했다`); return; }
+    slots.push({ path: p, tier: tierOfSlot(p), before: ev ? ev.source : null, beforeNote: ev ? ev.note : null, afterSha: cv ? sha(cv.source) : null });
+  };
+  for (const [p, c] of C) {
+    if (!has(E, parentOf(p))) continue;              // 위 칸이 example 에 없다 — 그 위 칸 하나로 적는다
+    const e = E.get(p);
+    if (!e) { entry(p, null, c); continue; }          // example 에 없던 칸 — 되돌리기는 칸째 지운다
+    if (e.object && c.object) continue;               // 둘 다 객체 — 아래 칸에서 본다
+    const a = slotValue(ex, p), b = slotValue(cf, p);
+    if (!a || !b || norm(a.source).trim() !== norm(b.source).trim() || (!!a.note) !== (!!b.note) || (a.note && b.note && a.note !== b.note)) entry(p, e, c);
+  }
+  for (const [p, e] of E) if (!C.has(p) && has(C, parentOf(p))) entry(p, e, null);   // 설치가 지운 칸
+} else if (cfgFile) console.log('INFO --example 이 없어 config.slots 를 적지 않았다 — 범위 낮추기(걷어내기)에서 칸을 되돌릴 기준이 없다. 9단계는 §5 ② 의 example 사본을 넘긴다');
+
 // ④ 반출 — 개인 경로·사용자 홈이 없는가
 const manifest = {
-  schema: 1, tool: 'harness-install', installedAt: draft.installedAt || new Date().toISOString(),
+  schema: 2, tool: 'harness-install', installedAt: draft.installedAt || new Date().toISOString(), tier,
   source: draft.source, kit: draft.kit || null, decisions: draft.decisions || [],
   files, edits, settings: st ? { path: st.path || '.claude/settings.json', hooks: st.hooks || [], keys: st.keys || [] } : null, plugin: draft.plugin || null,
   // D9·D10 — 커밋되지 않는 로컬 항목의 기록. 해시를 채우지 않는다(PC·트리마다 다르다). 경로는 상대경로 · ~/ · git-path: 꼴만
   ...(draft.local ? { local: draft.local } : {}),
+  ...(slots ? { config: { path: cfgFile.path, slots } } : {}),
 };
 for (const [k, v] of Object.entries(draft.local || {})) {
   if (!['graft', 'statusline'].includes(k)) bad(`local 에 모르는 항목: ${k}`);
@@ -129,4 +172,4 @@ if (!manifest.source || !/^[0-9a-f]{40}$/.test(manifest.source.sha || '')) bad('
 
 if (fail) { console.log(`failures=${fail} — 영수증을 쓰지 않았다`); process.exit(1); }
 writeFileSync(abs(OUT), text, 'utf8');
-console.log(`OK   ${OUT} — 파일 ${files.length} · 고친 곳 ${edits.length} · 훅 ${(st && st.hooks || []).length} · 키 ${(st && st.keys || []).length}`);
+console.log(`OK   ${OUT} — 범위 ${LABEL[tier]} · 파일 ${files.length} · 고친 곳 ${edits.length} · 훅 ${(st && st.hooks || []).length} · 키 ${(st && st.keys || []).length}${slots ? ` · config 칸 ${slots.length}(계측 칸 ${slots.filter((s) => s.tier === 'instrumented').length})` : ''}`);

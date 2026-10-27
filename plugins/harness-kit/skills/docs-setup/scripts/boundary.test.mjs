@@ -68,7 +68,7 @@ w('harness.config.mjs', STD('demo'));
 w('CLAUDE.md', `${r('CLAUDE.md')}\n하네스는 「개발 하네스」 절을 본다. <!-- harness-kit:line -->\n\n<!-- harness-kit:begin -->\n## 개발 하네스\n\n- 걷어내기: harness-uninstall\n<!-- harness-kit:end -->\n`);
 w('.gitignore', '# harness-kit:begin\n.harness/log.jsonl\n# harness-kit:end\n');
 const draft = path.join(repo + '-draft.json');
-writeFileSync(draft, JSON.stringify({ source: { repo: 'harness-agent', sha: 'a'.repeat(40) }, decisions: [],
+writeFileSync(draft, JSON.stringify({ source: { repo: 'harness-agent', sha: 'a'.repeat(40) }, tier: 'instrumented', decisions: [],
   files: [{ path: '.harness', role: 'skeleton' }, { path: 'harness.config.mjs', role: 'config' }],
   edits: [{ path: 'CLAUDE.md', how: 'line' }, { path: 'CLAUDE.md', how: 'block' }, { path: '.gitignore', how: 'block' }] }), 'utf8');
 ok(run(WM, repo, draft).code === 0, '설치 흉내: 영수증을 썼다');
@@ -93,7 +93,7 @@ for (const [p, v] of Object.entries(WANT)) cfg = setSlot(cfg, p, v, '// harness-
 w('harness.config.mjs', cfg);
 ok(run(CS, 'record', repo).code === 0, 'docs-setup: 영수증 owners["docs-setup"] 기록');
 const m = JSON.parse(r('harness.install.json'));
-ok(m.owners && m.owners['docs-setup'] && m.owners['docs-setup'].slots.length === 6 && m.schema === 1 && m.files.length === 2, '영수증: 설치 칸(schema·files)은 그대로, owners 에 6칸');
+ok(m.owners && m.owners['docs-setup'] && m.owners['docs-setup'].slots.length === 6 && m.schema === 2 && m.tier === 'instrumented' && m.files.length === 2, '영수증: 설치 칸(schema·files)은 그대로, owners 에 6칸');
 const l1 = run(CS, 'list', repo);
 ok(l1.code === 0 && /docs-setup 칸 6개/.test(l1.out) && /OK {3}harness\.install\.json owners/.test(l1.out), 'list: 표시 칸 6개 · 영수증과 같다');
 const bd = run(BD, repo, '--base', installSha);

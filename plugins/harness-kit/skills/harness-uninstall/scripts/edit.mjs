@@ -148,8 +148,10 @@ export const toFileEol = (s, text) => (/\r\n/.test(text) ? normEol(s).replace(/\
 /**
  * 한 파일에 대한 텍스트 연산을 한 번에 적용한다.
  * op: block · section · ignore(줄 묶음) · line(한 줄) — 범위의 해시(sha)로 찾는다 / replace — after 를 before 로 되돌린다.
+ * block 에 replacement(표시 줄을 포함한 새 블록, LF)가 있으면 지우지 않고 그 블록으로 통째로 바꾼다(범위 바꾸기 —
+ * 앞뒤 빈 줄은 그대로 둔다). 줄끝은 파일 것을 따른다.
  * 해시로 찾으므로 다시 돌려도 이미 지운 것은 'not-found' 로 끝나고 다른 블록을 잘못 지우지 않는다.
- * @returns {{ text: string, results: Record<string, 'removed'|'reverted'|'not-found'|'mismatch'> }}
+ * @returns {{ text: string, results: Record<string, 'removed'|'replaced'|'reverted'|'not-found'|'mismatch'> }}
  */
 export function applyTextOps(text, ops, file) {
   const results = {};
@@ -174,12 +176,30 @@ export function applyTextOps(text, ops, file) {
     if (o.op === 'line') {
       const i = lines.findIndex((l, k) => !taken(k) && sha256(body(l)) === o.sha);
       if (i >= 0) r = { start: i, end: i };
-    } else r = (pool[o.op] || []).find((x) => rangeSha(lines, x) === o.sha) || null;
+    } else r = (pool[o.op] || []).find((x) => !taken(x.start) && rangeSha(lines, x) === o.sha) || null;
     if (!r) { results[o.id] = 'not-found'; continue; }
+    if (o.op === 'block' && typeof o.replacement === 'string') {
+      const eol = /\r\n/.test(text) ? '\r\n' : '\n';
+      const rep = normEol(o.replacement).replace(/\n+$/, '').split('\n').map((l) => l + eol);
+      if (!/\n$/.test(lines[r.end])) rep[rep.length - 1] = rep[rep.length - 1].slice(0, -eol.length);   // 파일 끝 줄바꿈 없음은 그대로
+      ranges.push({ ...r, insert: rep });
+      results[o.id] = 'replaced';
+      continue;
+    }
     ranges.push(o.op === 'line' ? r : widen(r, lines));
     results[o.id] = 'removed';
   }
-  return { text: dropRanges(lines, ranges).join(''), results };
+  const ins = new Map(ranges.filter((x) => x.insert).map((x) => [x.start, x.insert]));
+  const kept = dropRanges(lines.map((l, i) => i), ranges);
+  const out = [];
+  let prev = -1;
+  for (const i of kept) {
+    for (const [s, rep] of [...ins].sort((a, b) => a[0] - b[0])) if (s > prev && s < i) { out.push(...rep); ins.delete(s); }
+    out.push(lines[i]);
+    prev = i;
+  }
+  for (const [, rep] of [...ins].sort((a, b) => a[0] - b[0])) out.push(...rep);
+  return { text: out.join(''), results };
 }
 
 // ── JSON 바이트 범위 ─────────────────────────────────────────────────────────
