@@ -22,7 +22,7 @@ tools: Read, Glob, Grep, Edit, Write, Bash
 
 > 경계: 빌드·lint·기존 스위트 **실행**·그린레드 **판정**·diff **리뷰**·**baseline 실측**은 `harness-kit:change-verifier`가 맡는다. 이 에이전트는 테스트를 *짜고*, 짠 테스트가 통과하는지까지 확인한다.
 >
-> e2e 작성 타이밍은 `harness-kit:qa-cycle` 스킬 Stage 3 정책을 따른다.
+> e2e 작성 타이밍은 다음을 따른다.
 > - **회귀 위험이 큰 건**: 즉시 쓴다.
 > - **단순 UI**: QA 단계에서 일괄로 쓴다.
 

@@ -9,6 +9,8 @@
   - 대상: harness-install · harness-uninstall · docs-setup · 공용 스킬 · agents · commands · README · CHANGELOG · SOURCES
   - 뜻을 바꾼 것은 harness-install D4(deny 상한에는 deny 만 센다) · D5(커밋 선택지 두 라벨)뿐이다
     - 두 건은 1차 커밋 `61a8960` 에 있다
+  - unit-test-engineer 의 e2e 작성 타이밍 규칙에서 출처 표기(qa-cycle Stage 3)를 지운다
+    - qa-cycle 에는 그 규칙이 처음부터 없었다. 규칙은 그대로다
 
 ## 미발행 — 하네스 설치 범위
 
