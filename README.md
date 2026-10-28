@@ -1,9 +1,15 @@
 # harness-kit
 
-프로젝트에 묶이지 않는 **공용 Claude Code 플러그인**과 그 마켓플레이스.
-여러 계층·여러 레포에 걸친 작업을 지휘하고, 구현·테스트·검증을 역할별 에이전트에 나눠 맡기고, 판정 규율(파이프로 종료코드 가리지 않기 · baseline 실측 · 단언 강도 유지 · 파괴적 적용 별도 승인)을 팀 전체가 같은 방식으로 따르게 한다.
+프로젝트에 묶이지 않는 **공용 Claude Code 플러그인**과 그 마켓플레이스다. 이 플러그인은 세 가지를 한다.
 
-자산 본문에는 **프로젝트 고유값이 없다.** 경로·명령·브랜치·위험 지점은 각 프로젝트 레포의 `harness.config.mjs` `project` 블록(아래 「프로젝트 프로필」)에서 읽고, 값이 없으면 지어내지 않고 사용자에게 묻는다.
+- 여러 계층·여러 레포에 걸친 작업을 지휘한다.
+- 구현·테스트·검증을 역할별 에이전트에 나눠 맡긴다.
+- 팀 전체가 판정 규율을 같은 방식으로 따르게 한다.
+  - 규율: 파이프로 종료코드 가리지 않기 · baseline 실측 · 단언 강도 유지 · 파괴적 적용 별도 승인
+
+자산 본문에는 **프로젝트 고유값이 없다.**
+경로·명령·브랜치·위험 지점은 각 프로젝트 레포의 `harness.config.mjs` `project` 블록(아래 「프로젝트 프로필」)에서 읽는다.
+값이 없으면 지어내지 않고 사용자에게 묻는다.
 
 ## 구성
 
@@ -11,16 +17,16 @@
 
 | 종류 | 이름 | 언제 쓰나 |
 | - | - | - |
-| 스킬 | `coordinator` | ① 둘 이상의 레포 또는 계층(BE·FE) ② 계약 변경(API·스키마·마이그레이션) ③ 검증 두 종류 이상 — 셋 중 둘 이상이면 코드보다 먼저 |
+| 스킬 | `coordinator` | 아래 조건 셋 중 둘 이상이면 코드보다 먼저 |
 | 스킬 | `fe-be-trace` | "어디서 조회/호출돼?" — FE·BE 를 함께 추적 |
 | 스킬 | `qa-cycle` | 명세 확정 → 구현 → 단위/회귀 → e2e → UI 정합성 → 완성도 리포트 |
 | 스킬 | `archive-cycle` | 쌓인 메모리·문서를 계측 → 판정 → 이관 → 연표 접기 → 검증 |
 | 스킬 | `ui-ux-guide` | 화면·문구·인터랙션을 만들거나 고칠 때 6단계 + 7원칙 + 체크리스트 |
 | 스킬 | `data-migration` | 데이터가 있는 DB 의 스키마 이행 · 타 서비스 ETL |
 | 스킬 | `plugin-sync` | 플러그인(이 플러그인 또는 프로젝트 오버레이) 최신화 사이클 — 명시 호출 전용 |
-| 스킬 | `harness-install` | "하네스 설치해줘" — 지금 레포에 harness-agent 게이트(`.harness/` 훅)와 이 플러그인(project scope)을 함께 설치. 결정은 하나씩 묻는다. 선택 항목(기본 끔): graft 로컬 연결 · 전역 상태 줄 합치기. 끝에 영수증 `harness.install.json` 을 남긴다 |
-| 스킬 | `harness-uninstall` | "하네스 제거해줘" · "하네스 재설치" — harness-install 이 넣은 것만 블록·키 단위로 걷어 낸다. 영수증이 있으면 영수증 기준, 없으면 알려진 구조로 후보를 뽑아 항목마다 확인. 재설치는 이 스킬 → 새 세션 → `harness-install` |
-| 스킬 | `docs-setup` | "문서 구조 잡아줘" — 아카이브 폴더·성격표·`CLAUDE.md` 라우팅·문서 규약 표를 세우고, 끝난 문서를 배너와 함께 옮기며, `project.docs.*`·`memory.slugs` 를 채워 `archive-cycle` 이 바로 돌게 한다. 메모리 규약을 `CLAUDE.md` 에 넣는다. 설치된 레포에도 다시 돌릴 수 있다. 설치 단계와 무관하게 돌고, 채운 config 칸에 `// harness-kit:docs-setup` 표시를 달아 걷어내기·재설치 뒤에도 되살린다 |
+| 스킬 | `harness-install` | "하네스 설치해줘" — harness-agent 게이트와 이 플러그인을 함께 설치(아래 세부) |
+| 스킬 | `harness-uninstall` | "하네스 제거해줘" · "하네스 재설치" — harness-install 이 넣은 것만 걷어 냄(아래 세부) |
+| 스킬 | `docs-setup` | "문서 구조 잡아줘" — 문서 구조를 세우고 끝난 문서를 옮김(아래 세부) |
 | 에이전트 | `backend-engineer` | BE 구현 위임 기본 대상 |
 | 에이전트 | `frontend-engineer` | FE 구현 · BE→FE 계약 동기화 |
 | 에이전트 | `unit-test-engineer` | 테스트 작성/유지 |
@@ -31,26 +37,85 @@
 
 에이전트를 부를 때는 `harness-kit:<이름>` 으로 부른다(예: `subagent_type="harness-kit:change-verifier"`).
 
+**`coordinator` 를 먼저 여는 조건** — 셋 중 둘 이상이면 코드보다 먼저 연다.
+
+- ① 둘 이상의 레포 또는 계층(BE·FE)
+- ② 계약 변경(API·스키마·마이그레이션)
+- ③ 검증 두 종류 이상
+
+**`harness-install`** — "하네스 설치해줘"
+
+- 지금 레포에 harness-agent 게이트(`.harness/` 훅)와 이 플러그인(project scope)을 함께 설치한다.
+- 결정은 하나씩 묻는다.
+- 선택 항목(기본 끔): graft 로컬 연결 · 전역 상태 줄 합치기
+- 끝에 영수증 `harness.install.json` 을 남긴다.
+
+**`harness-uninstall`** — "하네스 제거해줘" · "하네스 재설치"
+
+- harness-install 이 넣은 것만 블록·키 단위로 걷어 낸다.
+- 영수증이 있으면 영수증 기준으로 후보를 뽑는다. 없으면 알려진 구조로 뽑는다.
+- 후보는 항목마다 확인한다.
+- 재설치는 이 스킬 → 새 세션 → `harness-install`
+
+**`docs-setup`** — "문서 구조 잡아줘"
+
+- 아카이브 폴더·성격표·`CLAUDE.md` 라우팅·문서 규약 표를 세운다.
+- 끝난 문서를 배너와 함께 옮긴다.
+- `project.docs.*`·`memory.slugs` 를 채워 `archive-cycle` 이 바로 돌게 한다.
+- 메모리 규약을 `CLAUDE.md` 에 넣는다.
+- 설치된 레포에도 다시 돌릴 수 있다. 설치 단계와 무관하게 돈다.
+- 채운 config 칸에 `// harness-kit:docs-setup` 표시를 단다. 그래서 걷어내기·재설치 뒤에도 되살린다.
+
 ### 훅은 두지 않는다
 
-이 플러그인에는 `hooks/` 가 없다. 위험 명령 가드 · test-first 가드 · 미러 드리프트 감시 같은 **실행 게이트는 harness-agent 의 몫**이다 — 각 프로젝트에 harness-agent 골격을 설치해 쓴다.
-플러그인 훅은 설치 범위(user 범위면 모든 프로젝트)에서 발화하므로, 공용 플러그인이 훅을 가지면 그 훅을 전제하지 않은 프로젝트에서도 돌게 된다.
+이 플러그인에는 `hooks/` 가 없다.
+위험 명령 가드 · test-first 가드 · 미러 드리프트 감시 같은 **실행 게이트는 harness-agent 의 몫**이다. 각 프로젝트에 harness-agent 골격을 설치해 쓴다.
+이유: 플러그인 훅은 설치 범위(user 범위면 모든 프로젝트)에서 발화한다. 공용 플러그인이 훅을 가지면 그 훅을 전제하지 않은 프로젝트에서도 돌게 된다.
 
-`harness-install` 의 선택 항목 「graft 사용」(D9)이 넣는 graft 훅도 플러그인 훅이 아니다 — 그 레포의 `.claude/settings.local.json`(커밋되지 않음)에만 들어간다.
+`harness-install` 의 선택 항목 「graft 사용」(D9)이 넣는 graft 훅도 플러그인 훅이 아니다. 그 훅은 그 레포의 `.claude/settings.local.json`(커밋되지 않음)에만 들어간다.
 
-graft(전역 npm `@nanonets/graft`)는 Node 판 조건(`engines.node`)이 있다 — 예: 조사 판 0.12.1 기준 `>=20`. 깔기 전에 `npm view @nanonets/graft engines` 로 요구 판을 보고 `node --version` 과 비교해, 모자라면 Node 를 먼저 올린 뒤 `npm i -g @nanonets/graft` 로 깐다. 이미 깔려 있어도 지금 Node 가 그 조건에 못 미치면 `harness-install` 은 graft 항목을 건너뛴다.
+graft(전역 npm `@nanonets/graft`)는 Node 판 조건(`engines.node`)이 있다. 예: 조사 판 0.12.1 기준 `>=20`.
+깔기 전 확인과 설치 순서는 다음과 같다.
+
+1. `npm view @nanonets/graft engines` 로 요구 판을 본다.
+2. `node --version` 과 비교한다.
+3. 모자라면 Node 를 먼저 올린다.
+4. `npm i -g @nanonets/graft` 로 깐다.
+
+이미 깔려 있어도 지금 Node 가 그 조건에 못 미치면 `harness-install` 은 graft 항목을 건너뛴다.
 
 ### 사용자 전역에 쓰는 것 — 상태 줄 하나뿐
 
-harness-kit 은 레포 안에만 쓴다. 예외가 하나 있다: `harness-install` 의 선택 항목 「전역 상태 줄」(D10, 기본 끔)을 고르면 `~/.claude/settings.json` 의 `statusLine.command` 를 합치기 스크립트(`~/.claude/harness-kit/statusline-combined.cjs` — 원래 명령의 출력 + 그 레포에 graft 상태 줄 헬퍼가 있으면 그 출력)로 바꾼다.
+harness-kit 은 레포 안에만 쓴다. 예외가 하나 있다: `harness-install` 의 선택 항목 「전역 상태 줄」(D10, 기본 끔)이다.
+이 항목을 고르면 `~/.claude/settings.json` 의 `statusLine.command` 를 합치기 스크립트로 바꾼다.
+합치기 스크립트는 `~/.claude/harness-kit/statusline-combined.cjs` 다. 원래 명령의 출력에, 그 레포에 graft 상태 줄 헬퍼가 있으면 그 출력을 더한다.
 
-- 왜 전역인가: 플러그인은 상태 줄을 줄 수 없다 — 플러그인 settings 에서 효력이 있는 키는 `agent`·`subagentStatusLine` 뿐이다(공식 plugins manifest-reference 「settings」). 상태 줄은 세션에 하나라 원래 줄과 graft 줄을 함께 보이려면 그 명령을 바꿔야 한다.
-- 바꾸기 전에 전역 settings.json 을 `~/.claude/harness-kit/backup/` 에 백업하고, 원래 명령은 `~/.claude/harness-kit/statusline.json` 의 `base` 로, 그 명령을 돌릴 셸은 설치 때 한 번 정해 같은 파일의 `shell` 에 절대경로로(Windows: `CLAUDE_CODE_GIT_BASH_PATH` → git 옆 `bin\bash.exe` → PowerShell), 바꾼 기록은 `~/.claude/harness-kit/receipt.json`(레포 영수증과 따로)에 남긴다. 이미 다른 합치기 스크립트를 가리키거나, 원래 명령을 그 셸로 한 번 돌려 종료 0 + 출력이 나오지 않으면 아무것도 쓰지 않고 묻는다. 실행 중 원래 명령이 실패하면 그 자리에 `statusline base 실패(exit N)` 한 줄이 나온다.
-- 되돌리기는 `harness-uninstall` 이 레포 걷어내기와 따로 묻고, 지금 값이 harness-kit 이 쓴 값과 같을 때만 원래 값으로 되돌린다(`plugins/harness-kit/scripts/statusline-setup.mjs restore`). 되돌리는 것은 전역 `statusLine` 값뿐이다 — graft 를 쓰는 레포의 `settings.local.json` 상태 줄이 그 사본을 계속 쓰므로 `~/.claude/harness-kit/` 의 사본·`statusline.json` 은 남는다. 지우려면 각 레포에서 graft 연결을 걷어 낸 뒤 손으로 지운다.
+- **왜 전역인가**
+  - 플러그인은 상태 줄을 줄 수 없다.
+  - 플러그인 settings 에서 효력이 있는 키는 `agent`·`subagentStatusLine` 뿐이다(공식 plugins manifest-reference 「settings」).
+  - 상태 줄은 세션에 하나다. 원래 줄과 graft 줄을 함께 보이려면 그 명령을 바꿔야 한다.
+- **바꾸기 전에 남기는 것**
+  - 전역 settings.json 을 `~/.claude/harness-kit/backup/` 에 백업한다.
+  - 원래 명령은 `~/.claude/harness-kit/statusline.json` 의 `base` 로 남긴다.
+  - 그 명령을 돌릴 셸은 설치 때 한 번 정한다. 같은 파일의 `shell` 에 절대경로로 남긴다.
+    - Windows 순서: `CLAUDE_CODE_GIT_BASH_PATH` → git 옆 `bin\bash.exe` → PowerShell
+  - 바꾼 기록은 `~/.claude/harness-kit/receipt.json` 에 남긴다. 레포 영수증과 따로다.
+- **멈추는 경우** — 아무것도 쓰지 않고 묻는다.
+  - 이미 다른 합치기 스크립트를 가리킨다.
+  - 원래 명령을 그 셸로 한 번 돌려 종료 0 + 출력이 나오지 않는다.
+- **실행 중 실패** — 원래 명령이 실패하면 그 자리에 `statusline base 실패(exit N)` 한 줄이 나온다.
+- **되돌리기**
+  - `harness-uninstall` 이 레포 걷어내기와 따로 묻는다.
+  - 지금 값이 harness-kit 이 쓴 값과 같을 때만 원래 값으로 되돌린다(`plugins/harness-kit/scripts/statusline-setup.mjs restore`).
+  - 되돌리는 것은 전역 `statusLine` 값뿐이다.
+  - `~/.claude/harness-kit/` 의 사본·`statusline.json` 은 남는다. graft 를 쓰는 레포의 `settings.local.json` 상태 줄이 그 사본을 계속 쓰기 때문이다.
+  - 지우려면 각 레포에서 graft 연결을 걷어 낸 뒤 손으로 지운다.
 
 ### graft 를 업그레이드한 뒤
 
-「graft 사용」으로 설치한 레포는 graft 가 넣은 설정을 `.claude/settings.local.json` 으로 옮겨 둔다. graft 는 판이 바뀐 첫 세션 시작에 연결을 다시 쓰면서 커밋되는 `.claude/settings.json` 에 graft 키(훅 · 상태 줄 등)를 다시 넣는다. 그때 그 레포에서 한 번 다시 돌린다 — 같은 결과가 된다(멱등):
+「graft 사용」으로 설치한 레포는 graft 가 넣은 설정을 `.claude/settings.local.json` 으로 옮겨 둔다.
+graft 는 판이 바뀐 첫 세션 시작에 연결을 다시 쓴다. 이때 커밋되는 `.claude/settings.json` 에 graft 키(훅 · 상태 줄 등)를 다시 넣는다.
+그때 그 레포에서 아래 명령을 한 번 다시 돌린다. 같은 결과가 된다(멱등):
 
 ```
 node <harness-kit 플러그인>/scripts/graft-localize.mjs status   <레포 루트>   # settings.json 에 graft 몫이 다시 들어왔는가
@@ -90,26 +155,39 @@ node <harness-kit 플러그인>/scripts/graft-localize.mjs localize <레포 루�
 
 - 팀원은 각자 한 번 설치해야 한다: `claude plugin install harness-kit@harness-kit --scope project`
 - 이 저장소는 **비공개**다. 팀원마다 GitHub git 자격증명이 있어야 마켓플레이스를 받을 수 있다: `gh auth setup-git`
-- 레포 안에 harness-agent 가 설치돼 있고 `harness.config.mjs` 에 `project` 블록이 채워져 있어야 스킬·에이전트가 프로젝트 값을 읽는다. 없으면 절차만 안내하고 값을 묻는다.
+- 스킬·에이전트가 프로젝트 값을 읽으려면 두 조건이 필요하다. 없으면 절차만 안내하고 값을 묻는다.
+  - 레포 안에 harness-agent 가 설치돼 있다.
+  - `harness.config.mjs` 에 `project` 블록이 채워져 있다.
 
 ### 업데이트
 
-- `plugin.json`·`marketplace.json` 에 **`version` 필드를 두지 않는다.** 설치본은 main 의 커밋 SHA 로 판을 가르므로, main 에 새 커밋이 들어가면 그것이 곧 새 판이다. 버전 범프는 하지 않는다(`claude plugin validate` 의 version 없음 경고 1건은 의도된 것이다).
+- `plugin.json`·`marketplace.json` 에 **`version` 필드를 두지 않는다.**
+  - 설치본은 main 의 커밋 SHA 로 판을 가른다. main 에 새 커밋이 들어가면 그것이 곧 새 판이다.
+  - 버전 범프는 하지 않는다. `claude plugin validate` 의 version 없음 경고 1건은 의도된 것이다.
 - autoUpdate 가 켜진 PC 는 **새 세션을 열 때**(또는 `/reload-plugins`) 새 판을 받는다. 켜지 않았다면 손으로: `/plugin marketplace update harness-kit` → `/reload-plugins`
-- autoUpdate 는 **사용자 범위**에서 켠다(`~/.claude/plugins/known_marketplaces.json` 의 이 마켓플레이스 항목). `/plugin` UI 의 autoUpdate 토글은 레포의 `.claude/settings.json` 에 키를 쓸 수 있어, 켜기만 했는데 레포 파일이 바뀐다.
-- main 병합은 곧 배포다 — autoUpdate 가 켜진 곳에 바로 퍼지므로, 시험을 통과한 브랜치만 병합한다.
+- autoUpdate 는 **사용자 범위**에서 켠다(`~/.claude/plugins/known_marketplaces.json` 의 이 마켓플레이스 항목).
+  - 이유: `/plugin` UI 의 autoUpdate 토글은 레포의 `.claude/settings.json` 에 키를 쓸 수 있다.
+  - 그러면 켜기만 했는데 레포 파일이 바뀐다.
+- main 병합은 곧 배포다. autoUpdate 가 켜진 곳에 바로 퍼진다. 그래서 시험을 통과한 브랜치만 병합한다.
 - 사용 범위를 팀으로 넓혀 판을 고정하거나 되돌릴 필요가 생기면, 명시 버전(`version` 필드 + 범프 규칙)으로 바꾸는 것을 검토한다.
 
 ## 프로젝트 프로필
 
-스킬·에이전트·커맨드는 프로젝트 레포 루트 `harness.config.mjs` 의 `project` 블록을 읽는다. harness-agent 가 이미 정의한 `project.name`·`project.repos` 옆에 아래 슬롯을 더한다. harness-agent 코드는 이 슬롯을 읽지 않는다 — 읽는 쪽은 이 플러그인뿐이다.
+스킬·에이전트·커맨드는 프로젝트 레포 루트 `harness.config.mjs` 의 `project` 블록을 읽는다. harness-agent 가 이미 정의한 `project.name`·`project.repos` 옆에 아래 슬롯을 더한다. harness-agent 코드는 이 슬롯을 읽지 않는다. 읽는 쪽은 이 플러그인뿐이다.
 
 ### 읽기 규칙
 
-1. **평범한 객체 리터럴로만 쓴다.** 계산식·import·함수 호출 금지 — 에이전트가 파일을 그대로 읽어 해석한다.
-2. **값 또는 경로만 둔다.** 산문 규칙(계약 규율, UI 금지 패턴, BE 컨벤션)은 레포 `docs/` 에 두고 슬롯은 그 문서 경로를 가리킨다.
-3. **짝 레포는 공통값을 주 레포에만 둔다.** 짝 레포 config 는 `pairOwner` 로 주 레포를 가리키고, 자산은 자기 config → 주 레포 config 순으로 읽는다. 같은 값을 두 레포에 적지 않는다.
-4. **빈칸과 `null` 은 다르다.** 키가 없으면 "아직 안 정함" — 자산은 멈추고 묻는다. `null` 이면 "해당 없음으로 판단함" — 자산은 그 단계를 건너뛰고 보고에 적는다.
+1. **평범한 객체 리터럴로만 쓴다.** 계산식·import·함수 호출 금지. 에이전트가 파일을 그대로 읽어 해석한다.
+2. **값 또는 경로만 둔다.**
+   - 산문 규칙(계약 규율, UI 금지 패턴, BE 컨벤션)은 레포 `docs/` 에 둔다.
+   - 슬롯은 그 문서 경로를 가리킨다.
+3. **짝 레포는 공통값을 주 레포에만 둔다.**
+   - 짝 레포 config 는 `pairOwner` 로 주 레포를 가리킨다.
+   - 자산은 자기 config → 주 레포 config 순으로 읽는다.
+   - 같은 값을 두 레포에 적지 않는다.
+4. **빈칸과 `null` 은 다르다.**
+   - 키가 없으면 "아직 안 정함"이다. 자산은 멈추고 묻는다.
+   - `null` 이면 "해당 없음으로 판단함"이다. 자산은 그 단계를 건너뛰고 보고에 적는다.
 5. **기본값을 지어내지 않는다.** 자산은 다른 프로젝트의 값이나 흔한 기본값(`npm test`, `main` 등)으로 빈칸을 채우지 않는다.
 6. 단일 레포에서 `project.commands` 가 없으면 harness 최상위 `commands` 를 읽는다(같은 값을 두 번 적지 않기 위해).
 7. 경로는 레포 기준 **상대경로**로 적는다. 절대경로·사용자 홈 경로를 넣지 않는다.
@@ -127,12 +205,19 @@ node <harness-kit 플러그인>/scripts/graft-localize.mjs localize <레포 루�
 | `e2e.modeSwitch` | mock/실서버 전환 스위치의 위치 | qa-cycle · unit-test-engineer |
 | `contract` | `beGlobs`(계약 DTO·Controller glob) · `feDirs`(api·store) · `feMocks` · `rulesDoc`(계약 규율 문서) · `dataSourceRule`(데이터 소스 판별 문서) | coordinator · fe-be-trace · save · 에이전트 |
 | `data` | `schemaMgmt`(`'flyway'` \| `'liquibase'` \| `'init-sql'`) · `schemaHome` · `schemaProcedureSkill` · `migrationOverlaySkill` · `namingPlanDoc` | data-migration · coordinator |
-| `risk` | `sharedDbSuites`(공유 DB 에 실접속하는 테스트) · `sharedDbProfiles`(공유 DB 를 향하는 프로파일·설정 파일 **이름**) · `devServer`(기본 프록시가 원격을 향하는가 — 한 문장) · `destructive`(승인 필요 명령) | change-verifier · unit-test-engineer · save · data-migration |
+| `risk` | `sharedDbSuites` · `sharedDbProfiles` · `devServer` · `destructive` — 표 아래 「`risk` 하위 키」 | change-verifier · unit-test-engineer · save · data-migration |
 | `docs` | `domainIndex` · `screenMap` · `repoMap` · `testGuide` · `uiUxRules` · `archiveDir` · `pathValidator` · `autoloaded`(자동 로드 `CLAUDE.md` 목록) | 여러 자산 · `archiveDir`·`pathValidator`·`autoloaded` 는 docs-setup 이 채운다 |
 | `git` | `protectedBranches` · `commitFormat`(한 문장) · `commitExecution`(`'auto'` \| `'message-only'`) · `push`(`'auto'` \| `'ask'` \| `'never'`) · `coAuthor`(trailer 허용 여부) · `reviewThreshold`(`{ files, lines }`) | save · frontend-engineer · plugin-sync·archive-cycle(`commitExecution`) |
 | `agents` | 역할 → 에이전트 이름 덮어쓰기. 역할: `schemaDesign` · `schemaApply` · `migration` · `backend` · `frontend` · `testAuthor` · `verifier` | coordinator · 에이전트 |
 | `memory` | `slugs`(`~/.claude/projects/` 아래 메모리 디렉토리 이름) · `policy`(백로그를 어디에 남기나 — 한 문장) | archive-cycle · qa-cycle · docs-setup(채움) |
 | `plugin` | 플러그인 정본 레포에서만: `canonicalRepo` · `canonicalBranch` · `dir` · `marketplaceFile` · `readme` · `mirrorScript` · `hookTests` · `auditSources` | plugin-sync · plugin-curator |
+
+**`risk` 하위 키**
+
+- `sharedDbSuites` — 공유 DB 에 실접속하는 테스트
+- `sharedDbProfiles` — 공유 DB 를 향하는 프로파일·설정 파일 **이름**
+- `devServer` — 기본 프록시가 원격을 향하는가(한 문장)
+- `destructive` — 승인 필요 명령
 
 `agents` 기본값: `migration` = `harness-kit:data-migration-engineer`, `backend` = `harness-kit:backend-engineer`, `frontend` = `harness-kit:frontend-engineer`, `testAuthor` = `harness-kit:unit-test-engineer`, `verifier` = `harness-kit:change-verifier`. `schemaDesign`·`schemaApply` 는 기본값이 없다 — 프로젝트 오버레이가 제공한다.
 
@@ -237,13 +322,21 @@ node tools/scan-commit-meta.mjs --all        # 기존 커밋 전체의 author·c
 ```
 
 - 구조적 패턴(IP 리터럴 · 메일 주소 · 내부망 형태 호스트)은 목록 없이도 잡힌다.
-- 조직명·식별자 접두어처럼 형태로 못 잡는 것은 **`.forbidden-terms.local`** 에 적는다. 이 파일은 **커밋하지 않는다**(`.gitignore` 등록) — 목록 자체가 유출물이기 때문이다.
-- 본문 스캔은 커밋 신원을 보지 않는다. 커밋의 author·committer(이름·메일)는 `tools/scan-commit-meta.mjs` 가 **`.forbidden-meta.local`**(한 줄에 정규식 하나, 커밋하지 않음)과 대조해 막는다. 클론한 PC 마다 이 파일도 만들고, 신원은 `git config user.email` 로 이 저장소에만 설정한다.
+- 조직명·식별자 접두어처럼 형태로 못 잡는 것은 **`.forbidden-terms.local`** 에 적는다.
+  - 이 파일은 **커밋하지 않는다**(`.gitignore` 등록). 목록 자체가 유출물이기 때문이다.
+- 본문 스캔은 커밋 신원을 보지 않는다.
+  - 커밋의 author·committer(이름·메일)는 `tools/scan-commit-meta.mjs` 가 막는다. **`.forbidden-meta.local`**(한 줄에 정규식 하나, 커밋하지 않음)과 대조한다.
+  - 클론한 PC 마다 이 파일도 만든다.
+  - 신원은 `git config user.email` 로 이 저장소에만 설정한다.
 - 검출되면 `--no-verify` 로 우회하지 말고, 값을 프로필 슬롯 참조나 합성 값(`192.0.2.x`, `example.com`, `orders` 같은 가상 이름)으로 바꾼다.
 
 ## 시험
 
-`npm test`(= `cd tests && node --test` — `tests/` 의 `*.test.mjs`, Node 20 에서도 돈다) — 플러그인 스크립트(`plugins/harness-kit/scripts/`, 영수증·걷어내기의 로컬 항목)를 임시 git 레포와 임시 홈으로 돌린다. 실제 사용자 홈(`~/.claude`)과 이 PC 의 git 전역 설정은 쓰지 않는다.
+`npm test` 는 플러그인 스크립트(`plugins/harness-kit/scripts/`, 영수증·걷어내기의 로컬 항목)를 임시 git 레포와 임시 홈으로 돌린다.
+
+- 실제 명령: `cd tests && node --test` (`tests/` 의 `*.test.mjs`)
+- Node 20 에서도 돈다.
+- 실제 사용자 홈(`~/.claude`)과 이 PC 의 git 전역 설정은 쓰지 않는다.
 
 ## 변경 기록
 

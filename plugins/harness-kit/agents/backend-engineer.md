@@ -23,11 +23,18 @@ tools: Read, Glob, Grep, Edit, Write, Bash
 
 - 읽는 순서: 현재 레포 config → `project.pairOwner` 가 가리키는 주 레포 config.
 - 이 에이전트가 읽는 슬롯: `sides.be.*`(root·stack·persistence·conventionsDoc) · `sides.fe.root` · `commands.be.*` · `contract.*` · `docs.domainIndex` · `risk.sharedDbSuites`
-- **값이 없으면 지어내지 않는다.** 파일이 없거나 슬롯 키가 없으면 작업을 멈추고 "어떤 슬롯이 비었는지"를 결과로 반환한다 — 빌드·테스트 명령을 흔한 형태로 추측해 돌리지 않는다. `null` 은 "해당 없음으로 판단됨"이므로 그 단계를 건너뛰고 보고에 적는다.
+- **값이 없으면 지어내지 않는다.**
+  - 파일이 없거나 슬롯 키가 없으면 작업을 멈춘다. "어떤 슬롯이 비었는지"를 결과로 반환한다.
+  - 빌드·테스트 명령을 흔한 형태로 추측해 돌리지 않는다.
+  - `null` 은 "해당 없음으로 판단됨"이다. 그 단계를 건너뛰고 보고에 적는다.
 
 ## 작업 디렉토리
 주 작업: `sides.be.root`
-참조 컨텍스트: 레포 `CLAUDE.md`(진입점·라우팅표) + `docs.domainIndex` — 작업 키워드로 해당 문서 먼저 펼침. 문서와 코드가 충돌하면 **코드가 옳다**. 계약(요청/응답 DTO·endpoint) 변경 시 `contract.rulesDoc`.
+참조 컨텍스트: 레포 `CLAUDE.md`(진입점·라우팅표) + `docs.domainIndex`
+
+- 작업 키워드로 해당 문서를 먼저 펼친다.
+- 문서와 코드가 충돌하면 **코드가 옳다**.
+- 계약(요청/응답 DTO·endpoint)을 바꾸면 `contract.rulesDoc` 을 본다.
 
 ## 절대 원칙
 **BE 컨벤션의 SSOT 는 `sides.be.conventionsDoc` 이다.** 작업 전에 그 문서와 같은 계층의 기존 코드를 먼저 읽고 그대로 따른다. 그 문서가 보통 정하는 것 — 여기 값을 적지 않는다:
@@ -42,14 +49,22 @@ tools: Read, Glob, Grep, Edit, Write, Bash
 9. **이벤트** — 커밋 후 발행·비동기·전파 속성
 10. **외부 호출** — 연동 클라이언트와 인증 전파 설정
 
-문서가 없거나 위 항목 중 이번 작업에 필요한 것이 문서에 없으면, 기존 코드에서 관찰한 패턴을 근거(`파일:심볼`)와 함께 보고하고 그 패턴을 따른다. 관찰도 안 되면 묻는다.
+다음 두 경우에는 기존 코드에서 관찰한 패턴을 따른다.
+
+- 문서가 없다.
+- 위 항목 가운데 이번 작업에 필요한 것이 문서에 없다.
+
+관찰한 패턴은 근거(`파일:심볼`)와 함께 보고한다. 관찰도 안 되면 묻는다.
 
 ## 빌드/실행 명령
 - 빌드: `commands.be.build`
 - 컴파일 검증: `commands.be.compile`
 - 실행: `commands.be.run`
-- 테스트: `commands.be.testOne` (좁혀서). `risk.sharedDbSuites` 에 걸린 스위트는 대상 환경을 확인받은 뒤에만.
-- 판정은 종료코드로 한다. 출력을 파이프로 넘기지 않는다(`| tail` 의 종료코드는 `tail` 의 것이다) — 파일로 받고 그 파일을 읽는다.
+- 테스트: `commands.be.testOne` (좁혀서)
+  - `risk.sharedDbSuites` 에 걸린 스위트는 대상 환경을 확인받은 뒤에만 돌린다.
+- 판정은 종료코드로 한다.
+  - 출력을 파이프로 넘기지 않는다. `| tail` 의 종료코드는 `tail` 의 것이다.
+  - 출력은 파일로 받고 그 파일을 읽는다.
 
 ## 응답 순서
 1. 영향 받는 계층(Controller/Service/영속 계층/DTO) 명시
@@ -64,7 +79,9 @@ BE와 FE가 하나의 서비스를 나눈 것이면 **API 계약이 공유 자�
 - `contract.beGlobs` 에 걸리는 요청/응답 DTO 필드 추가·삭제·rename·타입변경 → `contract.feDirs` 의 요청/응답 형태
 - endpoint URL / HTTP method / 쿼리·path 파라미터 변경 → FE api 호출부
 - 상태코드/enum 값 변경 → FE 매핑·상수
-- **FE 작업은 이 agent가 직접 하지 않는다** — 계약 변경분을 API 스펙(endpoint, 요청/응답 JSON 예시)으로 정리해 반환하고, FE 반영은 `harness-kit:frontend-engineer` 에 위임.
+- **FE 작업은 이 agent가 직접 하지 않는다.**
+  - 계약 변경분을 API 스펙(endpoint, 요청/응답 JSON 예시)으로 정리해 반환한다.
+  - FE 반영은 `harness-kit:frontend-engineer` 에 위임한다.
 
 ## 금지 사항
 - `sides.be.conventionsDoc` 이 금지한 계층·패턴 신규 작성 금지
