@@ -31,7 +31,7 @@
 - **라벨과 header**
   - 아래 「선택지」의 **굵은 이름**이 선택지 라벨이다.
   - 라벨만 읽어도 뜻이 통하게 짓는다.
-  - 질문 header 는 D 번호 없이 대상 + 동작으로 쓴다(`테스트DB 볼륨삭제`, TEMPLATES.md §8).
+  - 질문 header 는 D 번호 없이 대상 + 결정으로 쓴다(`테스트DB 볼륨삭제` · `push 가드 처리`, TEMPLATES.md §8). 선택지 하나(`push 막기유지`)를 header 에 쓰지 않는다.
   - 규칙표의 권장 칸은 같은 선택지를 짧게 가리킨다(`deny` = **차단 (deny)**).
 - **권장 자리에 두지 않는 선택지** — 아래 넷이다. 규칙표를 고칠 때도 이 넷은 권장 칸에 오지 않는다.
   - 레포 코드를 바꾸는 것
@@ -55,15 +55,19 @@
   - 경계는 비교 창 판정(2026-10-30 뒤) 데이터를 보고 정한다.
   - 그때까지 표준을 선택지에 넣지 않는다.
   - test-first 는 범위 표에 들지 않는다(D7 이 두 범위에서 같게 묻는다).
-- 질문을 내기 전에 범위 표를 질문 본문에 먼저 보인다(TEMPLATES.md §8 의 D0 꼴).
+- **아래 범위 표를 응답 본문에 먼저 낸 뒤에만 D0 를 묻는다**(TEMPLATES.md §8 의 D0 꼴).
   - 사용자가 무엇이 걸리고 무엇이 채워지는지를 보고 고르게 한다.
+  - 시험 설치에서 표 없이 D0 를 물었다. 질문 창만 보고는 두 범위의 차이를 알 수 없다.
+  - 질문 창(AskUserQuestion)에는 표가 보이지 않는다. 표는 그 호출 전 응답 본문에 둔다.
 
 | 범위 | 거는 훅(settings.json) | 채우는 config 칸 | CLAUDE.md 절 |
 | - | - | - | - |
 | 라이트 | 실행 전 가드(PreToolUse) 1개 | 사고 근거가 있는 deny·ask · 공유 자원 · 공유DB 테스트 제외(필요하면 init script) · 커밋 정책 · kit 칸 | 짧은 판(TEMPLATES.md §4) |
 | 계측 | 5개(가드 + 실행 뒤 · 실패 · 턴 시작 · 턴 종료 관찰) | 위 전부 + 증거 슬롯 · 지표 · 승격 · 사본 감시 · 턴 종료 감사 · 게이트 문서 칸 | 전체 판 |
 
-- 라이트의 kit 칸 가운데 문서·메모리 칸은 키 없이 두고 10단계에서 묻는다.
+- 라이트의 kit 칸 가운데 **docs-setup 이 정하는 넷**(`project.docs.archiveDir`·`pathValidator`·`autoloaded`·`project.memory.slugs`)만 키 없이 두고 10단계에서 묻는다.
+  - 그 밖의 문서·메모리 칸(`domainIndex`·`screenMap`·`repoMap`·`testGuide`·`uiUxRules`·`memory.policy`)은 두 범위 모두 D8 에서 묻는다.
+  - 이유: docs-setup 은 넷만 채운다. 시험 설치에서 라이트가 문서·메모리 칸을 통째로 미뤄 6칸이 키 없이 남았고, 그 칸을 읽는 자산이 멈추고 물었다.
 
 | 관찰 | 권장 |
 | - | - |
@@ -93,7 +97,8 @@
 | D7 `testFirst.enabled`·`scopes`·`testLookup`·`exempt` · `commands.e2e` · `approvals.*` · `project.plugin` | 묻는다 | 묻는다 |
 | D7 `testFirst.auditOnStop` | 묻지 않는다 — `false`(턴 종료 훅이 없어 돌지 않는다) | 묻는다 |
 | D7 `qualityCycle.evidence` · `drift.mirrors` | 묻지 않는다 — example 기본값(비움) | 묻는다 |
-| D7 `project.memory.slugs` · D8 kit `project.docs.*`(`archiveDir`·`pathValidator`·`autoloaded`·`domainIndex` 등 문서 칸 전부)·`project.memory.*` | 묻지 않는다 — **키를 넣지 않는다**(읽는 자산이 쓸 때 묻는다 · `install.mjs slots` 가 `DEFER` 로 낸다). 10단계 문서 구조 질문이 채운다 | 묻는다 |
+| D7 `project.memory.slugs` · D8 kit `project.docs.archiveDir`·`pathValidator`·`autoloaded` — **docs-setup 이 정하는 넷뿐**(`tiers.mjs` `LIGHT_DEFERRED` = docs-setup `ARCHIVE_CYCLE`) | 묻지 않는다 — **키를 넣지 않는다**(읽는 자산이 쓸 때 묻는다 · `install.mjs slots` 가 `DEFER` 로 낸다). 10단계 문서 구조 질문이 채운다 | 묻는다 |
+| D8 kit `project.docs.domainIndex`·`screenMap`·`repoMap`·`testGuide`·`uiUxRules` · `project.memory.policy` | **묻는다** — docs-setup 이 채우지 않는 칸이다. 키 없이 두면 `slots` 가 실패한다 | 묻는다 |
 | D8 그 밖의 kit 칸(`commands`·`risk`·`git`·`contract` …) | D8 대로 | D8 대로 |
 | D8-2 문서 칸 되살리기 | 백업에 값이 있으면 묻는다 — 되살리면 그 칸은 키가 생긴다 | 묻는다 |
 | D9 graft 사용 · D10 전역 상태 줄 | 묻는다 — 범위와 따로인 선택 항목이다. graft 훅은 `settings.local.json` 에만 들고 `.harness/` 를 가리키지 않아 범위의 훅 수(`install.mjs hooks`)에 들지 않는다 | 묻는다 |
@@ -132,6 +137,7 @@
     - 다른 세션의 미커밋 settings 와 섞이지 않는다.
     - 대신 나중에 병합이 필요하다.
     - 그 병합은 PITFALLS §5 의 기계 대조를 거친다.
+    - 만든 worktree 경로와 브랜치 이름을 만든 그 응답에 적는다. 9단계 `commit-where` 가 병합·제거 명령을 낸다.
     - 지금 트리가 이미 연결 worktree 면 worktree 가 하나 더 는다.
     - 그때 병합 경로가 「새 worktree → 지금 worktree 의 브랜치 → 기준 브랜치」로 한 단 길어진다.
 
@@ -325,6 +331,11 @@
   - **커밋 메시지만 건넴** — 9단계가 메시지 파일만 건넨다.
   - `project.git.commitExecution` — `'auto'` 면 kit save·plugin-sync·archive-cycle 이 경로 지정 커밋까지 실행하고, `'message-only'` 면 메시지와 명령만 낸다. 이 둘뿐이다.
   - `project.git.push` — `'auto'` | `'ask'` | `'never'`. kit save 가 push 를 바로 하나, 묻나, 하지 않나.
+    - **이 답과 가드의 push 규칙(D4·D6-2 의 `git push` ask·deny)은 서로 짝이다.** 둘을 따로 정하면 어긋난다.
+    - 가드가 push 를 deny 로 막으면 `'auto'`·`'ask'` 는 쓸모가 없다. 그때는 `'never'` 를 권한다.
+    - 가드가 push 를 ask 로 두면 save 의 `'ask'` 와 확인이 두 번 뜬다. 근거 줄에 그 사실을 적는다.
+    - 가드 push 규칙을 묻는 질문(header `push 가드 처리`)의 근거 줄에도 이 답(`save push방식`)을 적는다.
+    - 9단계의 push·병합 질문도 이 답을 따른다(아래 「D 번호 밖 질문」).
   - `coAuthor` — kit 커밋 메시지와 이번 설치 커밋에 trailer 가 붙는지.
   - `reviewThreshold` — `{ files, lines }` 를 넘는 diff 에 kit save 가 리뷰 게이트를 연다.
     - 미정(`null`)이면 그 게이트를 건너뛴다는 것을 알린다.
@@ -504,10 +515,10 @@ harness-kit 의 스킬·커맨드·에이전트는 config `project` 블록의 �
 | `risk.sharedDbSuites`·`sharedDbProfiles`·`destructive` | save · change-verifier · data-migration | 실행 전 환경 확인 안내 | D2·D2-2 근거로 채운다 — 비우지 않는다(없으면 `[]`) |
 | `risk.devServer` | frontend-engineer | dev 서버 프록시 경고 | 근거로 채운다. 프록시가 없으면 `null` + 주석 |
 | `git.*` | save · frontend-engineer | 커밋·push 단계 | **묻는다**(D5) |
-| `docs.domainIndex`·`screenMap`·`repoMap`·`testGuide`·`uiUxRules` | fe-be-trace · qa-cycle · ui-ux-guide · 에이전트 | 그 문서를 읽는 단계 | 근거로 채운다(파일이 있을 때만). 없으면 `null` + 자산 이름 주석 |
+| `docs.domainIndex`·`screenMap`·`repoMap`·`testGuide`·`uiUxRules` | fe-be-trace · qa-cycle · ui-ux-guide · 에이전트 | 그 문서를 읽는 단계 | **두 범위 모두** 근거로 채운다(파일이 있을 때만). 없으면 `null` + 자산 이름 주석. 재설치면 `slots` 의 `PREV` 값을 권한다(아래 주) |
 | `docs.archiveDir`·`pathValidator`·`autoloaded` | archive-cycle | ④ 레포 문서 이동 · ⑤-2 경로 검사 · ① 상시 적재 계측 | **근거가 있을 때만** 채운다. 없으면 `null` + 주석(아래 주) |
 | `memory.slugs` | archive-cycle · qa-cycle | 메모리 계측·정리 | D7 규칙대로(근거 있을 때만, 대소문자 차이는 하나로) |
-| `memory.policy` | qa-cycle | 백로그 기록 위치 안내 | 근거로 채운다(레포 문서의 백로그 위치). 없으면 `null` + 주석 |
+| `memory.policy` | qa-cycle | 백로그 기록 위치 안내 | **두 범위 모두** 근거로 채운다(레포 문서의 백로그 위치). 없으면 `null` + 주석. 재설치면 `PREV` 값을 권한다 |
 | `agents` | coordinator · 에이전트 | 역할 덮어쓰기 — 기본값으로 돈다 | 레포에 같은 역할 에이전트가 있을 때만 채운다 |
 | `plugin` | plugin-sync · plugin-curator | 플러그인 정본 작업 | D7 규칙대로 |
 
@@ -516,6 +527,14 @@ harness-kit 의 스킬·커맨드·에이전트는 config `project` 블록의 �
 - 근거: 보관 폴더가 이미 있다 · 경로 검사 스크립트가 있다 · 자동 로드 `CLAUDE.md` 목록
 - 근거가 없을 때 주석: 「docs-setup 에서 정함 — 그전까지 archive-cycle ④ 이동이 건너뛴다」
 - 보관 폴더를 새로 정하는 일은 문서 구조 결정이라 설치에서 하지 않는다.
+
+표 주 — 재설치의 `PREV` 값:
+
+- `install.mjs slots` 는 키가 없는 칸마다 앞선 걷어내기 백업 config 의 값을 `PREV project.<칸> = <값>` 줄로 낸다.
+- 백업은 이 트리 · 메인 트리(`--git-common-dir`) · 다른 worktree 의 것을 모두 본다. 가장 새 백업의 값을 쓴다.
+- 그 값을 권장으로 삼고, 권장 이유에 「앞선 설치의 값(백업 <시각>)」을 적는다.
+- 그 값의 파일이 지금 레포에 없으면 권하지 않는다. 근거 줄에 「백업 값이 가리키는 파일 없음」을 적는다.
+- 이유: 시험 재설치에서 걷어낸 config 의 문서 칸 6개를 다시 찾느라 같은 질문을 처음부터 했다.
 
 **docs-setup 과의 관계**
 
@@ -690,5 +709,26 @@ harness-kit 이 **사용자 전역(`~/.claude`)에 쓰는 유일한 항목**이�
     - 그 뒤는 docs-setup 의 절차·질문을 따른다(문서를 옮기는 결정은 그 스킬이 다시 묻는다).
   - **나중에**
     - 아무것도 바꾸지 않는다.
-    - 라이트면 문서 칸은 키 없이 남아, 읽는 자산이 쓸 때 묻는다.
+    - 라이트면 docs-setup 이 정하는 넷(`archiveDir`·`pathValidator`·`autoloaded`·`memory.slugs`)이 키 없이 남아, 읽는 자산이 쓸 때 묻는다.
     - 보고에 「docs-setup — 나중에」를 다음 할 일로 적는다.
+
+## D 번호 밖 질문 — 같은 권장 규칙을 따른다
+
+- D 번호가 없는 질문도 「권장」 절을 따른다. 「(권장)」+「권장 이유」 또는 「권장 없음 — 이유」 가운데 하나를 반드시 단다.
+- 이유: 시험 설치에서 아래 질문 다섯 개(원본 위치 · 커밋 규칙 문구 · 서버 기동 안내 · 설치 커밋 · push)가 권장도 「권장 없음」도 없이 나갔다.
+- 답은 체크포인트 `asked` 에 적는다. `answer-trace.mjs` ⑤-2 가 header · recommended · basis 가 빈 줄을 실패로 낸다.
+
+| 질문(header) | 단계 | 관찰 | 권장 |
+| - | - | - | - |
+| `원본 위치` | 3 | 0단계에서 harness-agent 로컬 클론을 찾았고 미커밋 변경이 없다 | 그 클론 — 권장 이유에 경로와 HEAD SHA |
+| `원본 위치` | 3 | 찾은 클론에 미커밋 변경이 있다 | 공개 저장소 임시 clone — 미커밋 변경은 SHA 로 판을 가를 수 없다 |
+| `원본 위치` | 3 | 클론을 찾지 못했다 | 공개 저장소 임시 clone |
+| `<대상> 문구 고침`(예: `커밋규칙 문구`) | 8 | 그 줄이 새 deny·ask 에 걸리는 명령을 권한다 | 고침 — 서술 문서가 막힐 명령을 권하는 모순을 없앤다 |
+| `<대상> 문구 고침`(예: `기동안내 고침`) | 8 | 그 줄이 ask 규칙의 명령을 안내만 한다(확인 뒤 실행되는 명령) | 그대로 — 확인을 거치면 그 안내대로 실행된다 |
+| `<대상> 문구 고침` | 8 | 그 줄이 사용자 전역 지침에서 온 문구다 | 권장 없음 — 레포 문서의 근거가 아니다 |
+| `판 올림` | 8 | 고친 줄이 `version` 있는 프로젝트 플러그인 안에 있다 | 올림 — 올리지 않으면 이미 설치한 사람이 옛 판을 쓴다 |
+| `설치 커밋` | 9 | D5 의 `commitExecution` 답이 있다 | 그 답대로 — 권장 이유에 D5 답 |
+| `설치 반영` | 9 | 연결 worktree 에 커밋했고 기준 브랜치에서 닿지 않는다 · 레포에 병합 규칙이 없다 | 기준 브랜치에 병합 — 그러지 않으면 메인 작업 브랜치에 설치가 없다 |
+| `설치 반영` | 9 | 레포 문서가 MR·PR 로만 병합한다 | 작업 브랜치 push — `project.git.push` 가 `'never'` 면 권장 없음 |
+| `설치 반영` | 9 | 지금 트리 브랜치에 커밋했고 `project.git.push` 가 `'ask'` | 권장 없음 — push 시점은 사용자가 정한다. 근거 줄에 앞선 커밋 수 |
+| `설치 반영` | 9 | `project.git.push` 가 `'never'` | 지금은 하지 않음 — push 선택지를 내지 않는다 |

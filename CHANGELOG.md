@@ -3,6 +3,39 @@
 매니페스트에 `version` 필드를 두지 않는다. 판은 main 커밋 SHA 로 갈린다. 절은 병합 단위로 적는다.
 (0.1.0 까지는 `plugin.json` 과 `marketplace.json` 의 명시 버전을 함께 올렸다.)
 
+## 미발행 — 재설치 시험에서 나온 결함
+
+- 근거: 혼자 쓰는 레포에서 계측 설치를 완전 제거하고, 라이트로 다시 설치하고, docs-setup 을 돌린 시험
+- 설치·걷어내기가 커밋 위치를 보이고 push·병합을 묻는다
+  - `install.mjs commit-where` 를 더한다. 커밋이 든 브랜치 · worktree · 메인 작업 브랜치에서 닿는가 · 다음 할 일 명령을 낸다
+  - harness-install 9단계 · harness-uninstall 7단계가 그 출력을 보이고 `설치 반영`·`제거 반영` 을 묻는다. 묻지 않고 미루지 않는다
+  - 보고에 브랜치 · worktree · 닿는가 · 병합 명령 · worktree 지우는 명령을 적는다
+  - 시험에서 설치가 `chore/harness-install-light` worktree 를 만들고 말하지 않았고, push 를 묻지 않았다
+- 걷어내기 목적 질문이 선택지마다 지우는 것 · 남는 것 · 새 세션에서 harness-install 이 뜨는가를 보인다
+  - `U scan` 이 「목적 질문」 블록을 낸다. 완전 제거는 kit 키 두 개도 지운다고 적는다
+  - 계측 설치이거나 영수증이 없으면 범위 낮추기를 셋째 선택지로 낸다. `U answer purpose=lower` 는 `scan --tier light` 로 다시 뽑으라고 안내한다
+  - 권장은 요청의 낱말로 정하고, 낱말이 없으면 「권장 없음」을 적는다. kit 키는 재설치·범위 낮추기 모두 남긴다
+- 라이트가 미루는 칸을 docs-setup 이 정하는 넷(`archiveDir`·`pathValidator`·`autoloaded`·`memory.slugs`)으로 좁힌다
+  - `tiers.mjs` `LIGHT_DEFERRED` 가 docs-setup `ARCHIVE_CYCLE` 과 같다. 나머지 문서·메모리 칸 6개는 두 범위 모두 D8 에서 묻는다
+  - 시험에서 그 6칸이 키 없이 남았고, docs-setup 은 그 칸을 채우지 않는다
+  - 재설치면 `install.mjs slots` 가 앞선 걷어내기 백업 config 의 값을 `PREV` 줄로 낸다. D8 이 그 값을 권한다
+  - `docs-hookup` 권장 이유의 「키 없음라」 조사 붙임을 고친다
+- 범위 낮추기가 블록째 새로 넣은 칸(`project.docs`)을 잎 칸 단위로 되돌린다
+  - 그 안의 라이트 칸과 docs-setup 표시 칸은 남고, 범위 밖 잎 칸만 지운다. 옛 영수증의 칸 tier 는 지금의 `tiers.mjs` 로 다시 가른다
+  - 전에는 블록째 지워 docs-setup 이 연 블록 안의 표시 없는 kit 칸까지 사라질 수 있었다
+- 걷어내기 백업을 이 트리 · 메인 트리(`--git-common-dir`) · 다른 worktree 에서 모두 찾는다
+  - docs-setup `config-slots.mjs backups` · harness-install `slots` · harness-uninstall 「앞선 백업」이 같은 목록을 쓴다
+- 걷어내기 검증이 걷어내기 전부터 있던 미추적 폴더(안에 git 저장소가 든 폴더)를 「사라짐·새로 바뀜」으로 잘못 세지 않는다
+  - git 은 그 폴더를 `폴더/` 한 줄로만 낸다. 앞머리로 맞춘다
+- 남을 참조 검사가 지울 config 의 `dangerGuard` 규칙 id 를 가리키는 줄도 찾는다(커맨드 문서의 `git-commit`·`git-push` 인용)
+- 질문마다 권장 이유 또는 「권장 없음」을 단다
+  - D 번호 밖 질문(원본 위치 · 걸리는 줄 고침 · 설치 커밋 · push·병합)과 docs-setup 3단계 질문의 권장 표를 더한다
+  - `answer-trace.mjs` 가 근거 없는 권장 · 체크포인트 `asked` 의 빈 칸 · 12자를 넘거나 D 번호로 시작하는 header · 권장 없는 `docsHookup` 을 실패로 낸다
+  - header 는 대상 + 결정으로 쓴다(`push 가드 처리`). 선택지 하나(`push 막기유지`)를 쓰지 않는다
+  - D0 범위 표는 응답 본문에 먼저 낸 뒤에만 묻는다. D5 push 답과 가드 push 규칙을 서로 근거로 적는다
+- docs-setup `record` 가 영수증의 config 해시를 지금 판으로 고친다(CRLF 유지). 고치지 않으면 다음 걷어내기가 config 를 「설치 뒤 손댄 파일」로 본다
+- 보고를 먼저 내고 체크포인트를 지운다는 순서를 harness-install · docs-setup 에 적는다
+
 ## 미발행 — 문서 문체 STE
 
 - 문서를 STE 문체로 다시 쓴다

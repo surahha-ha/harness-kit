@@ -37,7 +37,7 @@ import {
   sha256, normEol, splitLines, body, marksFor, MARKS, findMarked, findSection, findPointerLines, findIgnoreGroups,
   rangeSha, widen, countText, toFileEol, applyTextOps, deleteKey, deleteHook, hookEntries, dupKeys, findKey, parseSpans,
 } from './edit.mjs';
-import { HOOKS, LABEL, RANK, hookSpec, hooksFor, normTier, receiptTier, INSTRUMENTED_SLOTS } from '../../harness-install/scripts/tiers.mjs';
+import { HOOKS, LABEL, RANK, hookSpec, hooksFor, normTier, receiptTier, INSTRUMENTED_SLOTS, tierOfSlot, instrumentedUnder } from '../../harness-install/scripts/tiers.mjs';
 
 const [cmd, rootArg, ...args] = process.argv.slice(2);
 if (!cmd || !rootArg) { console.error('사용: node uninstall.mjs <sessions|scan|block|status|answer|backup|apply|plugin|records|after-cli|verify|eol-fix|finish|restore-check> <레포 루트> [인자…]'); process.exit(2); }
@@ -114,12 +114,13 @@ const checkoutBytes = (rel) => { try { return execFileSync('git', ['-C', root, '
 const eolName = (s) => (/\r\n/.test(s) ? 'CRLF' : 'LF');
 /** 앞선 걷어내기의 백업 — 새것부터. index.json 을 읽지 못한 디렉토리는 뺀다. */
 function priorRuns(exclude = null) {
-  const base = gitPath('harness-uninstall-backup');
-  if (!existsSync(base)) return [];
-  return readdirSync(base).sort().reverse().map((d) => {
-    const dir = path.join(base, d);
+  // 이 트리만 보면 메인 트리·다른 worktree 에서 돌린 걷어내기의 백업을 못 본다 — docs-setup 의 backupRuns 가 모든 자리를 본다
+  let dirs;
+  if (docsSetupLib && docsSetupLib.backupRuns) dirs = docsSetupLib.backupRuns(root);
+  else { const base = gitPath('harness-uninstall-backup'); dirs = existsSync(base) ? readdirSync(base).sort().reverse().map((d) => ({ dir: path.join(base, d), at: d, where: '이 트리' })) : []; }
+  return dirs.map(({ dir, at, where }) => {
     if (exclude && normPath(dir) === normPath(exclude)) return null;
-    try { return { dir, at: d, idx: JSON.parse(readFileSync(path.join(dir, 'index.json'), 'utf8')) }; } catch { return null; }
+    try { return { dir, at, where, idx: JSON.parse(readFileSync(path.join(dir, 'index.json'), 'utf8')) }; } catch { return null; }
   }).filter(Boolean);
 }
 /** 이 트리 이름으로 git-common-dir/harness-evidence/ 아래 남은 증거 사본 디렉토리. */
@@ -461,13 +462,15 @@ async function scan() {
     docsSetup: docsSetupSlots(cfg, manifest) };
   const cfgCand = cands.find((c) => c.id === `file:${CONFIG}`);
   if (cfgCand && plan.docsSetup && plan.docsSetup.slots.length) cfgCand.basis += ` · docs-setup 칸 ${plan.docsSetup.slots.length}개가 함께 지워진다 — 값은 백업에 남고, 재설치 때 harness-install D8-2 가 되살릴지 묻는다`;
-  plan.refs = findRefs(plan, Object.fromEntries(cands.map((c) => [c.id, c.recommend ?? 'keep'])), files);
+  plan.ruleIds = guardRuleIds(cfg);
+  const withRules = !!cfgCand && cfgCand.recommend === 'remove';
+  plan.refs = findRefs(plan, Object.fromEntries(cands.map((c) => [c.id, c.recommend ?? 'keep'])), files, { withRules });
   for (const c of cands.filter((x) => x.data && x.data.aux)) {
     const base = path.posix.basename(c.data.path);
     const hits = plan.refs.filter((r) => r.text.includes(base));
     if (hits.length && c.recommend !== 'keep') { c.recommend = 'keep'; c.basis += ` · 다른 파일 ${new Set(hits.map((h) => h.path)).size}곳 ${hits.length}줄이 가리킨다 — 지우면 그 안내가 끊긴다(참조는 보고만)`; }
   }
-  plan.refs = findRefs(plan, Object.fromEntries(cands.map((c) => [c.id, c.recommend ?? 'keep'])), files);
+  plan.refs = findRefs(plan, Object.fromEntries(cands.map((c) => [c.id, c.recommend ?? 'keep'])), files, { withRules });
   plan.prior = prior.map((r) => ({ dir: posix(r.dir), at: r.at, files: (r.idx.files || []).length }));
 
   // 5) 걷어내기 전 상태 — 후보 밖 파일이 바뀌지 않았는지 verify 가 대조한다
@@ -485,9 +488,18 @@ function preState(plan) {
   const candPaths = candidatePaths(plan);
   const porcelain = git('status', '--porcelain=v1', '-z', '--untracked-files=all').split('\0').filter(Boolean);
   const pre = {};
-  for (const e of porcelain) { const p = e.slice(3); if (!candPaths.has(p) && !p.startsWith('.harness/') && exists(p) && statSync(abs(p)).isFile()) pre[p] = { code: e.slice(0, 2), sha: sha256(readFileSync(abs(p), 'utf8')) }; }
+  for (const e of porcelain) {
+    const p = e.slice(3);
+    if (candPaths.has(p) || p.startsWith('.harness/') || !exists(p)) continue;
+    // 디렉토리 항목(`dir/`) — --untracked-files=all 이어도 git 은 안에 .git 이 있는 폴더(클론한 마켓플레이스 등)를 펴지 않는다.
+    // 파일만 적으면 verify 가 걷어내기 전부터 있던 그 폴더를 「새로 바뀐 파일」로 잘못 본다(시험에서 claude-plugins-official/)
+    if (statSync(abs(p)).isDirectory()) pre[p.endsWith('/') ? p : `${p}/`] = { code: e.slice(0, 2), dir: true };
+    else if (statSync(abs(p)).isFile()) pre[p] = { code: e.slice(0, 2), sha: sha256(readFileSync(abs(p), 'utf8')) };
+  }
   return pre;
 }
+/** 걷어내기 전부터 있던 변경인가 — 같은 경로이거나, 전부터 있던 디렉토리 항목(`dir/`) 아래다. */
+const preHas = (pre, p) => p in pre || Object.keys(pre).some((k) => pre[k].dir && (p === k || p.startsWith(k) || `${p}/` === k));
 
 /**
  * 범위 낮추기(계측 → 라이트) 계획 — 골격 사본 · config 파일 · .gitignore · 보조 파일 · 계측 로그 · 플러그인 키는 남는다.
@@ -531,18 +543,43 @@ async function scanLower({ prev, files, warnings, manifest, cfg, captured, tier 
   else if (rec && !docsSetupLib) warnings.push('docs-setup 의 config-slots.mjs 를 읽지 못해 칸을 되돌릴 수 없다 — 손으로 본다');
   else if (rec) {
     const lines = splitLines(cfgText);
-    for (const sl of rec.filter((x) => RANK[x.tier] > RANK[target])) {
+    const leaves = docsSetupLib.leafSlots(cfgText);
+    const isMarked = (v) => lines.slice(v.keyLine, v.endLine + 1).some((l) => DOCS_SETUP_MARK.test(l));
+    const slotCand = (slot, before, beforeNote, afterSha, { marked, same, note = '' }) => {
+      const what = before == null ? 'example 에 없던 칸 — 칸째 지운다' : `설치 전 값 ${normEol(before).replace(/\s+/g, ' ').slice(0, 40)}`;
+      const base = { id: `slot:${slot}`, kind: 'slot', group: 'config', title: `${CONFIG} 칸 ${slot} — ${what}`, data: { path: CONFIG, slot, before, beforeNote: beforeNote ?? null, afterSha } };
+      if (marked) add({ ...base, status: 'clean', options: ['keep'], recommend: 'keep', basis: `docs-setup 표시 칸이 들어 있다 — 범위와 무관하게 남긴다(docs-setup 이 채운 값)${note}` });
+      else if (same) add({ ...base, status: 'clean', options: ['revert', 'keep'], recommend: 'revert', basis: `${LABEL[target]} 범위 밖 칸 — 남기면 훅 없이 설정만 남는다(설정 ≠ 연결). 설치 전 값(example)으로 되돌린다${note}` });
+      else add({ ...base, status: 'modified', options: ['revert', 'keep'], recommend: null, basis: `설치 뒤 값이 바뀌었다 — 되돌리면 그 값을 잃는다(백업에는 남는다). 남기면 훅 없이 설정만 남는다${note}` });
+    };
+    // 범위는 영수증에 적힌 칸 범위가 아니라 지금 범위 표(tiers.mjs)로 다시 가른다 — 옛 영수증은 D8 칸(project.docs.domainIndex 등)까지 계측으로 적었다
+    for (const sl of rec) {
       const cur = docsSetupLib.slotValue(cfgText, sl.path);
+      // 객체 칸(example 에 없던 블록을 통째로 적은 칸) — 안에 라이트 칸(D8 답 · docs-setup 이 모르는 칸)이 섞였으면 블록째 지우지 않고 계측 칸만 되돌린다
+      if (cur && cur.object) {
+        const inner = leaves.filter((p) => p.startsWith(`${sl.path}.`));
+        const instr = instrumentedUnder(sl.path, inner);
+        if (!instr.length) continue;
+        const kept = inner.filter((p) => !instr.includes(p));
+        const same = sha256(cur.source) === sl.afterSha;
+        if (!kept.length) { slotCand(sl.path, sl.before, sl.beforeNote, sl.afterSha, { marked: isMarked(cur), same }); continue; }
+        if (sl.before != null) {
+          add({ id: `slot:${sl.path}`, kind: 'slot', group: 'config', title: `${CONFIG} 칸 ${sl.path} — 설치 전 값 ${normEol(sl.before).replace(/\s+/g, ' ').slice(0, 40)}`, status: same ? 'clean' : 'modified', options: ['keep'], recommend: 'keep',
+            basis: `블록을 설치 전 값으로 되돌리면 같은 블록의 라이트 칸 ${kept.join(' · ')} 까지 사라진다 — 남김만. 범위 밖 칸 ${instr.join(' · ')} 은 손으로 지운다`, data: { path: CONFIG, slot: sl.path, before: sl.before, beforeNote: sl.beforeNote ?? null, afterSha: sl.afterSha } });
+          continue;
+        }
+        for (const p of instr) {
+          const v = docsSetupLib.slotValue(cfgText, p);
+          if (!v) continue;
+          slotCand(p, null, null, null, { marked: isMarked(v), same, note: ` · 블록 ${sl.path} 안의 칸 — 같은 블록의 라이트 칸 ${kept.join(' · ')} 은 남는다` });
+        }
+        continue;
+      }
+      if (RANK[tierOfSlot(sl.path)] <= RANK[target]) continue;
       const already = sl.before == null ? !cur : !!cur && normEol(cur.source).trim() === normEol(sl.before).trim();
       if (already) continue;
       if (!cur) { warnings.push(`${sl.path} 칸이 지금 ${CONFIG} 에 없다 — 되돌릴 것이 없다`); continue; }
-      const marked = lines.slice(cur.keyLine, cur.endLine + 1).some((l) => DOCS_SETUP_MARK.test(l));
-      const same = sha256(cur.source) === sl.afterSha;
-      const what = sl.before == null ? 'example 에 없던 칸 — 칸째 지운다' : `설치 전 값 ${normEol(sl.before).replace(/\s+/g, ' ').slice(0, 40)}`;
-      const base = { id: `slot:${sl.path}`, kind: 'slot', group: 'config', title: `${CONFIG} 칸 ${sl.path} — ${what}`, data: { path: CONFIG, slot: sl.path, before: sl.before, beforeNote: sl.beforeNote ?? null, afterSha: sl.afterSha } };
-      if (marked) add({ ...base, status: 'clean', options: ['keep'], recommend: 'keep', basis: 'docs-setup 표시 칸이 들어 있다 — 범위와 무관하게 남긴다(docs-setup 이 채운 값)' });
-      else if (same) add({ ...base, status: 'clean', options: ['revert', 'keep'], recommend: 'revert', basis: `${LABEL[target]} 범위 밖 칸 — 남기면 훅 없이 설정만 남는다(설정 ≠ 연결). 설치 전 값(example)으로 되돌린다` });
-      else add({ ...base, status: 'modified', options: ['revert', 'keep'], recommend: null, basis: '설치 뒤 값이 바뀌었다 — 되돌리면 그 값을 잃는다(백업에는 남는다). 남기면 훅 없이 설정만 남는다' });
+      slotCand(sl.path, sl.before, sl.beforeNote, sl.afterSha, { marked: isMarked(cur), same: sha256(cur.source) === sl.afterSha });
     }
   }
 
@@ -595,8 +632,26 @@ function candidatePaths(plan) {
   return s;
 }
 
-/** answers 대로 걷어 냈다고 치고, 남을 참조 줄을 찾는다(텍스트 연산은 메모리에서만 적용). */
-function findRefs(plan, answers, files = listFiles()) {
+/**
+ * config 의 가드 규칙 id(`dangerGuard` 의 deny·ask·shared 등 배열 원소의 `id`) — config 를 지우면 그 id 를 인용하던 문서 줄
+ * (`.claude/commands/save.md` 의 「가드 규칙 git-push 에 막히면」 류)이 끊긴다. 이름 패턴만으로는 못 찾아 남은 참조에서 빠졌다(시험).
+ * config 를 import 하지 못하면 글에서 `id: '…'` 를 읽는다. 3자 미만 id 는 오탐이 많아 뺀다.
+ */
+function guardRuleIds(cfg) {
+  const ids = new Set();
+  if (cfg && !cfg.__error) {
+    const g = cfg.dangerGuard || {};
+    for (const v of Object.values(g)) if (Array.isArray(v)) for (const r of v) if (r && typeof r.id === 'string') ids.add(r.id);
+  } else if (exists(CONFIG)) for (const m of read(CONFIG).matchAll(/\bid\s*:\s*['"]([\w.:-]+)['"]/g)) ids.add(m[1]);
+  return [...ids].filter((x) => x.length >= 3).sort();
+}
+const ruleRe = (id) => new RegExp(`(?<![\\w-])${id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\w-])`);
+
+/**
+ * answers 대로 걷어 냈다고 치고, 남을 참조 줄을 찾는다(텍스트 연산은 메모리에서만 적용).
+ * withRules — config 를 지우는 계획이면 가드 규칙 id(plan.ruleIds)도 참조로 센다.
+ */
+function findRefs(plan, answers, files = listFiles(), { withRules = false } = {}) {
   const gone = new Set(), opsBy = new Map();
   for (const c of plan.candidates) {
     const a = answers[c.id];
@@ -605,7 +660,7 @@ function findRefs(plan, answers, files = listFiles()) {
     if (['files', 'runtime'].includes(c.kind) && a === 'remove') c.data.paths.forEach((p) => gone.add(p));
   }
   const auxNames = plan.candidates.filter((c) => c.data && c.data.aux).map((c) => path.posix.basename(c.data.path));
-  const pats = [...REF_PATTERNS, ...auxNames.map((n) => new RegExp(n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))];
+  const pats = [...REF_PATTERNS, ...auxNames.map((n) => new RegExp(n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))), ...(withRules ? (plan.ruleIds || []).map(ruleRe) : [])];
   const auxPaths = new Set(plan.candidates.filter((c) => c.data && c.data.aux).map((c) => c.data.path));
   const refs = [];
   for (const p of files.all) {
@@ -639,12 +694,32 @@ function printPlan(s) {
   for (const w of p.warnings) console.log(`WARN ${w}`);
   if ((p.prior || []).length) console.log(`앞선 걷어내기 백업 ${p.prior.length}개 (그때 남긴 보조 파일을 여기서 되찾는다): ${p.prior.map((r) => `${r.at} · 파일 ${r.files}개`).join(' / ')}`);
   printDocsSetup(p.docsSetup, '');
+  if (s.purpose !== 'lower') printPurpose(s);
   console.log('\nid | 질문 header | 상태 | 권장 | 답 | 항목 — 근거');
   for (const c of p.candidates) console.log(`${c.id} | ${c.header} | ${c.status} | ${recOf(c, s) ?? '권장 없음'} | ${s.answers[c.id] ?? '-'} | ${c.title} — ${c.basis}`);
   const by = {};
   for (const r of p.refs) (by[r.path] ||= []).push(r);
-  console.log(`\n남을 참조 ${p.refs.length}줄 · ${Object.keys(by).length}곳 (지우지 않고 보고만 — 보고의 수는 이 줄에서 옮긴다):`);
+  console.log(`\n남을 참조 ${p.refs.length}줄 · ${Object.keys(by).length}곳 (지우지 않고 보고만 — 보고의 수는 이 줄에서 옮긴다${(p.ruleIds || []).length && s.purpose !== 'lower' ? ` · config 를 지우면 끊길 가드 규칙 id ${p.ruleIds.join(' · ')} 도 센다` : ''}):`);
   for (const [f, rs] of Object.entries(by)) console.log(`  ${f}: ${rs.map((r) => r.line).join(', ')}행 — ${rs[0].text.slice(0, 90)}`);
+}
+
+/**
+ * 목적 질문(header `제거 목적`)의 선택지 — 선택지마다 지우는 것 · 남는 것 · 새 세션에서 harness-install 이 뜨는가.
+ * 재설치와 완전 제거는 같은 파일을 지운다. 다른 것은 kit 키뿐이고, 그 결과(새 세션에서 harness-install 이 안 뜬다)가
+ * 시험에서는 마지막 kit 키 질문에서야 보였다. 범위 낮추기는 지금 범위가 계측이거나 영수증이 없을 때(옛 설치 = 계측)만 낸다.
+ */
+function printPurpose(s) {
+  const p = s.plan;
+  const pc = p.candidates.find((c) => c.kind === 'plugin');
+  const n = p.candidates.filter((c) => c.kind !== 'plugin').length;
+  const keys = pc ? pc.data.keys.map((k) => `${k[0]}."${k[1]}"`).join(' · ') : null;
+  const userOn = !!(pc && pc.data.userScope);
+  const lowerOk = !p.tier || p.tier.current !== 'light';
+  console.log(`\n목적 질문(header 「제거 목적」) — 선택지마다 지우는 것 · 남는 것 · 새 세션에서 harness-install 이 뜨는가. 권장은 사용자 요청의 낱말로 정한다(DECISIONS 「목적」, 낱말이 없으면 「권장 없음」):`);
+  console.log(`  remove    완전 제거 — 지움: 후보 ${n}개(권장대로)${keys ? ` + kit 키 ${keys}` : ''} · 남음: 백업 · 증거 사본 · 새 세션: ${keys ? (userOn ? 'harness-install 이 뜬다(이 PC 는 사용자 범위로도 켜져 있다 — 다른 PC 에서는 안 뜬다)' : 'harness-install 이 뜨지 않는다(사용자 범위로 켜지 않은 PC — 이 PC 포함)') : 'kit 키가 이미 없다 — 사용자 범위로 켠 PC 에서만 뜬다'}`);
+  console.log(`  reinstall 재설치 — 지움: 후보 ${n}개(완전 제거와 같은 파일) · 남음: ${keys ? `kit 키 ${keys} · ` : ''}백업 · 증거 사본 · 새 세션: harness-install 이 뜬다${keys ? '' : '(kit 키가 없어 사용자 범위로 켠 PC 에서만)'}`);
+  if (lowerOk) console.log(`  lower     범위 낮추기(계측 → 라이트) — 지움: 범위 밖 훅(실행 뒤 · 실패 · 턴 시작 · 턴 종료) · 범위 밖 config 칸(설치 전 값으로) · 안내절을 라이트 판으로 · 남음: 골격 사본 · config 파일 · 로그 · kit 키 · 실행 전 가드 · 새 세션: harness-install 이 뜬다. 고르면 scan --refresh --tier light 로 다시 뽑는다(영수증 없이도 된다)`);
+  else console.log(`  (범위 낮추기 없음 — 지금 범위가 이미 라이트다)`);
 }
 
 /** docs-setup 소유 칸 — 후보가 아니다. config 와 함께 백업에 남고, docs-setup 재실행이나 harness-install D8-2 가 되살린다. */
@@ -666,7 +741,8 @@ function answer() {
     const id = a.slice(0, i), v = a.slice(i + 1);
     if (id === 'purpose') {
       if (s.purpose === 'lower') { console.error('범위 낮추기 계획이다 — 목적은 scan --tier 가 정했다. 걷어내려면 scan --refresh 로 새로 뽑는다'); process.exit(2); }
-      if (!['reinstall', 'remove'].includes(v)) { console.error('purpose 는 reinstall|remove'); process.exit(2); } s.purpose = v; continue;
+      if (v === 'lower') { console.error(`범위 낮추기는 답이 아니라 계획이 다르다 — ${selfCmd('scan', posix(root), '--refresh', '--tier', 'light')} 로 다시 뽑는다`); process.exit(2); }
+      if (!['reinstall', 'remove'].includes(v)) { console.error('purpose 는 reinstall|remove (범위 낮추기는 scan --refresh --tier light)'); process.exit(2); } s.purpose = v; continue;
     }
     const c = byId.get(id);
     if (!c) { console.error(`없는 후보: ${id}`); process.exit(2); }
@@ -1160,19 +1236,21 @@ function verify() {
   // ③ 후보 밖 파일 — 걷어내기 전과 같은가
   const candPaths = candidatePaths(s.plan);
   for (const [p, v] of Object.entries(s.plan.pre || {})) {
-    if (!exists(p)) { bad(`후보 밖 파일이 사라짐 ${p}`); continue; }
+    if (!exists(p.replace(/\/$/, ''))) { bad(`후보 밖 ${v.dir ? '폴더가' : '파일이'} 사라짐 ${p}`); continue; }
+    if (v.dir) continue;   // 디렉토리 항목 — 안을 펴지 않은 폴더라 해시가 없다(있는지만 본다)
     sha256(readFileSync(abs(p), 'utf8')) === v.sha ? null : bad(`후보 밖 파일이 바뀜 ${p}`);
   }
   const now = git('status', '--porcelain=v1', '-z', '--untracked-files=all').split('\0').filter(Boolean);
-  const extra = now.map((e) => e.slice(3)).filter((p) => !candPaths.has(p) && !p.startsWith('.harness/') && !(p in (s.plan.pre || {})));
+  const extra = now.map((e) => e.slice(3)).filter((p) => !candPaths.has(p) && !p.startsWith('.harness/') && !preHas(s.plan.pre || {}, p));
   extra.length ? bad(`후보 밖에서 새로 바뀐 파일 ${extra.join(', ')}`) : ok(`후보 밖 변경 없음 (걷어내기 전부터 있던 ${Object.keys(s.plan.pre || {}).length}개 그대로)`);
   // ③-1 범위 낮추기 — 칸이 설치 전 값인가 · 바꾼 블록이 있는가 · 영수증 범위
   if (s.purpose === 'lower') verifyLower(s, ok, bad);
   // ④ 남은 참조
-  const refs = findRefs(s.plan, Object.fromEntries(C.map((c) => [c.id, 'keep'])));
+  const cfgRemoved = s.answers[`file:${CONFIG}`] === 'remove' && !exists(CONFIG);
+  const refs = findRefs(s.plan, Object.fromEntries(C.map((c) => [c.id, 'keep'])), listFiles(), { withRules: cfgRemoved });
   const by = {};
   for (const r of refs) (by[r.path] ||= []).push(r);
-  console.log(`INFO 남은 참조 ${refs.length}줄 (.harness · harness.config · harness.install · harness-kit · 보조 파일 이름)`);
+  console.log(`INFO 남은 참조 ${refs.length}줄 (.harness · harness.config · harness.install · harness-kit · 보조 파일 이름${cfgRemoved && (s.plan.ruleIds || []).length ? ` · 지운 config 의 가드 규칙 id ${s.plan.ruleIds.join(' · ')}` : ''})`);
   for (const [f, rs] of Object.entries(by)) console.log(`     ${f}: ${rs.map((r) => r.line).join(', ')}행 — ${rs[0].text.slice(0, 90)}`);
   // ⑤ git status · 커밋 경로
   const st = git('status', '--short', '--untracked-files=all');
@@ -1297,7 +1375,7 @@ function printSummary(s, refs = [], eolOnly = []) {
   if (ev) console.log(`  증거 사본 수명: git-common-dir 아래라 worktree 를 지워도 남는다 — 필요 없어지면 손으로 지운다`);
   // 앞선 걷어내기가 남긴 백업·증거 사본 — 이번 것과 따로 쌓여 있다
   const oldBackups = priorRuns(bdir);
-  if (oldBackups.length) console.log(`  앞선 백업 ${oldBackups.length}개 (이번 것과 수명이 같다): ${oldBackups.map((r) => r.dir).join(' · ')}`);
+  if (oldBackups.length) console.log(`  앞선 백업 ${oldBackups.length}개 (「이 트리」 것은 이번 것과 수명이 같다 · 「메인 트리」 것은 저장소 .git 아래 · 「worktree <이름>」 것은 그 worktree 를 지우면 함께 지워진다): ${oldBackups.map((r) => `${r.dir} (${r.where || '이 트리'})`).join(' · ')}`);
   const oldEv = evidenceDirs(ev);
   if (oldEv.length) console.log(`  앞선 증거 사본 ${oldEv.length}개 (이 트리 이름 · worktree 를 지워도 남는다 — 필요 없어지면 손으로 지운다): ${oldEv.join(' · ')}`);
   // 남긴 것을 나중에 지우려면 — 항목마다 한 줄

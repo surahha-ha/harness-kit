@@ -8,6 +8,8 @@
  *
  * ① 체크포인트 답 ↔ config·settings 값  ② 같은 규칙 중복  ③ example 과 값이 같은 칸(목록만)
  * ④ 「미확정」 주석인데 값이 있는 줄  ⑤ 권장과 다른 답 · 권장 없음(목록만, recs 누락은 실패)
+ *    질문마다 basis(권장 이유 또는 권장 없음의 이유)가 비면 실패 · header 가 12자를 넘거나 D 번호로 시작하면 실패.
+ *    D 번호 밖 질문은 체크포인트 `asked`(header · recommended · basis)에서 같은 것을 본다
  * ⑥ 설치 범위 — 체크포인트 tier(D0)가 없으면 실패. 라이트면 ③ 의 범위 밖 칸(계측 칸)은 SAME 대신 TIER(의도 — 범위 밖
  *    example 기본값)로 내고, 범위 때문에 묻지 않고 채운 답(auto)은 AUTO 로 낸다.
  * 읽기만 한다 — 대상 레포에 파일을 만들지 않는다.
@@ -73,12 +75,26 @@ readFileSync(path.join(root, 'harness.config.mjs'), 'utf8').split(/\r?\n/).forEa
 });
 
 // ⑤ 권장과 다른 답 · 권장 없음 — 목록만(recs 누락은 실패)
+//   질문마다 「권장 + 권장 이유」 또는 「권장 없음 + 그 이유」가 있어야 한다 — basis 가 비면 실패(시험에서 둘 다 없는 질문이 여섯 번 나갔다)
+const noBasis = (r) => r.basis == null || !String(r.basis).trim();
+const headerBad = (h) => (typeof h !== 'string' || !h.trim() ? 'header 없음' : [...h].length > 12 ? `header 「${h}」 12자 넘음` : /^D\d/.test(h) ? `header 「${h}」 에 D 번호` : null);
 for (const d of state.decisions || []) {
   if (!Array.isArray(d.recs) || !d.recs.length) { bad(`${d.id} recs 없음 — 권장·따름 여부 미기록`); continue; }
+  if (d.header !== undefined && headerBad(d.header)) bad(`${d.id} ${headerBad(d.header)} — 대상 + 결정 명사구(TEMPLATES §8)`);
   for (const r of d.recs) {
+    if (noBasis(r)) bad(`${d.id} ${r.item} 근거 없음 — 권장이면 「권장 이유」, 권장이 없으면 「권장 없음」의 이유를 basis 에 적는다`);
     if (r.recommended == null) console.log(`NOREC ${d.id} ${r.item} — ${r.basis}`);
     else if (r.followed === false) console.log(`DIFF ${d.id} ${r.item} 권장=${canon(r.recommended)} 답=${d.answer} — ${r.basis}`);
   }
 }
+// ⑤-2 D 번호 밖 질문(원본 위치 · 커밋규칙 문구 · 서버 기동 안내 · 설치 커밋 · push·병합) — 체크포인트 asked · 10단계 docsHookup
+for (const q of state.asked || []) {
+  const id = q.header || q.id || '(이름 없음)';
+  if (headerBad(q.header)) bad(`asked ${id} ${headerBad(q.header)}`);
+  if (!('recommended' in q)) bad(`asked ${id} recommended 칸 없음 — 권장 값 또는 null(권장 없음)을 적는다`);
+  if (noBasis(q)) bad(`asked ${id} 근거 없음 — 「권장 이유」 또는 「권장 없음」의 이유를 basis 에 적는다`);
+  else if (q.recommended == null) console.log(`NOREC asked ${id} — ${q.basis}`);
+}
+if (state.docsHookup && state.docsHookup.answer !== 'skip' && (!state.docsHookup.recommend || noBasis({ basis: state.docsHookup.why }))) bad('docsHookup 권장·권장 이유 없음 — docs-hookup 의 「권장:」·「권장 이유:」 줄을 적는다');
 console.log(`failures=${fail}`);
 process.exit(fail ? 1 : 0);

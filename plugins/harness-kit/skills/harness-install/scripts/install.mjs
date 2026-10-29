@@ -12,9 +12,12 @@
  *                                                   6·7단계 — 제외 규칙이 무엇을 빼는지(정적), 실제 실행에서 돌아야 할 것이 돌았는지(결과)
  *   slots [--kit <harness-kit 플러그인 디렉토리>] [--tier light|instrumented]
  *                                                   4·6단계 — kit 자산이 읽는 project 칸마다 값·null·없음, null 이면 주석이 끄는 자산을 적었는지.
- *                                                   라이트면 문서·메모리 칸(docs.*·memory.*)의 「키 없음」은 실패가 아니다(DEFER — 읽는 자산이 쓸 때 묻는다)
+ *                                                   라이트면 docs-setup 이 정하는 칸(docs.archiveDir·pathValidator·autoloaded·memory.slugs)의 「키 없음」만
+ *                                                   실패가 아니다(DEFER — 읽는 자산이 쓸 때 묻는다). 그 밖의 문서·메모리 칸은 두 범위 모두 키가 있어야 한다.
+ *                                                   키 없는 칸이 앞선 걷어내기 백업 config 에 값으로 있으면 PREV 줄로 낸다(재설치 때 D8 이 그 값을 권한다)
  *   hooks [--tier light|instrumented]               5·6단계 — 그 범위의 하네스 훅이 각 이벤트에 정확히 1번, 범위 밖 훅은 0번인가
  *   docs-hookup [--json <파일>]                     10단계 — 문서 구조 맞추기(docs-setup)를 권할지: 문서 수 · archiveDir · 문서 칸 null
+ *   commit-where [--base <브랜치>]                   9단계·보고 — 설치(또는 걷어내기) 커밋이 어느 브랜치·worktree 에 있고, 작업 브랜치에서 닿는가 · 다음 할 일
  *   plugin-hooks <이름@마켓> [--records <installed_plugins.json>]   2단계 D6 — 끌 플러그인이 건 훅 목록(빈자리 조사의 출발점)
  *
  * 범위(--tier)를 주지 않으면 설치 체크포인트의 tier → 영수증 tier(schema 1 은 계측) → 계측 순으로 정한다(tiers.mjs).
@@ -32,7 +35,7 @@ import { createHash } from 'node:crypto';
 import { HOOKS, LABEL, RANK, hookSpec, resolveTier, deferredInLight } from './tiers.mjs';
 
 const [cmd, rootArg, ...args] = process.argv.slice(2);
-const USAGE = '사용: node install.mjs <precheck|settings-snap|settings-eol|after-cli|test-select|slots|hooks|docs-hookup|plugin-hooks> <레포 루트 | 이름@마켓> [인자…]';
+const USAGE = '사용: node install.mjs <precheck|settings-snap|settings-eol|after-cli|test-select|slots|hooks|docs-hookup|commit-where|plugin-hooks> <레포 루트 | 이름@마켓> [인자…]';
 if (!cmd || !rootArg) { console.error(USAGE); process.exit(2); }
 const SELF = fileURLToPath(import.meta.url);
 const opt = (name) => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : null; };
@@ -410,6 +413,25 @@ function nullComments(text) {
   }
   return out;
 }
+/**
+ * 앞선 걷어내기 백업(이 트리 · 메인 트리 · 다른 worktree, 새것부터) 가운데 config 를 import 할 수 있는 가장 새 것의 `project` 칸 값.
+ * 걷어내기가 config 를 통째로 지우므로, 재설치 때 앞선 값을 볼 곳은 백업뿐이다. 없거나 못 읽으면 null.
+ */
+async function previousProjectValues() {
+  let lib;
+  try { lib = await import(new URL('../../docs-setup/scripts/config-slots.mjs', import.meta.url).href); } catch { return null; }
+  for (const run of lib.backupRuns(root)) {
+    const f = path.join(run.dir, 'files', 'harness.config.mjs');
+    if (!existsSync(f)) continue;
+    let cfg;
+    try { cfg = await lib.importConfig(f); } catch { continue; }
+    const values = new Map();
+    const walk = (o, pre) => { for (const [k, v] of Object.entries(o || {})) { const p = pre ? `${pre}.${k}` : k; if (v && typeof v === 'object' && !Array.isArray(v) && !(v instanceof RegExp)) walk(v, p); else values.set(p, v); } };
+    walk(cfg.project, '');
+    return { at: run.at, dir: run.dir, values };
+  }
+  return null;
+}
 function tierOrExit() {
   try { return resolveTier(root, opt('--tier')); } catch (e) { console.error(e.message); process.exit(2); }
 }
@@ -436,7 +458,8 @@ async function slots() {
       if (o === undefined || typeof o !== 'object') return [{ path: pre.join('.'), state: 'missing' }];
       const [h, ...t] = ps;
       if (h === '*') return Object.keys(o).length ? Object.keys(o).flatMap((k) => expand(o[k], t, [...pre, k])) : [{ path: [...pre, '*'].join('.'), state: 'empty' }];
-      if (!(h in o)) return [{ path: [...pre, h].join('.'), state: t.length || pre.length ? 'missing' : 'missing' }];
+      // 키가 없으면 칸 경로 그대로 낸다(블록째 없어도 칸마다) — 라이트의 DEFER 칸과 D8 칸이 한 블록에 섞여 있다
+      if (!(h in o)) return [{ path: [...pre, h, ...(t.includes('*') ? [] : t)].join('.'), state: 'missing' }];
       return expand(o[h], t, [...pre, h]);
     };
     return expand(proj, parts, []);
@@ -450,11 +473,14 @@ async function slots() {
     cells.set(r.path, c);
   }
   const deferred = [];
+  // 재설치 — 앞선 걷어내기 백업의 config 에 그 칸 값이 있으면 PREV 로 낸다(D8 이 그 값을 권한다)
+  const prev = await previousProjectValues();
+  const showPrev = (p) => { if (prev && prev.values.has(p)) console.log(`PREV project.${p} = ${JSON.stringify(prev.values.get(p))} — 앞선 걷어내기 백업(${prev.at}) config 의 값. D8 에서 이 값을 권한다`); };
   for (const [p, c] of [...cells].sort(([a], [b]) => a.localeCompare(b))) {
     const who = [...c.assets].sort().join(', ');
-    // 라이트 — 문서·메모리 칸은 키 없이 둔다. null 과 달리 말없이 건너뛰지 않고, 읽는 자산이 쓸 때 멈추고 묻는다
-    if (c.state === 'missing' && tier === 'light' && deferredInLight(p)) { console.log(`DEFER project.${p} — 라이트라 키 없이 둔다. 읽는 자산 ${who} 가 쓸 때 묻는다 · 설치 끝의 문서 구조 질문(docs-setup)에서 정한다`); deferred.push(`project.${p} → ${who}`); continue; }
-    if (c.state === 'missing') bad(`없음 project.${p} — 읽는 자산 ${who} 가 그 자리에서 멈추고 묻는다. 값이나 null + 주석을 넣는다`);
+    // 라이트 — docs-setup 이 정하는 칸만 키 없이 둔다. null 과 달리 말없이 건너뛰지 않고, 읽는 자산이 쓸 때 멈추고 묻는다
+    if (c.state === 'missing' && tier === 'light' && deferredInLight(p)) { console.log(`DEFER project.${p} — 라이트라 키 없이 둔다(docs-setup 이 정하는 칸). 읽는 자산 ${who} 가 쓸 때 묻는다 · 설치 끝의 문서 구조 질문(docs-setup)에서 정한다`); deferred.push(`project.${p} → ${who}`); showPrev(p); continue; }
+    if (c.state === 'missing') { bad(`없음 project.${p} — 읽는 자산 ${who} 가 그 자리에서 멈추고 묻는다. D8 에서 묻고 값이나 null + 주석을 넣는다`); showPrev(p); }
     else if (c.state === 'null') {
       const nc = nulls.get(p);
       const names = [...c.assets].map((a) => a.replace(/^\//, ''));
@@ -529,13 +555,67 @@ async function docsHookup() {
   if (docs.length) console.log(`  문서 표본: ${docs.slice(0, 5).join(' · ')}${docs.length > 5 ? ` … ${docs.length - 5}개 더` : ''}`);
   let rec, why;
   if (docs.length <= NEAR_EMPTY_MAX) { rec = 'later'; why = `맞출 문서가 거의 없다(문서 ${docs.length}개 — ${NEAR_EMPTY_MAX}개 이하). 문서가 쌓인 뒤 docs-setup 을 돌려도 늦지 않다`; }
-  else if (archive !== 'value' || nulls.length || missing.length) { rec = 'proceed'; why = `문서가 ${docs.length}개 있는데 ${archive !== 'value' ? `아카이브 폴더 칸(project.docs.archiveDir)이 ${archText}라` : `문서 칸 ${[...nulls, ...missing].length}개가 비어`} 문서 정리(archive-cycle)가 문서를 옮기지 못한다`; }
+  else if (archive !== 'value' || nulls.length || missing.length) { rec = 'proceed'; why = `문서가 ${docs.length}개 있는데 ${archive !== 'value' ? `아카이브 폴더 칸(project.docs.archiveDir)이 비어 있어(${archText})` : `문서 칸 ${[...nulls, ...missing].length}개가 비어 있어`} 문서 정리(archive-cycle)가 문서를 옮기지 못한다`; }
   else { rec = 'skip'; why = `아카이브 폴더(${JSON.stringify(proj.docs.archiveDir)})와 문서 칸이 이미 채워져 있다 — 묻지 않는다`; }
   const LBL = { proceed: '진행', later: '나중에', skip: '묻지 않음' };
   console.log(`권장: ${LBL[rec]}`);
   console.log(`권장 이유: ${why}`);
   const j = opt('--json');
   if (j) writeFileSync(path.resolve(j), JSON.stringify({ docs: docs.length, underDocs: underDocs.length, archiveDir: archive, nulls, missing, marks, recommend: rec, why }, null, 2) + '\n', 'utf8');
+}
+
+// ── commit-where — 커밋이 어디에 있고 작업 브랜치에서 닿는가 · 다음 할 일 ──────────────
+
+/**
+ * 설치(또는 걷어내기)가 커밋한 뒤의 위치 보고. 시험 설치는 스스로 worktree·브랜치를 만들어 커밋했는데,
+ * 보고가 그 사실과 다음 할 일(병합·push·worktree 정리)을 말하지 않아 사용자는 작업 브랜치에 들어간 줄 알았다.
+ * 작업 브랜치 = --base · 없으면 메인 트리에 체크아웃된 브랜치. 읽기만 한다 — 다음 할 일은 명령으로만 낸다.
+ */
+function commitWhere() {
+  const q = (s) => `"${posix(s)}"`;
+  const branch = git('rev-parse', '--abbrev-ref', 'HEAD').trim();
+  const head = git('rev-parse', 'HEAD').trim();
+  const gitDir = path.resolve(root, git('rev-parse', '--git-dir').trim());
+  const common = path.resolve(root, git('rev-parse', '--git-common-dir').trim());
+  const linked = normPath(gitDir) !== normPath(common);
+  const wts = git('worktree', 'list', '--porcelain').split(/\r?\n\r?\n/).map((b) => {
+    const o = {};
+    for (const l of b.split(/\r?\n/)) { const [k, ...v] = l.split(' '); if (k) o[k] = v.join(' '); }
+    return o;
+  }).filter((o) => o.worktree);
+  const main = wts[0] || null;
+  const mainPath = main ? path.resolve(main.worktree) : root;
+  const mainBranch = main && main.branch ? main.branch.replace(/^refs\/heads\//, '') : null;
+  const base = opt('--base') || (linked ? mainBranch : branch);
+  console.log(`커밋 위치: 브랜치 ${branch} · HEAD ${head.slice(0, 7)} · 트리 ${posix(root)} (${linked ? `연결 worktree — 메인 트리 ${posix(mainPath)}` : '메인 트리'})`);
+  let reach = null, ahead = null;
+  if (!base || base === 'HEAD') console.log('작업 브랜치: 정하지 못했다(메인 트리가 브랜치에 있지 않다) — --base <브랜치> 로 다시 돌린다');
+  else if (tryGit('rev-parse', '--verify', '--quiet', `refs/heads/${base}`) === null) console.log(`작업 브랜치: ${base} 가 이 저장소에 없다 — --base 를 확인한다`);
+  else {
+    reach = tryGit('merge-base', '--is-ancestor', head, base) !== null;
+    ahead = Number((tryGit('rev-list', '--count', `${base}..${head}`) || '0').trim());
+    console.log(`작업 브랜치: ${base}${linked ? ` (메인 트리에 체크아웃됨)` : ''} — ${reach ? '이 커밋이 작업 브랜치에서 닿는다' : `닿지 않는다 — ${base} 에 없는 커밋 ${ahead}개가 ${branch} 에만 있다`}`);
+  }
+  const up = tryGit('rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}');
+  const upName = up && up.trim();
+  const upAhead = upName ? Number((tryGit('rev-list', '--count', `${upName}..${head}`) || '0').trim()) : null;
+  console.log(`원격: ${upName ? `${upName} 보다 앞선 커밋 ${upAhead}개${upAhead ? ' — 아직 push 하지 않았다' : ' — push 됨'}` : `${branch} 에 upstream 이 없다 — 원격에 올라가지 않았다`}`);
+  const next = [];
+  if (reach === false) {
+    next.push(`병합(작업 브랜치로 가져오기): [ "$(git -C ${q(mainPath)} rev-parse --abbrev-ref HEAD)" = "${base}" ] && git -C ${q(mainPath)} merge --ff-only ${branch}  — ff 가 안 되면 레포 규칙의 병합 방식(merge·MR)으로`);
+    next.push(`또는 push 해서 MR/PR 로: [ "$(git -C ${q(root)} rev-parse --abbrev-ref HEAD)" = "${branch}" ] && git -C ${q(root)} push -u origin ${branch}`);
+  } else if (reach === true && (upName ? upAhead > 0 : true)) {
+    next.push(`push: [ "$(git -C ${q(root)} rev-parse --abbrev-ref HEAD)" = "${branch}" ] && git -C ${q(root)} push${upName ? '' : ` -u origin ${branch}`}`);
+  }
+  if (linked) {
+    next.push(`worktree 정리(병합·push 뒤): git -C ${q(mainPath)} worktree remove ${q(root)}${reach === false ? ` — 병합 전에 지우면 커밋은 브랜치 ${branch} 에만 남는다` : ''}`);
+    if (base && branch !== base) next.push(`브랜치 정리(병합 뒤): git -C ${q(mainPath)} branch -d ${branch}`);
+  }
+  if (!next.length) next.push('없음 — 작업 브랜치에서 닿고 원격에도 있다');
+  console.log('다음 할 일 — 실행 전에 레포 커밋 정책(project.git.push · 병합 방식)대로 묻는다:');
+  for (const n of next) console.log(`  - ${n}`);
+  const j = opt('--json');
+  if (j) writeFileSync(path.resolve(j), JSON.stringify({ branch, head, root: posix(root), linked, mainTree: posix(mainPath), base: base || null, reachable: reach, aheadOfBase: ahead, upstream: upName || null, aheadOfUpstream: upAhead, next }, null, 2) + '\n', 'utf8');
 }
 
 // ── plugin-hooks — 끌 플러그인이 건 훅 ────────────────────────────────────────
@@ -565,6 +645,6 @@ function pluginHooks() {
   }
 }
 
-const table = { precheck, 'settings-snap': settingsSnap, 'settings-eol': settingsEol, 'after-cli': afterCli, 'test-select': testSelect, slots, hooks, 'docs-hookup': docsHookup, 'plugin-hooks': pluginHooks };
+const table = { precheck, 'settings-snap': settingsSnap, 'settings-eol': settingsEol, 'after-cli': afterCli, 'test-select': testSelect, slots, hooks, 'docs-hookup': docsHookup, 'commit-where': commitWhere, 'plugin-hooks': pluginHooks };
 if (!table[cmd]) { console.error(USAGE); process.exit(2); }
 await table[cmd]();

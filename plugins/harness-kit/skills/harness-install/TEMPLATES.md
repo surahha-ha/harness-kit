@@ -164,10 +164,13 @@
 | - | - | - |
 | `dangerGuard.*` · `commands` · `approvals` · `testFirst`(`auditOnStop` 말고) | 2단계 답대로 채운다 | 같다 |
 | `testFirst.auditOnStop` · `qualityCycle.evidence` · `drift` · `metrics` · `promotion` · 게이트 `docs.always`·`docs.archive` | example 기본값 그대로(턴 종료 훅이 없어 읽는 쪽이 없다) | 2단계 답대로 |
-| kit `project.docs.*` · `project.memory.*` | **키를 넣지 않는다.** 키가 없으면 읽는 자산이 쓸 때 멈추고 묻는다(`null` 과 달리 말없이 건너뛰지 않는다) | D8 대로 |
+| kit `project.docs.archiveDir`·`pathValidator`·`autoloaded` · `project.memory.slugs` — docs-setup 이 정하는 넷 | **키를 넣지 않는다.** 키가 없으면 읽는 자산이 쓸 때 멈추고 묻는다(`null` 과 달리 말없이 건너뛰지 않는다) | D8 대로 |
+| kit `project.docs.domainIndex`·`screenMap`·`repoMap`·`testGuide`·`uiUxRules` · `project.memory.policy` | D8 대로(재설치면 `PREV` 값을 권한다) | D8 대로 |
 | 그 밖의 kit `project` 칸 | D8 대로 | D8 대로 |
 
-라이트에서 넣지 않은 kit `project.docs.*` · `project.memory.*` 는 10단계 문서 구조 질문(docs-setup)이 채운다.
+라이트에서 넣지 않은 넷은 10단계 문서 구조 질문(docs-setup)이 채운다. docs-setup 은 그 넷만 채운다 — 나머지 문서·메모리 칸을 라이트에서 미루면 아무도 채우지 않는다.
+
+넷의 목록은 `scripts/tiers.mjs` 의 `LIGHT_DEFERRED` 다. 그 목록은 docs-setup `config-slots.mjs` 의 `ARCHIVE_CYCLE` 과 같아야 한다(`tiers.test.mjs` ① 이 대조한다).
 
 범위 밖 칸의 목록은 `scripts/tiers.mjs` 의 `INSTRUMENTED_SLOTS` 가 기준이다 — 영수증 `config.slots` 의 `tier` 와 answer-trace 의 `TIER` 줄이 그것을 읽는다.
 
@@ -268,6 +271,12 @@ example 을 복사한 직후 **첫 줄 앞에** 한 줄을 넣는다(Edit). 정�
     { "id": "D10", "answer": "합치기 사용", "slots": [],
       "recs": [{ "item": "statusline", "recommended": "combined", "basis": "D9 사용 · 전역 statusLine 은 보통 상태 줄", "followed": true }] }
   ],
+  "asked": [
+    { "header": "원본 위치", "step": 3, "recommended": "<로컬 클론 경로>", "basis": "0단계에서 찾은 클론 · 미커밋 변경 없음 · HEAD <SHA>", "answer": "<로컬 클론 경로>" },
+    { "header": "커밋규칙 문구", "step": 8, "recommended": "고침", "basis": "CLAUDE.md:<행> 이 새 deny 에 걸리는 명령을 권한다", "answer": "고침" },
+    { "header": "설치 커밋", "step": 9, "recommended": "실행", "basis": "D5 commitExecution = auto", "answer": "실행" },
+    { "header": "설치 반영", "step": 9, "recommended": null, "basis": "권장 없음 — project.git.push 가 ask 라 push 시점은 사용자가 정한다", "answer": "지금은 하지 않음" }
+  ],
   "nulls": [{ "path": "project.commands.fe.lint", "why": "lint 도구 없음 — 도입하면 채운다" }],
   "created": [
     { "path": ".harness", "role": "skeleton" },
@@ -292,6 +301,9 @@ example 을 복사한 직후 **첫 줄 앞에** 한 줄을 넣는다(Edit). 정�
 
 **칸 설명**
 
+- `asked` — D 번호 밖 질문마다 하나다(DECISIONS.md 「D 번호 밖 질문」).
+  - 필드: `header` · `step` · `recommended`(권장 없음이면 `null`) · `basis`(권장 이유 또는 권장 없음의 이유) · `answer`
+  - `recommended` 칸은 값이 `null` 이어도 빼지 않는다. `answer-trace.mjs` ⑤-2 가 칸이 없거나 `basis` 가 비면 실패로 낸다.
 - `lost`(D6-2) — 끈 플러그인이 막던 명령 꼴마다 하나다.
   - 필드
     - `plugin` — 그 플러그인의 판정(`deny`·`ask`·`warn`)
@@ -380,7 +392,7 @@ D0. 이 레포에 하네스를 어디까지 설치할까? 「라이트」는 위
 
 | 범위 | 거는 훅 | 채우는 칸 | CLAUDE.md 절 |
 | - | - | - | - |
-| 라이트 | 실행 전 가드 1개 | 위험 명령(deny·ask)·공유 자원 · 공유DB 테스트 제외 · 커밋 정책 · kit 칸(문서 칸은 비워 두고 끝에 묻는다) | 짧은 판 |
+| 라이트 | 실행 전 가드 1개 | 위험 명령(deny·ask)·공유 자원 · 공유DB 테스트 제외 · 커밋 정책 · kit 칸(docs-setup 이 정하는 문서 칸 넷은 비워 두고 끝에 묻는다) | 짧은 판 |
 | 계측 | 5개(가드 + 실행 뒤·실패·턴 시작·턴 종료 관찰) | 위 + 증거 슬롯 · 지표 · 사본 감시 · 문서 칸 | 전체 판 |
 
 1. 라이트 (권장)
@@ -397,7 +409,7 @@ header: 문서구조 맞추기
    권장 이유: <docs-hookup 의 「권장 이유:」 줄 — 예: 문서가 14개 있는데 아카이브 폴더 칸이 비어 문서 정리가 문서를 옮기지 못한다>
    바뀌는 것: 이어서 docs-setup 을 돈다(문서마다 판정 → 옮김은 그 스킬이 다시 묻는다)
 2. 나중에
-   바뀌는 것: 지금은 아무것도 바꾸지 않는다. 문서 칸은 비워 둔 채라 문서 정리 도구가 쓸 때 묻는다. 나중에 docs-setup 을 돌린다
+   바뀌는 것: 지금은 아무것도 바꾸지 않는다. 문서 칸 넷(아카이브 폴더 등)은 비워 둔 채라 문서 정리 도구가 쓸 때 묻는다. 나중에 docs-setup 을 돌린다
 
 header: 단위테스트 범위
 D3-1. 단위 테스트를 돌릴 때 로컬 컨테이너 DB 가 필요한 통합 테스트까지 함께 돌릴까? (commands.unitTest)
@@ -463,7 +475,7 @@ D2-2. 서버를 띄우기만 해도 공유 개발 DB 에 붙어 스키마를 바
 3. 차단 (deny)
    바뀌는 것: 에이전트는 서버를 띄우지 못하고 사람이 직접 띄운다
 
-header: 재귀삭제 막기유지
+header: 재귀삭제 가드 처리
 D6-2. <플러그인> 을 이 레포에서 끄면, 폴더를 통째로 지우는 명령(rm -rf · Remove-Item -Recurse)을 확인받던 규칙이 함께 사라집니다. 이 레포의 하네스 설정(harness.config.mjs)에 같은 규칙을 다시 적을까? 플러그인 자체는 고치지 않습니다.
 근거: <플러그인 훅 파일:행> 이 이 명령을 ask · 지금 하네스 규칙에는 걸리지 않음(케이스 검사) · 빌드 산출물 정리에도 쓰인다
 
@@ -508,16 +520,17 @@ D10. Claude Code 아래 상태 줄에 지금 쓰는 줄과 graft 줄을 함께 �
    바뀌는 것: 전역 설정을 바꾸지 않는다. graft 상태 줄은 보이지 않는다
 ```
 
-### header (질문 chip, 12자 이하) — 대상 + 동작 명사구
+### header (질문 chip, 12자 이하) — 대상 + 결정 명사구
 
 - D 번호는 header 에 넣지 않는다.
   - 번호는 `question` 맨 앞(`D4-3.`)에 그대로 둔다.
   - 12자 중 3~5자를 번호가 먹으면 대상이 빠진다.
-- 12자 안에서 **대상을 먼저** 채우고 남는 자리에 동작을 붙인다.
+- 12자 안에서 **대상을 먼저** 채우고 남는 자리에 **정할 것(결정)**을 붙인다.
   - 대상이 길면 줄여 쓴다(`단위테스트`·`공유DB`). 대상을 빼지는 않는다.
   - 동작만 있는 header(`범위`·`제외`·`간접`·`데몬`)는 쓰지 않는다.
+  - **선택지 하나를 header 에 쓰지 않는다.** `push 막기유지` · `재귀삭제 막기유지` 는 틀린 꼴이다. 사용자가 「막지 않음」을 고르면 header 와 답이 어긋난다. `push 가드 처리` · `재귀삭제 가드 처리` 처럼 정할 것을 쓴다.
 - 대상 명사는 이 레포의 관찰에서 가져온다 — 공유 자원이 DB 가 아니면 그 자원의 일반 이름을 쓴다.
-- **한 번에 낸 질문끼리 header 가 겹치지 않는다.** 같은 D 의 항목 여럿을 한 번에 물으면 대상으로 가른다(`재귀삭제 막기유지` · `원격삭제 막기유지`).
+- **한 번에 낸 질문끼리 header 가 겹치지 않는다.** 같은 D 의 항목 여럿을 한 번에 물으면 대상으로 가른다(`재귀삭제 가드 처리` · `원격삭제 가드 처리`).
 - header 에도 풀이표 왼쪽의 말(`간접`·`빈자리`·`trailer`)을 홀로 쓰지 않는다.
 - 넣기 전에 공백을 포함해 글자 수를 센다.
 
@@ -530,19 +543,26 @@ D10. Claude Code 아래 상태 줄에 지금 쓰는 줄과 graft 줄을 함께 �
 | D3-1 | `단위테스트 범위` | 8 |
 | D3-2 | `공유DB테스트 제외` | 10 |
 | D6 | `플러그인 겹침` | 7 |
-| D6-2 (명령 꼴마다) | `재귀삭제 막기유지` | 9 |
+| D6-2 (명령 꼴마다) | `재귀삭제 가드 처리` | 10 |
+| D6-2 (push — 근거 줄에 D5 `save push방식` 답) | `push 가드 처리` | 10 |
 | D4 (전체 테스트) | `전체테스트 차단` | 8 |
 | D4 (출력 파이프) | `빌드출력 파이프` | 8 |
 | D4 (볼륨 삭제) | `테스트DB 볼륨삭제` | 10 |
 | D4 (데몬 종료) | `Gradle 데몬종료` | 11 |
 | D5 (커밋 실행) | `커밋 실행방식` | 7 |
 | D5 (trailer) | `커밋 공동작성자` | 8 |
+| D5 (push — 근거 줄에 가드 push 규칙) | `save push방식` | 11 |
 | D7 (testFirst) | `테스트먼저 가드` | 8 |
 | D7 (증거 슬롯) | `완료증거 관찰` | 7 |
 | D8-2 | `문서칸 되살리기` | 8 |
 | D9 | `graft 사용` | 8 |
 | D10 | `전역 상태줄 합치기` | 10 |
 | 10단계 (문서 구조) | `문서구조 맞추기` | 8 |
+| 3단계 (원본) | `원본 위치` | 5 |
+| 8단계 (걸리는 줄) | `커밋규칙 문구` · `기동안내 고침` | 7 · 7 |
+| 8단계 (판 올림) | `플러그인 판올림` | 8 |
+| 9단계 (커밋) | `설치 커밋` | 5 |
+| 9단계 (push·병합) | `설치 반영` | 5 |
 
 ### 선택지 라벨 · 권장 표시
 
