@@ -1,6 +1,6 @@
 {
   "name": "harness-kit",
-  "description": "프로젝트에 묶이지 않는 공용 작업 규율 플러그인 — 다계층 작업 지휘(coordinator)·FE/BE 동시 추적·QA 사이클·기록 정리·UI/UX 단계 절차·데이터 보존 이행·플러그인 최신화 스킬, 구현·테스트 작성·검증 게이트·이행·감사 에이전트, 세이브 커맨드. 프로젝트 고유값은 각 레포 harness.config.mjs 의 project 블록에서 읽고, 값이 없으면 지어내지 않고 묻는다. 훅은 두지 않는다(훅 정본은 harness-agent).",
+  "description": "프로젝트에 묶이지 않는 공용 작업 규율 플러그인 — 다계층 작업 지휘(coordinator)·FE/BE 동시 추적·QA 사이클·기록 정리·UI/UX 단계 절차·데이터 보존 이행·플러그인 최신화 스킬, 구현·테스트 작성·검증 게이트·이행·감사 에이전트, 세이브·사후리뷰 커맨드. 프로젝트 고유값은 각 레포 harness.config.mjs 의 project 블록에서 읽고, 값이 없으면 지어내지 않고 묻는다. 훅은 두지 않는다(훅 정본은 harness-agent).",
   "author": {
     "name": "surah"
   },

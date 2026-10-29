@@ -66,6 +66,7 @@ ok(normTier('라이트') === 'light' && normTier('계측') === 'instrumented' &&
     layout: null, // coordinator 가 건너뛴다
     plugin: null, // plugin-sync 가 건너뛴다
     repos: null, // coordinator 가 건너뛴다
+    review: null, // review-pending 이 건너뛴다
     risk: null, // coordinator 가 건너뛴다
     sides: null, // coordinator 가 건너뛴다
   },
@@ -95,6 +96,7 @@ ok(normTier('라이트') === 'light' && normTier('계측') === 'instrumented' &&
     layout: null, // coordinator 가 건너뛴다
     plugin: null, // plugin-sync 가 건너뛴다
     repos: null, // coordinator 가 건너뛴다
+    review: null, // review-pending 이 건너뛴다
     risk: null, // coordinator 가 건너뛴다
     sides: null, // coordinator 가 건너뛴다
     docs: {
@@ -114,6 +116,53 @@ ok(normTier('라이트') === 'light' && normTier('계측') === 'instrumented' &&
   ok(l2.code === 0 && /slots: failures=0/.test(l2.out) && /키 없이 둔 칸 4개\(라이트\)/.test(l2.out), `② 라이트 + 6칸 채움: 실패 0 · DEFER 넷 (${fcount(l2)})`);
   const i = run(IN, 'slots', t.repo, '--tier', 'instrumented');
   ok(i.code === 1 && /^FAIL 없음 project\.docs\.archiveDir /m.test(i.out) && /^FAIL 없음 project\.memory\.slugs /m.test(i.out) && /slots: failures=4/.test(i.out), `② 계측: 같은 config 의 docs-setup 칸 키 없음은 실패 4 (${fcount(i)})`);
+}
+
+// ── ②-3 사후리뷰 칸(project.review.*) — 라이트 칸 · 키 없음은 실패 · null 주석에 review-pending ──
+const REVIEW_KEYS = ['notesRef', 'integrationBranch', 'remote', 'batchAsk'];
+ok(REVIEW_KEYS.every((k) => tierOfSlot(`project.review.${k}`) === 'light' && !deferredInLight(`review.${k}`)), '②-3 review 네 칸은 라이트 칸이고 라이트에서도 미루지 않는다(D8 에서 묻는다)');
+{
+  const t = newRepo('review');
+  const base = (review) => `export default {
+  project: {
+    name: 'demo',
+    agents: null, // coordinator 가 건너뛴다
+    contract: null, // fe-be-trace 가 건너뛴다
+    data: null, // data-migration 이 건너뛴다
+    e2e: null, // qa-cycle 이 건너뛴다
+    git: null, // archive-cycle 이 건너뛴다
+    layout: null, // coordinator 가 건너뛴다
+    plugin: null, // plugin-sync 가 건너뛴다
+    repos: null, // coordinator 가 건너뛴다
+    risk: null, // coordinator 가 건너뛴다
+    sides: null, // coordinator 가 건너뛴다
+    docs: { domainIndex: null, screenMap: null, repoMap: null, testGuide: null, uiUxRules: null }, // backend-engineer · qa-cycle · frontend-engineer 가 건너뛴다
+    memory: { policy: null }, // qa-cycle 이 건너뛴다
+${review}  },
+};
+`;
+  const fcount = (r) => (r.out.match(/slots: failures=\d+/) || ['?'])[0];
+  t.w('harness.config.mjs', base(''));
+  const miss = run(IN, 'slots', t.repo, '--tier', 'light');
+  ok(miss.code === 1 && /slots: failures=4/.test(miss.out) && REVIEW_KEYS.every((k) => new RegExp(`^FAIL 없음 project\\.review\\.${k} — 읽는 자산 .*/review-pending`, 'm').test(miss.out)), `②-3 라이트 + review 블록 없음: 네 칸이 칸마다 키 없음 실패 (${fcount(miss)})`);
+  t.w('harness.config.mjs', base(`    review: {
+      notesRef: 'harness-review',
+      integrationBranch: 'main',
+      remote: null, // 원격 없음 — review-pending 의 기록 받기·올리기가 건너뛴다
+      batchAsk: 5,
+    },
+`));
+  const good = run(IN, 'slots', t.repo, '--tier', 'light');
+  ok(good.code === 0 && /slots: failures=0/.test(good.out) && /^NULL project\.review\.remote :\d+ — 원격 없음/m.test(good.out), `②-3 라이트 + review 채움(remote null + review-pending 주석): 실패 0 (${fcount(good)})`);
+  t.w('harness.config.mjs', base(`    review: {
+      notesRef: 'harness-review',
+      integrationBranch: 'main',
+      remote: null, // 원격 없음
+      batchAsk: 5,
+    },
+`));
+  const nc = run(IN, 'slots', t.repo, '--tier', 'instrumented');
+  ok(nc.code === 1 && /^FAIL null 주석에 꺼지는 자산이 없다 project\.review\.remote /m.test(nc.out), `②-3 remote null 주석에 review-pending 이 없으면 실패 (${fcount(nc)})`);
 }
 
 // ── ②-2 docs-hookup 문구 — 「키 없음라」 같은 조사 붙임이 없다 ──

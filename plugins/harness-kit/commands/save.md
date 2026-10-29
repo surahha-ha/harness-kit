@@ -10,7 +10,7 @@ description: 테스트 → 커밋 → 푸시. 테스트 명령·보호 브랜치
 이 커맨드는 프로젝트 고유값을 본문에 갖지 않는다. 레포 루트 `harness.config.mjs` 의 `project` 블록에서 읽는다(슬롯 정의는 harness-kit README 「프로젝트 프로필」).
 
 - 읽는 순서: 현재 레포 config → `project.pairOwner` 가 가리키는 주 레포 config. 짝 공통값(`layout`·`contract`·`git`)은 주 레포에만 있다.
-- 이 커맨드가 읽는 슬롯: `layout` · `sides.*.root` · `sides.*.marker` · `commands.*.testAll` · `commands.be.compile` · `repos.peers` · `contract.beGlobs` · `risk.sharedDbSuites` · `git.protectedBranches` · `git.commitFormat` · `git.commitExecution` · `git.push` · `git.coAuthor` · `git.reviewThreshold`
+- 이 커맨드가 읽는 슬롯: `layout` · `sides.*.root` · `sides.*.marker` · `commands.*.testAll` · `commands.be.compile` · `repos.peers` · `contract.beGlobs` · `risk.sharedDbSuites` · `git.protectedBranches` · `git.commitFormat` · `git.commitExecution` · `git.push` · `git.coAuthor` · `git.reviewThreshold` · `review.notesRef`
 - 단일 레포에서 `project.commands` 가 없으면 harness 최상위 `commands`(`unitTest` 등)를 읽는다.
   - 이유: 같은 값을 두 곳에 적지 않기 위해서다.
 - **값이 없으면 지어내지 않는다.**
@@ -137,6 +137,19 @@ R="<ROOT>"; B="<BRANCH>"
 - 커밋 직후 두 가지를 본다.
   - `git -C "$R" show --stat HEAD` 의 파일 목록이 `<PATHS>` 와 같은지
   - `git -C "$R" status --short` 에 커밋 전부터 있던 남의 변경(stage 된 것 포함)이 그대로 남았는지
+- **리뷰 기록** — diff 리뷰 게이트가 **발견 없이** 끝났고 이 커맨드가 커밋했을 때만 남긴다.
+  - 그 커밋이 `/harness-kit:review-pending` 목록에 다시 나오지 않게 한다.
+  - 게이트를 건너뛰었으면(임계 미만 · `git.reviewThreshold` 가 `null`) 남기지 않는다.
+  - 발견이 있었으면 남기지 않는다. 「고치고 커밋」이어도 고친 diff 는 리뷰하지 않았다. 「그대로 커밋」도 같다.
+
+  ```bash
+  # <SHA>=방금 만든 커밋(git -C "$R" rev-parse HEAD) — 스크립트는 지금 디렉토리의 레포에 쓴다
+  ( cd "$R" && node "${CLAUDE_PLUGIN_ROOT}/scripts/review-pending.mjs" note <SHA> pass --by save ); echo "[exit=$?]"
+  ```
+
+  - 종료 0 이면 기록했거나 사후리뷰가 꺼져 있다(`project.review` 가 `null` — stderr 에 그렇게 나온다).
+  - 종료 2 면 「리뷰 기록 못 남김(<stderr 첫 줄>)」을 보고에 적고 이어 간다. 커밋은 그대로다.
+  - 기록은 이 PC 에만 있다. 올리기는 `/harness-kit:review-pending` 의 질문으로 한다. 이 커맨드는 notes 를 push 하지 않는다.
 
 ### 검출력 게이트 — 새 단위테스트가 실제로 잡는지 확인
 
@@ -180,6 +193,7 @@ git diff HEAD --numstat -- <PATHS…> | awk '{f++; a+=$1; d+=$2} END {print "fil
 - **스타일·포맷·네이밍 지적 금지.** 요청에 없는 변경을 부르고, 리뷰어도 테스트도 그 변경을 보고 있지 않게 된다.
 
 **결과 처리 — 판정은 사용자가 한다.** 발견이 있으면 목록을 보여주고 «고치고 커밋 / 그대로 커밋 / 커밋 중단» 을 묻는다.
+발견이 없으면 커밋 뒤 Step 3 의 「리뷰 기록」을 남긴다.
 리뷰를 근거로 **에이전트가 스스로 프로덕션 코드를 고치지 않는다** (`harness-kit:change-verifier` 는 실행·판정 전용).
 
 > ⚠️ **"리뷰를 돌렸으니 봤다" 로 눈검증을 건너뛰지 않는다.** 이 게이트는 눈검증을 대체하지 않는다.

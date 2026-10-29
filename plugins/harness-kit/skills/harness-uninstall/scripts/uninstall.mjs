@@ -1352,6 +1352,29 @@ function verifyLower(s, ok, bad) {
   }
 }
 
+/**
+ * 사후리뷰 기록(/harness-kit:review-pending) — notes ref · 받아 둔 ref · fetch refspec 은 사용자 데이터라 걷어 내지 않는다.
+ * notesRef 이름은 지금 config 와 이번 백업 config 의 글에서 읽는다(걷어내기가 config 를 지웠을 수 있다). 이름이 없으면 아무것도 내지 않는다.
+ */
+function reviewNotesLines(s) {
+  const texts = [];
+  if (exists(CONFIG)) texts.push(read(CONFIG));
+  const bcfg = s.backup && path.join(path.resolve(s.backup.dir), 'files', CONFIG);
+  if (bcfg && existsSync(bcfg)) texts.push(readFileSync(bcfg, 'utf8'));
+  const names = new Set();
+  for (const t of texts) for (const m of t.matchAll(/\bnotesRef\s*:\s*['"]([\w.\/-]+)['"]/g)) names.add(m[1]);
+  const lines = [];
+  for (const n of names) {
+    const refs = (tryGit('for-each-ref', '--format=%(refname)', `refs/notes/${n}`, `refs/notes/${n}-*`) || '').split(/\r?\n/).filter(Boolean);
+    const specs = (tryGit('config', '--get-regexp', '^remote\\..*\\.fetch$') || '').split(/\r?\n/).filter((l) => l.includes(`refs/notes/${n}`))
+      .map((l) => { const i = l.indexOf(' '); return { key: l.slice(0, i), value: l.slice(i + 1) }; });
+    if (!refs.length && !specs.length) continue;
+    lines.push(`  리뷰 기록(사용자 데이터 — 남겼다): ${[...refs, ...specs.map((x) => `${x.key}=${x.value}`)].join(' · ')}. 원격의 같은 ref 는 팀 공용이라 손대지 않는다`);
+    lines.push(`    지우려면: ${[...refs.map((r) => `git update-ref -d ${r}`), ...specs.map((x) => `git config --fixed-value --unset ${x.key} "${x.value}"`)].join(' · ')}`);
+  }
+  return lines;
+}
+
 function printSummary(s, refs = [], eolOnly = []) {
   const C = s.plan.candidates, A = s.answers;
   const count = (v) => C.filter((c) => A[c.id] === v).length;
@@ -1362,6 +1385,7 @@ function printSummary(s, refs = [], eolOnly = []) {
   if ((s.filledByDefault || []).length) console.log(`  권장이 없어 keep 으로 채운 칸 ${s.filledByDefault.length}개: ${s.filledByDefault.join(', ')}`);
   console.log(`  남은 참조 ${refs.length}줄 · ${new Set(refs.map((r) => r.path)).size}곳 (위 INFO 목록)`);
   if (s.records) console.log(`  설치 기록: ${s.records.offer ? `이 트리 기록 ${s.records.mine.length}개 — CLI 질문 대상` : s.records.reason}${s.afterCli ? ` · CLI 뒤 되덮음 ${s.afterCli.restored}개` : ''}`);
+  reviewNotesLines(s).forEach((l) => console.log(l));
   if (!s.backup) { console.log('  백업 없음'); printDocsSetup(s.plan.docsSetup, '  '); return; }
   const bdir = path.resolve(s.backup.dir), ev = s.backup.evidence && path.resolve(s.backup.evidence);
   const cfgGone = s.plan.candidates.some((c) => c.id === `file:${CONFIG}` && s.answers[c.id] === 'remove');

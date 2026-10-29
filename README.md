@@ -13,7 +13,7 @@
 
 ## 구성
 
-스킬 9 · 에이전트 6 · 커맨드 1 · 훅 0
+스킬 10 · 에이전트 6 · 커맨드 2 · 훅 0
 
 | 종류 | 이름 | 언제 쓰나 |
 | - | - | - |
@@ -34,6 +34,7 @@
 | 에이전트 | `data-migration-engineer` | `data-migration` 절차 실행 |
 | 에이전트 | `plugin-curator` | 플러그인 드리프트 감사(읽기 전용) |
 | 커맨드 | `/harness-kit:save` | 테스트 → 커밋 → 푸시 |
+| 커맨드 | `/harness-kit:review-pending` | 리뷰를 거치지 않은 커밋을 커밋 하나씩 사후리뷰 → 결과를 git notes 에 기록(아래 세부) |
 
 에이전트를 부를 때는 `harness-kit:<이름>` 으로 부른다(예: `subagent_type="harness-kit:change-verifier"`).
 
@@ -65,6 +66,17 @@
 - 메모리 규약을 `CLAUDE.md` 에 넣는다.
 - 설치된 레포에도 다시 돌릴 수 있다. 설치 단계와 무관하게 돈다.
 - 채운 config 칸에 `// harness-kit:docs-setup` 표시를 단다. 그래서 걷어내기·재설치 뒤에도 되살린다.
+
+**`/harness-kit:review-pending`** — "리뷰 안 된 커밋 리뷰해줘"
+
+- 대상: 범위 안의 병합 아닌 커밋 가운데 리뷰 기록이 없는 것. 기본 범위는 통합 브랜치(`review.integrationBranch`)에 아직 없는 커밋이다.
+- `git.reviewThreshold` 가 있으면 그 임계를 넘은 커밋만 고른다. save 의 diff 리뷰 게이트와 같은 판정이다. `null` 이면 모두 고른다.
+- 커밋마다 `change-verifier` 「커밋 리뷰 모드」가 diff 만 보고 리뷰한다. 커밋 메시지는 넘기지 않는다.
+- 결과(pass·fail)는 `refs/notes/<review.notesRef>` 에 남긴다. 코드는 고치지 않는다. 원격에 올리기는 묻고 나서, 강제 없이 한다.
+- save 가 리뷰를 발견 없이 통과시킨 커밋에는 save 가 pass 기록을 남긴다. 그래서 그 커밋은 목록에 다시 나오지 않는다.
+- **라이트 범위에서 돈다.** 하네스의 관찰 훅·계측 로그를 읽지 않는다. 읽는 것은 git 과 config 뿐이다.
+- 보조 스크립트: `plugins/harness-kit/scripts/review-pending.mjs`(`config` · `unreviewed` · `note`)
+- 리뷰 기록 ref 와 fetch refspec 은 사용자 데이터다. `harness-uninstall` 은 지우지 않고 지우는 명령만 보고에 적는다.
 
 ### 훅은 두지 않는다
 
@@ -207,7 +219,8 @@ node <harness-kit 플러그인>/scripts/graft-localize.mjs localize <레포 루�
 | `data` | `schemaMgmt`(`'flyway'` \| `'liquibase'` \| `'init-sql'`) · `schemaHome` · `schemaProcedureSkill` · `migrationOverlaySkill` · `namingPlanDoc` | data-migration · coordinator |
 | `risk` | `sharedDbSuites` · `sharedDbProfiles` · `devServer` · `destructive` — 표 아래 「`risk` 하위 키」 | change-verifier · unit-test-engineer · save · data-migration |
 | `docs` | `domainIndex` · `screenMap` · `repoMap` · `testGuide` · `uiUxRules` · `archiveDir` · `pathValidator` · `autoloaded`(자동 로드 `CLAUDE.md` 목록) | 여러 자산 · `archiveDir`·`pathValidator`·`autoloaded` 는 docs-setup 이 채운다 |
-| `git` | `protectedBranches` · `commitFormat`(한 문장) · `commitExecution`(`'auto'` \| `'message-only'`) · `push`(`'auto'` \| `'ask'` \| `'never'`) · `coAuthor`(trailer 허용 여부) · `reviewThreshold`(`{ files, lines }`) | save · frontend-engineer · plugin-sync·archive-cycle(`commitExecution`) |
+| `git` | `protectedBranches` · `commitFormat`(한 문장) · `commitExecution`(`'auto'` \| `'message-only'`) · `push`(`'auto'` \| `'ask'` \| `'never'`) · `coAuthor`(trailer 허용 여부) · `reviewThreshold`(`{ files, lines }`) | save · frontend-engineer · plugin-sync·archive-cycle(`commitExecution`) · review-pending(`reviewThreshold`·`push`) |
+| `review` | `notesRef` · `integrationBranch` · `remote` · `batchAsk` — 표 아래 「`review` 하위 키」. 임계는 `git.reviewThreshold` 를 같이 쓴다 | review-pending · save(`notesRef`) |
 | `agents` | 역할 → 에이전트 이름 덮어쓰기. 역할: `schemaDesign` · `schemaApply` · `migration` · `backend` · `frontend` · `testAuthor` · `verifier` | coordinator · 에이전트 |
 | `memory` | `slugs`(`~/.claude/projects/` 아래 메모리 디렉토리 이름) · `policy`(백로그를 어디에 남기나 — 한 문장) | archive-cycle · qa-cycle · docs-setup(채움) |
 | `plugin` | 플러그인 정본 레포에서만: `canonicalRepo` · `canonicalBranch` · `dir` · `marketplaceFile` · `readme` · `mirrorScript` · `hookTests` · `auditSources` | plugin-sync · plugin-curator |
@@ -218,6 +231,13 @@ node <harness-kit 플러그인>/scripts/graft-localize.mjs localize <레포 루�
 - `sharedDbProfiles` — 공유 DB 를 향하는 프로파일·설정 파일 **이름**
 - `devServer` — 기본 프록시가 원격을 향하는가(한 문장)
 - `destructive` — 승인 필요 명령
+
+**`review` 하위 키** — 사후리뷰(`/harness-kit:review-pending`) 설정. 라이트 칸이다(관찰 훅 없이 돈다).
+
+- `notesRef` — 리뷰 기록 ref 이름. 기록은 `refs/notes/<값>` 에, 원격에서 받은 기록은 `refs/notes/<값>-<remote>` 에 둔다. 설치 기본값 `'harness-review'`. `null` 이면 사후리뷰가 꺼진다(save 도 기록하지 않는다)
+- `integrationBranch` — 작업 브랜치를 합쳐 넣는 브랜치. 기본 범위가 `HEAD --not <remote>/<값>` 이다. `null` 이면 `@{upstream}..HEAD` 로 간다
+- `remote` — 리뷰 기록을 받고 올리는 원격. 설치 기본값 `'origin'`. 원격이 없는 레포면 `null` — 받기·올리기를 건너뛰고, 통합 브랜치를 로컬 브랜치로 본다
+- `batchAsk` — 대상이 이 수보다 많으면 리뷰 전에 묻는다. 설치 기본값 `5`. `null` 이면 묻지 않는다
 
 `agents` 기본값: `migration` = `harness-kit:data-migration-engineer`, `backend` = `harness-kit:backend-engineer`, `frontend` = `harness-kit:frontend-engineer`, `testAuthor` = `harness-kit:unit-test-engineer`, `verifier` = `harness-kit:change-verifier`. `schemaDesign`·`schemaApply` 는 기본값이 없다 — 프로젝트 오버레이가 제공한다.
 
@@ -289,6 +309,7 @@ export default {
       coAuthor: false,
       reviewThreshold: { files: 3, lines: 100 },
     },
+    review: { notesRef: 'harness-review', integrationBranch: 'main', remote: 'origin', batchAsk: 5 },
     agents: { schemaDesign: 'orders:db-architect', schemaApply: null },
     memory: { slugs: ['<orders-api 메모리 디렉토리>'], policy: '백로그는 docs/plans/backlog.md 에 추가' },
     plugin: null,

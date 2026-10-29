@@ -16,6 +16,7 @@
 //   L 지운 config 의 가드 규칙 id 를 인용하는 문서 줄은 남은 참조다
 //   M docs-setup record 가 영수증의 config 해시를 고친다(CRLF 그대로) — 걷어내기가 config 를 손댄 파일로 보지 않는다
 //   N 목적 질문의 선택지 — 범위 낮추기는 계측(또는 영수증 없음)일 때만 · 선택지마다 지우는 것·남는 것·새 세션
+//   O 사후리뷰 기록(notes ref · 받아 둔 ref · fetch refspec)은 걷어 내지 않고, verify 요약이 남긴 것과 지우는 명령을 낸다
 // 대상 레포 밖(작업 디렉토리)에만 쓴다. 실패가 하나라도 있으면 종료코드 1.
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, existsSync, rmSync } from 'node:fs';
@@ -517,6 +518,28 @@ await scenario('N', async () => {
   const l = setup('n2', 'light');
   const sl = U(l, 'scan');
   ok(!/^ {2}lower /m.test(sl.out) && /범위 낮추기 없음 — 지금 범위가 이미 라이트다/.test(sl.out), 'N 라이트: 범위 낮추기 선택지가 없다');
+});
+
+// ── O 사후리뷰 기록(review-pending notes · fetch refspec)은 사용자 데이터 — 걷어 내지 않고 지우는 명령만 낸다 ──
+await scenario('O', async () => {
+  const cfg = CFG_LIGHT.replace("  project: { name: 'demo' },\n", "  project: {\n    name: 'demo',\n    review: { notesRef: 'team-review', integrationBranch: 'main', remote: 'origin', batchAsk: 5 },\n  },\n");
+  const t = setup('o', 'light', { cfg });
+  ok(t.wm.code === 0, `O 라이트 영수증 (${last(t.wm)})`);
+  t.git('notes', '--ref=team-review', 'add', '-m', 'Review: pass', 'HEAD');
+  t.git('notes', '--ref=refs/notes/team-review-origin', 'add', '-m', 'Review: fail', 'HEAD');
+  t.git('config', '--add', 'remote.origin.fetch', '+refs/notes/team-review:refs/notes/team-review-origin');
+  let v = null;
+  for (const s of [['scan', '--refresh'], ['answer', 'purpose=remove', '--recommended'], ['backup'], ['apply'], ['plugin'], ['records'], ['verify']]) {
+    const r = U(t, ...s);
+    if (r.code !== 0) { ok(false, `O ${s[0]} 종료코드 ${r.code} — ${last(r)}`); return; }
+    v = r;
+  }
+  ok(!existsSync(path.join(t.repo, 'harness.config.mjs')), 'O config 는 걷어 냈다(notesRef 이름은 백업 config 에서 읽는다)');
+  ok(/^ {2}리뷰 기록\(사용자 데이터 — 남겼다\): refs\/notes\/team-review · refs\/notes\/team-review-origin · remote\.origin\.fetch=\+refs\/notes\/team-review:refs\/notes\/team-review-origin\./m.test(v.out), 'O verify 요약: notes ref 둘과 fetch refspec 을 남긴 사용자 데이터로 적는다');
+  ok(/지우려면: git update-ref -d refs\/notes\/team-review · git update-ref -d refs\/notes\/team-review-origin · git config --fixed-value --unset remote\.origin\.fetch "\+refs\/notes\/team-review:refs\/notes\/team-review-origin"/.test(v.out), 'O verify 요약: 지우는 명령을 낸다');
+  const left = t.git('for-each-ref', '--format=%(refname)', 'refs/notes/').trim().split('\n');
+  ok(JSON.stringify(left) === JSON.stringify(['refs/notes/team-review', 'refs/notes/team-review-origin']) && /team-review-origin/.test(t.git('config', '--get-all', 'remote.origin.fetch')), 'O 걷어낸 뒤에도 notes ref 와 fetch refspec 이 그대로다');
+  U(t, 'finish');
 });
 
 console.log(`\nscenarios: pass=${pass} fail=${fail}`);
