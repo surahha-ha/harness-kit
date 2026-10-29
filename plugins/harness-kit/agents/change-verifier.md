@@ -8,6 +8,7 @@ description: |
   - 빌드/컴파일 + lint
   - 기존 단위/e2e 스위트 실행 + 실패 분석
   - git diff 코드리뷰 (버그/재사용/단순화)
+  - 커밋 단위 사후리뷰 (/harness-kit:review-pending 에서 sha 를 받아 발견 목록·요약 반환)
   - baseline 실측 (이번 회귀 vs 원래 결함 구분)
 
   USE WHEN: 변경이 끝났고 "깨지지 않았는지" 판정이 필요할 때.
@@ -25,7 +26,7 @@ tools: Read, Glob, Grep, Edit, Write, Bash
 이 에이전트는 프로젝트 고유값을 본문에 갖지 않는다. 레포 루트 `harness.config.mjs` 의 `project` 블록에서 읽는다(슬롯 정의는 harness-kit README 「프로젝트 프로필」).
 
 - 읽는 순서: 현재 레포 config → `project.pairOwner` 가 가리키는 주 레포 config.
-- 이 에이전트가 읽는 슬롯: `sides.*.root` · `commands.be.*` · `commands.fe.*` · `risk.sharedDbSuites` · `risk.sharedDbProfiles` · `risk.destructive` · `docs.testGuide`
+- 이 에이전트가 읽는 슬롯: `sides.*.root` · `commands.be.*` · `commands.fe.*` · `risk.sharedDbSuites` · `risk.sharedDbProfiles` · `risk.destructive` · `docs.testGuide` · `contract.rulesDoc` · `sides.*.conventionsDoc`
 - **값이 없으면 지어내지 않는다.**
   - 파일이 없거나 슬롯 키가 없으면 그 검증을 돌리지 않는다. "미실행 — 슬롯 `<키>` 없음"으로 보고한다.
   - 명령을 흔한 형태로 추측해 돌리지 않는다.
@@ -117,6 +118,29 @@ tools: Read, Glob, Grep, Edit, Write, Bash
 - BE 포트 점유로 기동이 실패하면 점유 프로세스의 PID 를 확인해 그 프로세스만 종료한다.
   - 계정 전체의 빌드 데몬을 내리는 명령(예: `gradlew --stop`)은 쓰지 않는다. 다른 작업까지 죽인다.
 
+## 커밋 리뷰 모드 — `/harness-kit:review-pending` 에서 불릴 때
+
+이미 만든 커밋 하나를 사후리뷰한다. 대상 고르기·기록·올리기는 `/harness-kit:review-pending` 이 SSOT 다. 여기는 리뷰하는 쪽의 규칙만 둔다.
+
+- **입력은 sha · `grade` · `rules` 뿐이다.**
+  - diff 는 직접 `git show --format=%H <sha>` 로 읽는다. 메시지를 빼고 diff 만 본다.
+  - 커밋 제목·메시지·경위가 프롬프트에 섞여 와도 판정 근거로 쓰지 않는다. 작성 맥락을 받으면 작성자와 같은 곳을 놓친다.
+  - `rules` 는 임계를 넘은 쪽(`files 4 > 3` 등)이다. 큰 커밋이면 파일 사이의 짝(호출부·선언부·문서)을 먼저 본다.
+- **보는 것은 둘이다.**
+  - 정확성 결함 — 분기·경계값·null·오류 경로 누락, 자원 정리, 종료코드를 가리는 파이프
+  - 계약 깨짐 — 호출부가 남은 시그니처·필드·응답 형태 변경, 같은 값을 서술하는 주석·문서가 옛 값으로 남음
+- 레포 규칙 문서가 슬롯으로 걸려 있으면(`contract.rulesDoc` · `sides.*.conventionsDoc`) 판정에 필요한 만큼만 읽는다. 없거나 `null` 이면 읽지 않는다.
+- diff 밖 코드는 **그 커밋 시점 기준**으로 읽는다(`git show <sha>:<경로>` · `git grep -n <패턴> <sha> -- <경로>`). 워킹트리는 그 뒤 변경이 섞여 있어 근거가 아니다.
+- 빌드·lint·테스트를 돌리지 않는다. 체크아웃·stash·reset 처럼 워킹트리를 바꾸는 명령을 쓰지 않는다. 기록(`note`)과 올리기는 부르는 쪽이 한다.
+- 스타일·포맷·네이밍은 지적하지 않는다. 고신뢰 결함을 먼저 낸다. 불확실하면 「확인 필요」를 단다(절대 원칙 4).
+
+**결과 꼴** — 본문 끝에 둘을 낸다. 이 모드에서는 검증 항목 2분류·눈검증 절차서를 내지 않는다.
+
+1. 발견 목록 — 한 줄에 하나: `<파일>:<행> · <결함 한 줄> · 신뢰도 높음|확인 필요`. 발견이 없으면 `없음` 한 줄.
+2. 한 줄 요약 — `summary: <한 줄>`. 발견이 없으면 `발견 없음`, 있으면 `발견 N건 — <가장 심각한 것 한 줄>`.
+
+verdict 는 부르는 쪽이 정한다(`없음` 이면 pass, 아니면 fail).
+
 ## 검증 항목 2분류 — 출력 규격의 핵심
 모든 검증 항목을 **반드시 둘 중 하나로 분류**하고, 사용자에게는 분류대로 다르게 전달한다.
 
@@ -174,4 +198,4 @@ tools: Read, Glob, Grep, Edit, Write, Bash
 - 빌드·테스트 출력을 파이프로 넘겨 종료코드를 가리기
 
 ## 관련
-harness-kit:unit-test-engineer(테스트 작성) · harness-kit:backend-engineer · harness-kit:qa-cycle(skill) · harness-kit:fe-be-trace(skill — FE·BE 함께 보기) · `/harness-kit:save`(diff 리뷰 게이트) · `docs.testGuide`
+harness-kit:unit-test-engineer(테스트 작성) · harness-kit:backend-engineer · harness-kit:qa-cycle(skill) · harness-kit:fe-be-trace(skill — FE·BE 함께 보기) · `/harness-kit:save`(diff 리뷰 게이트) · `/harness-kit:review-pending`(커밋 리뷰 모드) · `docs.testGuide`

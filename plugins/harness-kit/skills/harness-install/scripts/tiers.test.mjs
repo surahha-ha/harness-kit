@@ -66,6 +66,7 @@ ok(normTier('라이트') === 'light' && normTier('계측') === 'instrumented' &&
     layout: null, // coordinator 가 건너뛴다
     plugin: null, // plugin-sync 가 건너뛴다
     repos: null, // coordinator 가 건너뛴다
+    review: null, // review-pending 이 건너뛴다
     risk: null, // coordinator 가 건너뛴다
     sides: null, // coordinator 가 건너뛴다
   },
@@ -95,6 +96,7 @@ ok(normTier('라이트') === 'light' && normTier('계측') === 'instrumented' &&
     layout: null, // coordinator 가 건너뛴다
     plugin: null, // plugin-sync 가 건너뛴다
     repos: null, // coordinator 가 건너뛴다
+    review: null, // review-pending 이 건너뛴다
     risk: null, // coordinator 가 건너뛴다
     sides: null, // coordinator 가 건너뛴다
     docs: {
