@@ -162,7 +162,9 @@ description: 지금 레포에 harness-agent 게이트(.harness/ 훅)와 harness-
 
 **D0 — 맨 앞에 묻는다.**
 
-- 범위 표(무엇이 걸리고 무엇이 채워지나)를 질문 본문에 먼저 보인다.
+- **범위 표(무엇이 걸리고 무엇이 채워지나)를 응답 본문에 먼저 낸다. 그 다음 응답에서 D0 를 묻는다.**
+  - 표를 내지 않고 D0 를 묻지 않는다. 질문 창에는 표가 보이지 않는다.
+  - 표의 꼴은 [TEMPLATES.md](TEMPLATES.md) §8 의 D0 꼴이다.
 - 라이트에 「(권장)」을 붙인다.
 - 계측은 마지막 선택지로 두고 「하네스 개발 설치처용」이라 적는다.
 - 답을 체크포인트 `tier` 에 적는다(TEMPLATES.md §7).
@@ -194,8 +196,14 @@ description: 지금 레포에 harness-agent 게이트(.harness/ 훅)와 harness-
 - 선택지마다 바뀌는 것을 한 줄씩 단다.
 - 권장할 근거가 없으면 질문에 「권장 없음 — 판단 근거 부족, 직접 골라 주세요」를 적는다.
   - 그때는 어느 선택지에도 「(권장)」을 붙이지 않는다.
-- 질문 header 는 D 번호 없이 대상 + 동작 명사구로 쓴다.
+- **D 번호 밖 질문도 같다.** 「(권장)」+「권장 이유」 또는 「권장 없음 — 이유」 가운데 하나가 반드시 있다.
+  - 대상: 3단계 원본 위치 · 8단계 걸리는 줄 고침(커밋 규칙 문구 · 서버 기동 안내 등)과 판 올림 · 9단계 설치 커밋 · push·병합.
+  - 권장 규칙은 [DECISIONS.md](DECISIONS.md) 「D 번호 밖 질문」 표다.
+  - 답은 체크포인트 `asked` 에 header · recommended(없으면 `null`) · basis · answer 로 적는다(TEMPLATES.md §7).
+  - 시험 설치에서 이 질문 다섯 개가 권장도 「권장 없음」도 없이 나갔다. `answer-trace.mjs` ⑤-2 가 `asked` 를 보고 실패로 낸다.
+- 질문 header 는 D 번호 없이 **대상 + 결정** 명사구로 쓴다(`push 가드 처리` · `설치범위` · `설치 커밋`).
   - 12자 이하로 쓴다.
+  - 선택지 하나를 header 에 쓰지 않는다(`push 막기유지` 는 틀린 꼴이다 — 다른 답을 고르면 header 와 답이 어긋난다).
   - 한 번에 묻는 질문끼리 겹치지 않게 짓는다.
 - 질문 첫 문장은 **쉬운 말로 무엇이 일어나는지**를 먼저 쓴다.
   - 용어·명령·슬롯 이름은 괄호나 근거 줄로 보낸다(용어 풀이표는 [TEMPLATES.md](TEMPLATES.md) §8).
@@ -218,7 +226,7 @@ description: 지금 레포에 harness-agent 게이트(.harness/ 훅)와 harness-
 > 지금은 **복사 방식**이다. 게이트가 harness-kit 플러그인으로 패키징되면 골격 복사(3번)는 사라진다.
 
 1. harness-agent 원본을 정한다.
-   - 사용자에게 로컬 클론 위치를 묻는다.
+   - 사용자에게 로컬 클론 위치를 묻는다(header `원본 위치`). 권장은 DECISIONS.md 「D 번호 밖 질문」 표대로 단다.
    - 없으면 공개 저장소 `https://github.com/surahha-ha/harness-agent.git` 를 **임시 디렉토리**(대상 레포 밖)에 clone 한다.
 2. 원본의 **커밋 SHA 를 기록한다**(`git -C <원본> rev-parse HEAD`).
    - 미커밋 변경이 있으면 그 사실도 기록한다.
@@ -256,8 +264,11 @@ description: 지금 레포에 harness-agent 게이트(.harness/ 훅)와 harness-
 - 근거 없는 칸은 `null` + 주석 「미확정 — 무엇을 확인하면 채운다」.
 - **범위 밖 칸** — 라이트면 아래처럼 둔다.
   - 계측 칸(`testFirst.auditOnStop`·`qualityCycle.evidence`·`drift`·`metrics`·`promotion`·게이트 `docs.*`)은 example 기본값 그대로 둔다.
-  - kit `project.docs`·`project.memory` 는 키를 넣지 않는다(TEMPLATES.md §4 「라이트 config 의 꼴」).
-  - 키가 없는 그 칸은 10단계 문서 구조 질문이 채운다.
+  - kit 칸 가운데 docs-setup 이 정하는 넷(`project.docs.archiveDir`·`pathValidator`·`autoloaded`·`project.memory.slugs`)만 키를 넣지 않는다(TEMPLATES.md §4 「라이트 config 의 꼴」).
+  - 키가 없는 그 넷은 10단계 문서 구조 질문이 채운다.
+  - 그 밖의 문서·메모리 칸(`domainIndex`·`screenMap`·`repoMap`·`testGuide`·`uiUxRules`·`memory.policy`)은 라이트도 D8 에서 묻고 채운다.
+- **재설치면** `install.mjs slots` 의 `PREV` 줄(앞선 걷어내기 백업 config 의 값)을 D8 의 권장으로 쓴다.
+  - 백업은 이 트리 · 메인 트리 · 다른 worktree 의 것을 모두 본다(`config-slots.mjs backups` 와 같은 목록).
 - **kit 자산이 읽는 칸은 비워 두지 않는다.**
   - 키가 없으면 그 자산이 멈추고 묻는다.
   - `null` 이면 그 단계를 말없이 건너뛴다.
@@ -281,7 +292,8 @@ description: 지금 레포에 harness-agent 게이트(.harness/ 훅)와 harness-
 - `node "${CLAUDE_SKILL_DIR}/scripts/install.mjs" slots <레포 루트>` 가 `failures=0`
   - kit 이 읽는 칸에 「없음」 0 · 주석에 꺼지는 자산이 없는 null 0
   - 범위는 체크포인트 `tier` 에서 읽는다.
-  - 라이트의 문서·메모리 칸 「키 없음」은 `DEFER` 줄로 나오고 실패가 아니다.
+  - 라이트에서 docs-setup 이 정하는 넷의 「키 없음」만 `DEFER` 줄로 나오고 실패가 아니다.
+  - 그 밖의 문서·메모리 칸이 키 없으면 라이트도 `FAIL` 이다 — D8 에서 묻고 채운다.
 
 ## 5. settings.json 반영 — 직접 편집하고 기계 대조
 
@@ -385,7 +397,7 @@ description: 지금 레포에 harness-agent 게이트(.harness/ 훅)와 harness-
   - 절을 가리키는 라우팅 한 줄에는 한 줄 표시를 붙인다.
 - **새 deny 에 걸리게 된 명령 줄**(맨 테스트 명령, 출력 파이프)을 찾는다.
   - 찾는 곳: 레포 `CLAUDE.md`·커맨드·에이전트 문서
-  - 찾은 줄을 목록으로 보이고, 고칠지 묻는다.
+  - 찾은 줄을 목록으로 보이고, 고칠지 묻는다. 줄마다 「(권장)」+「권장 이유」를 단다(DECISIONS.md 「D 번호 밖 질문」).
   - 서술 문서가 차단될 명령을 권하는 모순이 남지 않게 한다.
   - 고친 줄마다 바꾸기 전·뒤 원문을 체크포인트 `edits` 에 `replace` 로 적는다.
   - 코드 블록 안이라 표시를 붙이지 않는 자리이기 때문이다.
@@ -495,11 +507,26 @@ graft 업그레이드 뒤에는 `node "$S/graft-localize.mjs" status <레포 루
 - 메시지는 레포 `git log` 관례(언어·접두어)를 따른다.
   - 원본 SHA 를 본문에 넣는다.
   - trailer 는 레포 규칙이 허용할 때만 넣는다.
-- push·MR 은 실행 직전에 따로 확인받는다.
+
+**커밋 뒤 — 커밋이 어디 있나 보이고, push·병합을 묻는다.**
+
+- `node "${CLAUDE_SKILL_DIR}/scripts/install.mjs" commit-where <레포 루트>` 를 돌린다.
+  - 연결 worktree 면 기준 브랜치는 메인 트리의 브랜치다. 다르면 `--base <브랜치>` 를 준다.
+  - 출력: 「커밋 위치:」(트리 · 브랜치 · 메인 작업 브랜치에서 닿는가) · 「작업 브랜치:」 · 「원격:」 · 「다음 할 일」 명령.
+- 그 출력을 응답 본문에 그대로 옮긴다. 설치가 worktree·브랜치를 만들었으면 그 사실을 첫 줄에 적는다.
+  - 시험 설치에서 스킬이 `chore/harness-install-light` worktree 를 만들고 말하지 않았다. 사용자는 메인 브랜치에 설치가 없다고 보았다.
+- 그 다음 **push·병합을 묻는다(header `설치 반영`).** 묻지 않고 미루지 않는다.
+  - 권장은 레포 커밋 정책(D5 의 `project.git.push` 답 · 레포 문서의 병합 방식)으로 정한다(DECISIONS.md 「D 번호 밖 질문」).
+  - 선택지: 기준 브랜치에 병합 · 작업 브랜치 push · 지금은 하지 않음.
+  - 고른 명령만 실행한다. 명령은 `commit-where` 의 「다음 할 일」 꼴(같은 명령 안 브랜치 조건)이다.
+  - `project.git.push` 가 `'never'` 면 push 선택지를 내지 않고 그 이유를 적는다.
+  - 「지금은 하지 않음」이면 보고의 다음 할 일에 그 명령을 옮긴다.
+- 커밋을 메시지만 건넸으면 `commit-where` 를 돌리지 않는다. 보고에 「커밋 없음 — 메시지만」을 적는다.
 
 **완료 기준:**
 
 - `write-manifest.mjs` 가 `OK` 로 끝났다(줄에 「범위 <라이트|계측>」 · config 칸 수).
+- 커밋했으면 `commit-where` 출력이 응답 본문에 있고, push·병합 질문의 답이 체크포인트 `asked` 에 있다.
 - 영수증의 파일 수가 `.harness/`(런타임 산출물 제외)·config·보조 파일 수의 합과 같다.
 - 커밋 직후 `git status --short` 에 설치 전부터 있던 변경만 남아 있다.
 - `git show --stat HEAD` 의 파일 목록이 의도한 목록(영수증 포함)과 같다.
@@ -531,6 +558,11 @@ graft 업그레이드 뒤에는 `node "$S/graft-localize.mjs" status <레포 루
 마지막 응답에 아래를 담는다.
 
 - **설치 범위(라이트 / 계측)** · 원본 SHA · 변경 파일 목록 · 영수증 경로
+- **커밋 위치** — `install.mjs commit-where` 의 출력으로 적는다.
+  - 커밋이 든 브랜치와 worktree 경로
+  - 메인 작업 브랜치에서 닿는가(닿음 / 닿지 않음 — 병합 전)
+  - push·병합 질문의 답과, 하지 않았으면 그 명령
+  - 설치가 worktree 를 만들었으면 작업을 메인 트리로 가져오는 명령(병합)과 worktree 를 지우는 명령(`git worktree remove` · `git branch -d`)
 - 결정별 답 표 — 「권장」 열은 권장대로 / 권장과 다름 / 권장 없음 / 범위로 정함 가운데 하나다.
   - D9 는 권장을 계산하지 않아 「—」로 적는다.
 - `null` 로 둔 칸과 그 이유, **그 null 이 끄는 kit 자산**(`install.mjs slots` 의 목록)
@@ -543,4 +575,10 @@ graft 업그레이드 뒤에는 `node "$S/graft-localize.mjs" status <레포 루
   - 또는 「graft 없음 — 건너뜀」·「Node 판 모자람 — 건너뜀」
 - 사용자가 할 일 — 발동 확인, 제외 규칙 실행 확인, 첫 사용자 설치, 미정 결정, graft 업그레이드 뒤 `localize` 재실행
 
-보고를 건넨 뒤 체크포인트 파일을 지운다 — 원본 SHA 는 config 머리 줄에 남는다. 체크포인트가 남아 있으면 다음 0단계가 그 트리를 「중단된 설치」로 본다.
+**순서: 보고를 먼저 낸다. 그 다음 체크포인트 파일을 지운다.**
+
+1. 위 보고를 마지막 응답 본문에 낸다. 보고는 체크포인트의 답(`decisions`·`asked`·`docsHookup`)을 읽어 만든다.
+2. 보고를 낸 뒤 체크포인트 파일을 지운다 — 원본 SHA 는 config 머리 줄에 남는다.
+   - 먼저 지우면 보고에 옮길 답이 사라진다.
+   - 남겨 두면 다음 0단계가 그 트리를 「중단된 설치」로 본다.
+3. 10단계에서 「진행」을 골랐으면 1·2 를 마친 뒤 docs-setup 으로 넘어간다.
