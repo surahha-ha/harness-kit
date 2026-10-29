@@ -3,6 +3,28 @@
 매니페스트에 `version` 필드를 두지 않는다. 판은 main 커밋 SHA 로 갈린다. 절은 병합 단위로 적는다.
 (0.1.0 까지는 `plugin.json` 과 `marketplace.json` 의 명시 버전을 함께 올렸다.)
 
+## 미발행 — 사후리뷰 `/harness-kit:review-pending`
+
+- 새 커맨드 `/harness-kit:review-pending [범위]` 를 더한다
+  - save 의 diff 리뷰 게이트를 거치지 않은 커밋을 커밋 하나씩 `change-verifier` 에 리뷰시킨다
+  - 결과(pass·fail)는 `refs/notes/<review.notesRef>` 에 남긴다. 발견이 하나라도 있으면 fail 이다
+  - 코드를 고치지 않는다. 커밋 메시지를 리뷰어에게 넘기지 않는다
+  - 원격 기록은 따로 둔 ref(`refs/notes/<notesRef>-<remote>`)로 받는다. 받기에 실패해도 진행한다
+  - 대상이 `review.batchAsk` 건을 넘으면 목록 표를 먼저 내고 묻는다
+  - 기록 올리기는 묻고 나서 한다. `--force` 를 쓰지 않는다. non-fast-forward 면 `notes merge -s ours` 뒤 한 번만 다시 올린다
+  - 관찰 훅·계측 로그 없이 라이트 범위에서 돈다
+- 보조 스크립트 `plugins/harness-kit/scripts/review-pending.mjs`(`config` · `unreviewed` · `note`)와 시험 `tests/review-pending.test.mjs` 를 더한다
+  - 위험 선별은 `git.reviewThreshold` 를 save 와 같은 numstat 판정으로 쓴다. `null`·키 없음이면 모두 고른다. 정규식 규칙 엔진은 두지 않는다
+  - 기본 범위: `HEAD --not <remote>/<integrationBranch>` → `@{upstream}..HEAD` → 없으면 종료 2
+- `change-verifier` 에 「커밋 리뷰 모드」를 더한다. 입력은 sha · grade · rules 뿐이다. 레포 규칙 문서는 기존 슬롯(`contract.rulesDoc` · `sides.*.conventionsDoc`)이 걸려 있을 때만 읽는다
+- save 가 diff 리뷰 게이트를 발견 없이 통과시키고 커밋하면 `note <sha> pass --by save` 를 남긴다. 게이트를 건너뛰었거나 발견이 있었으면 남기지 않는다
+- 새 kit 칸 `project.review.notesRef`·`integrationBranch`·`remote`·`batchAsk`
+  - harness-install D8 「사후리뷰 설정」이 두 범위 모두 묻는다. 라이트 칸이다(`tiers.mjs` `INSTRUMENTED_SLOTS` 밖)
+  - `install.mjs slots` 가 키 없음을 실패로 낸다. `null` 칸 주석에 `review-pending` 이 없으면 실패로 낸다
+  - 임계는 `git.reviewThreshold` 를 같이 쓴다. `review` 에 다시 두지 않는다
+- harness-uninstall 은 리뷰 기록 ref · 받아 둔 ref · fetch refspec 을 사용자 데이터로 남긴다. verify 요약이 그 목록과 지우는 명령을 낸다
+- README 구성 줄의 스킬 수를 표와 맞춘다(9 → 10)
+
 ## 미발행 — 재설치 시험에서 나온 결함
 
 - 근거: 혼자 쓰는 레포에서 계측 설치를 완전 제거하고, 라이트로 다시 설치하고, docs-setup 을 돌린 시험
