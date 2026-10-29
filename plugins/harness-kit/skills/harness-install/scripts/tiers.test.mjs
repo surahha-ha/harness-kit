@@ -11,7 +11,8 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { hookSpec, hooksFor, tierOfSlot, receiptTier, normTier, deferredInLight } from './tiers.mjs';
+import { hookSpec, hooksFor, tierOfSlot, receiptTier, normTier, deferredInLight, LIGHT_DEFERRED, instrumentedUnder } from './tiers.mjs';
+import { ARCHIVE_CYCLE } from '../../docs-setup/scripts/config-slots.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const IN = path.join(HERE, 'install.mjs');
@@ -40,7 +41,12 @@ ok(hooksFor('light').length === 1 && hooksFor('instrumented').length === 5, '①
 ok(tierOfSlot('qualityCycle.evidence.types') === 'instrumented' && tierOfSlot('project.docs.archiveDir') === 'instrumented' && tierOfSlot('dangerGuard.deny') === 'light' && tierOfSlot('testFirst.enabled') === 'light' && tierOfSlot('testFirst.auditOnStop') === 'instrumented',
   '① 칸 범위 — 증거·문서 칸은 계측 · 가드 칸과 testFirst(auditOnStop 말고)는 라이트');
 ok(tierOfSlot('docsExtra') === 'light', '① 앞머리가 같아도 다른 칸(docsExtra)은 docs 칸이 아니다');
-ok(deferredInLight('docs.archiveDir') && deferredInLight('memory') && !deferredInLight('commands.build'), '① 라이트에서 키 없이 두는 칸 — docs.* · memory.*');
+// 시험 설치: 라이트가 project.docs.* · memory.* 를 통째로 docs-setup 에 미뤄, docs-setup 이 채우지 않는 6칸이 키 없이 남았다
+const D8_DOC_SLOTS = ['docs.domainIndex', 'docs.screenMap', 'docs.repoMap', 'docs.testGuide', 'docs.uiUxRules', 'memory.policy'];
+ok(JSON.stringify([...LIGHT_DEFERRED].map((x) => `project.${x}`).sort()) === JSON.stringify([...ARCHIVE_CYCLE].sort()), `① 라이트에서 키 없이 두는 칸 = docs-setup 이 정하는 칸(config-slots ARCHIVE_CYCLE) (${LIGHT_DEFERRED.join(' · ')})`);
+ok(deferredInLight('docs.archiveDir') && deferredInLight('memory.slugs') && D8_DOC_SLOTS.every((p) => !deferredInLight(p)) && !deferredInLight('commands.build'), '① docs-setup 이 채우지 않는 문서·메모리 6칸은 라이트에서도 미루지 않는다');
+ok(D8_DOC_SLOTS.every((p) => tierOfSlot(`project.${p}`) === 'light') && tierOfSlot('project.memory.slugs') === 'instrumented', '① D8 문서·메모리 6칸은 라이트 칸 · docs-setup 칸은 계측 칸');
+ok(JSON.stringify(instrumentedUnder('project.docs', ['project.docs.domainIndex', 'project.docs.archiveDir', 'project.docsX'])) === '["project.docs.archiveDir"]', '① instrumentedUnder — 객체 칸 아래의 계측 칸만');
 const legacy = receiptTier({ schema: 1, files: [] });
 ok(legacy.tier === 'instrumented' && legacy.legacy === true, '① schema 1 영수증(tier 없음)은 계측으로 읽는다');
 ok(receiptTier({ schema: 2, tier: 'light' }).tier === 'light' && receiptTier(null) === null, '① schema 2 영수증은 tier 를 그대로 · 영수증 없음은 null');
@@ -65,11 +71,59 @@ ok(normTier('라이트') === 'light' && normTier('계측') === 'instrumented' &&
   },
 };
 `);
+  const fcount = (r) => (r.out.match(/slots: failures=\d+/) || ['?'])[0];
+  // 문서·메모리 블록이 통째로 없는 라이트 config(시험 설치의 꼴) — docs-setup 칸 넷만 DEFER, 나머지 6칸은 실패
   const l = run(IN, 'slots', t.repo, '--tier', 'light');
-  ok(l.code === 0 && /slots: failures=0/.test(l.out), `② 라이트: 문서·메모리 칸 키 없음은 실패가 아니다 (${(l.out.match(/slots: failures=\d+/) || ['?'])[0]})`);
-  ok(/^DEFER project\.docs /m.test(l.out) && /^DEFER project\.memory /m.test(l.out) && /키 없이 둔 칸 2개\(라이트\)/.test(l.out), '② 라이트: DEFER 두 줄 · 「키 없이 둔 칸 2개」');
+  ok(l.code === 1 && /slots: failures=6/.test(l.out), `② 라이트 + 문서 블록 없음: docs-setup 이 채우지 않는 6칸은 키 없음 실패 (${fcount(l)})`);
+  ok(D8_DOC_SLOTS.every((p) => new RegExp(`^FAIL 없음 project\\.${p.replace('.', '\\.')} `, 'm').test(l.out)), '② 라이트: 실패 줄이 칸마다 하나(project.docs 한 줄로 뭉치지 않는다)');
+  ok(['docs.archiveDir', 'docs.pathValidator', 'docs.autoloaded', 'memory.slugs'].every((p) => new RegExp(`^DEFER project\\.${p.replace('.', '\\.')} `, 'm').test(l.out)) && /키 없이 둔 칸 4개\(라이트\)/.test(l.out), '② 라이트: DEFER 는 docs-setup 칸 넷 · 「키 없이 둔 칸 4개」');
+  // 재설치 — 앞선 걷어내기 백업 config 에 값이 있으면 PREV 로 낸다
+  const bk = path.join(t.gitPath('harness-uninstall-backup'), '2026-10-01T00-00-00-000Z', 'files');
+  mkdirSync(bk, { recursive: true });
+  writeFileSync(path.join(bk, 'harness.config.mjs'), "export default { project: { docs: { domainIndex: 'docs/domain.md' }, memory: { policy: 'docs/backlog.md' } } };\n", 'utf8');
+  const lp = run(IN, 'slots', t.repo, '--tier', 'light');
+  ok(/^PREV project\.docs\.domainIndex = "docs\/domain\.md" — 앞선 걷어내기 백업\(2026-10-01T00-00-00-000Z\)/m.test(lp.out) && /^PREV project\.memory\.policy = "docs\/backlog\.md"/m.test(lp.out), '② 키 없는 칸에 앞선 백업 config 값이 있으면 PREV 줄');
+  // 6칸을 D8 대로 채운(또는 null + 꺼지는 자산) 라이트 config — 실패 0 · DEFER 넷
+  t.w('harness.config.mjs', `export default {
+  project: {
+    name: 'demo',
+    agents: null, // coordinator 가 건너뛴다
+    contract: null, // fe-be-trace 가 건너뛴다
+    data: null, // data-migration 이 건너뛴다
+    e2e: null, // qa-cycle 이 건너뛴다
+    git: null, // archive-cycle 이 건너뛴다
+    layout: null, // coordinator 가 건너뛴다
+    plugin: null, // plugin-sync 가 건너뛴다
+    repos: null, // coordinator 가 건너뛴다
+    risk: null, // coordinator 가 건너뛴다
+    sides: null, // coordinator 가 건너뛴다
+    docs: {
+      domainIndex: 'docs/domain.md',
+      screenMap: null, // frontend-engineer 가 건너뛴다
+      repoMap: null, // frontend-engineer 가 건너뛴다
+      testGuide: null, // qa-cycle · change-verifier · unit-test-engineer 가 건너뛴다
+      uiUxRules: null, // qa-cycle · ui-ux-guide 가 건너뛴다
+    },
+    memory: {
+      policy: null, // qa-cycle 이 건너뛴다
+    },
+  },
+};
+`);
+  const l2 = run(IN, 'slots', t.repo, '--tier', 'light');
+  ok(l2.code === 0 && /slots: failures=0/.test(l2.out) && /키 없이 둔 칸 4개\(라이트\)/.test(l2.out), `② 라이트 + 6칸 채움: 실패 0 · DEFER 넷 (${fcount(l2)})`);
   const i = run(IN, 'slots', t.repo, '--tier', 'instrumented');
-  ok(i.code === 1 && /^FAIL 없음 project\.docs /m.test(i.out) && /^FAIL 없음 project\.memory /m.test(i.out) && /slots: failures=2/.test(i.out), '② 계측: 같은 config 의 문서·메모리 칸 키 없음은 실패 2');
+  ok(i.code === 1 && /^FAIL 없음 project\.docs\.archiveDir /m.test(i.out) && /^FAIL 없음 project\.memory\.slugs /m.test(i.out) && /slots: failures=4/.test(i.out), `② 계측: 같은 config 의 docs-setup 칸 키 없음은 실패 4 (${fcount(i)})`);
+}
+
+// ── ②-2 docs-hookup 문구 — 「키 없음라」 같은 조사 붙임이 없다 ──
+{
+  const t = newRepo('hookup');
+  t.w('harness.config.mjs', "export default { project: { name: 'demo' } };\n");
+  for (const f of ['a', 'b', 'c']) t.w(`docs/${f}.md`, `# ${f}\n`);
+  const h = run(IN, 'docs-hookup', t.repo);
+  const why = (h.out.match(/^권장 이유: .*$/m) || [''])[0];
+  ok(h.code === 0 && /^권장: 진행$/m.test(h.out) && /비어 있어\(키 없음\)/.test(why) && !/키 없음라/.test(h.out), `②-2 docs-hookup 권장 이유 문구 (${why.slice(0, 90)})`);
 }
 
 // ── ③ hooks ──
@@ -151,6 +205,46 @@ const settingsOf = (hs) => {
   state({ tier: 'instrumented', decisions: [D7] });
   const i = run(AT, t.repo, ex);
   ok(i.code === 0 && /^SAME metrics\.enabled /m.test(i.out) && !/^TIER /m.test(i.out), '⑤ 계측: 같은 칸이 TIER 가 아니라 SAME');
+  // 질문마다 「권장 + 권장 이유」 또는 「권장 없음 + 이유」 — 시험 설치에서 둘 다 없는 질문(원본 위치 · 설치 커밋 등)이 나갔다
+  const D5 = { id: 'D5', answer: 'message-only', recs: [{ item: 'commitExecution', recommended: null, followed: null, basis: '' }] };
+  state({ tier: 'light', decisions: [D7, D5] });
+  const nb = run(AT, t.repo, ex);
+  ok(nb.code === 1 && /^FAIL D5 commitExecution 근거 없음/m.test(nb.out), '⑤ 권장 없음인데 이유(basis)가 비었다 → 실패');
+  state({ tier: 'light', decisions: [D7], asked: [
+    { header: '원본 위치', recommended: null, basis: '' },
+    { header: '설치 커밋', basis: 'CLAUDE.md:3 「커밋은 에이전트가」' },
+    { header: '설치 커밋 push 여부 확인', recommended: 'ask', basis: 'project.git.push = ask' },
+    { header: '설치 브랜치 병합', recommended: 'merge', basis: '설치 브랜치가 develop 에서 닿지 않는다' },
+  ] });
+  const ak = run(AT, t.repo, ex);
+  ok(ak.code === 1 && /^FAIL asked 원본 위치 근거 없음/m.test(ak.out) && /^FAIL asked 설치 커밋 recommended 칸 없음/m.test(ak.out) && /^FAIL asked 설치 커밋 push 여부 확인 header .* 12자 넘음/m.test(ak.out) && !/FAIL asked 설치 브랜치 병합/.test(ak.out),
+    '⑤ D 번호 밖 질문(asked) — 근거 없음 · recommended 칸 없음 · header 12자 넘음은 실패, 다 갖춘 질문은 통과');
+  state({ tier: 'light', decisions: [{ ...D7, header: 'D7 턴종료 감사' }], docsHookup: { answer: 'later', recommend: 'later', why: '' } });
+  const hd = run(AT, t.repo, ex);
+  ok(hd.code === 1 && /^FAIL D7 header 「D7 턴종료 감사」 에 D 번호/m.test(hd.out) && /^FAIL docsHookup 권장·권장 이유 없음/m.test(hd.out), '⑤ header 에 D 번호 · 10단계 답에 권장 이유 없음 → 실패');
+}
+
+// ── ⑥ commit-where — 설치가 만든 worktree·브랜치의 커밋이 작업 브랜치에서 닿는가 · 다음 할 일 ──
+{
+  const t = newRepo('where');
+  t.git('config', 'user.email', 'test@example.com'); t.git('config', 'user.name', 'test');
+  t.w('README.md', '# demo\n');
+  t.git('add', '.'); t.git('commit', '-q', '-m', 'base');
+  t.git('branch', '-m', 'develop');
+  const wt = `${t.repo}-wt`;
+  t.git('worktree', 'add', '-q', '-b', 'chore/harness-install-light', wt);
+  writeFileSync(path.join(wt, 'harness.install.json'), '{}\n', 'utf8');
+  execFileSync('git', ['-C', wt, 'add', 'harness.install.json'], { encoding: 'utf8' });
+  execFileSync('git', ['-C', wt, 'commit', '-q', '-m', 'install'], { encoding: 'utf8' });
+  const j = `${t.repo}-where.json`;
+  const w = run(IN, 'commit-where', wt, '--json', j);
+  const r = w.code === 0 ? JSON.parse(readFileSync(j, 'utf8')) : {};
+  ok(w.code === 0 && r.linked === true && r.branch === 'chore/harness-install-light' && r.base === 'develop' && r.reachable === false && r.aheadOfBase === 1, `⑥ 연결 worktree 의 설치 커밋 — 작업 브랜치(메인 트리의 develop)에서 닿지 않는다 (${JSON.stringify({ linked: r.linked, base: r.base, reachable: r.reachable })})`);
+  ok(/^커밋 위치: 브랜치 chore\/harness-install-light .* \(연결 worktree — 메인 트리 /m.test(w.out) && /닿지 않는다 — develop 에 없는 커밋 1개/.test(w.out) && /upstream 이 없다/.test(w.out), '⑥ 보고 줄 — 브랜치 · worktree · 작업 브랜치에서 닿는가 · 원격');
+  ok(/merge --ff-only chore\/harness-install-light/.test(w.out) && /worktree remove/.test(w.out) && /branch -d chore\/harness-install-light/.test(w.out) && /rev-parse --abbrev-ref HEAD\)" = "develop" \]/.test(w.out), '⑥ 다음 할 일 — 브랜치 조건 건 병합 · worktree 정리 · 브랜치 정리');
+  const m = run(IN, 'commit-where', t.repo, '--json', j);
+  const rm = m.code === 0 ? JSON.parse(readFileSync(j, 'utf8')) : {};
+  ok(m.code === 0 && rm.linked === false && rm.reachable === true && /push -u origin develop/.test(m.out) && !/worktree remove/.test(m.out), '⑥ 메인 트리의 커밋 — 닿는다 · upstream 이 없어 push 를 다음 할 일로');
 }
 
 console.log(`\ntiers: pass=${pass} fail=${fail}`);

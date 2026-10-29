@@ -44,23 +44,32 @@ export function hookSpec(event, command) {
 export const hooksFor = (tier) => HOOKS.filter((h) => RANK[h.tier] <= RANK[tier]);
 
 /**
- * 계측에서만 채우는 config 칸(앞머리). 라이트에서는 example 기본값 그대로(게이트 칸)이거나 키 없음(kit `project` 칸)이다.
+ * 라이트에서 키 없이 두는 kit 칸(`project` 기준 경로) — docs-setup 이 정하는 칸과 정확히 같다
+ * (docs-setup `config-slots.mjs` 의 `ARCHIVE_CYCLE`, 시험이 둘이 같은지 본다).
+ * 키가 없으면 읽는 자산(archive-cycle)이 쓸 때 멈추고 묻는다 — null 과 달리 말없이 건너뛰지 않는다.
+ * 설치 끝의 문서 구조 질문(docs-setup)이 이 칸을 채운다.
+ * 그 밖의 kit 문서·메모리 칸(`docs.domainIndex`·`screenMap`·`repoMap`·`testGuide`·`uiUxRules`·`memory.policy`)은
+ * docs-setup 이 채우지 않는다 — 두 범위 모두 D8 에서 묻는다(시험 설치에서 6칸이 키 없이 남아 읽는 자산이 멈췄다).
+ */
+export const LIGHT_DEFERRED = ['docs.archiveDir', 'docs.pathValidator', 'docs.autoloaded', 'memory.slugs'];
+const under = (p, prefix) => p === prefix || p.startsWith(`${prefix}.`);
+export const deferredInLight = (projectPath) => LIGHT_DEFERRED.some((x) => under(projectPath, x));
+
+/**
+ * 계측에서만 채우는 config 칸(앞머리). 라이트에서는 example 기본값 그대로(게이트 칸)이거나 키 없음(docs-setup 이 정하는 kit 칸)이다.
  * `testFirst` 는 범위 표에 들지 않는다 — `auditOnStop` 만 턴 종료 훅이 있어야 돌아 계측에 둔다.
  */
 export const INSTRUMENTED_SLOTS = [
   'testFirst.auditOnStop', 'qualityCycle.evidence', 'drift', 'metrics', 'promotion',
-  'docs.always', 'docs.archive', 'project.docs', 'project.memory',
+  'docs.always', 'docs.archive', ...LIGHT_DEFERRED.map((x) => `project.${x}`),
 ];
-const under = (p, prefix) => p === prefix || p.startsWith(`${prefix}.`);
 /** config 칸 경로(최상위 기준, kit 칸은 `project.` 로 시작)가 어느 범위의 칸인가. */
 export const tierOfSlot = (p) => (INSTRUMENTED_SLOTS.some((x) => under(p, x)) ? 'instrumented' : 'light');
-
 /**
- * 라이트에서 키 없이 두는 kit 칸(`project` 기준 경로의 앞머리). 키가 없으면 읽는 자산이 쓸 때 멈추고 묻는다 —
- * null 과 달리 말없이 건너뛰지 않는다. 설치 끝의 문서 구조 질문(docs-setup)이 이 칸을 채운다.
+ * 객체 칸(`project.docs` 처럼 example 에 없던 블록을 통째로 적은 영수증 칸) 아래 칸 가운데 계측 칸.
+ * 범위 낮추기는 그 블록에 라이트 칸(D8 답)이 섞여 있으면 블록을 통째로 지우지 않고 이 칸만 되돌린다.
  */
-export const LIGHT_DEFERRED = ['docs', 'memory'];
-export const deferredInLight = (projectPath) => LIGHT_DEFERRED.some((x) => under(projectPath, x));
+export const instrumentedUnder = (objPath, leaves) => leaves.filter((p) => p !== objPath && under(p, objPath) && tierOfSlot(p) === 'instrumented');
 
 /** 영수증의 범위 — tier 칸이 없으면(schema 1) 계측으로 본다. 영수증이 없으면 null. */
 export function receiptTier(manifest) {

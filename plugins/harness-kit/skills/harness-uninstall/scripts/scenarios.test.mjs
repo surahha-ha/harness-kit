@@ -10,6 +10,12 @@
 //   G CRLF settings.json 이 범위 낮추기 뒤에도 CRLF 다
 //   E-2 영수증 없는 걷어내기에서 docs-setup 여러 줄 배열 칸 안의 경로는 보조 파일 후보가 아니다
 //   H graft 로컬 연결(D9)이 있는 계측 설치 → 라이트로 낮추기 — .gitignore 의 /graft/ 블록 · settings.local.json 의 graft 훅 · 영수증 local 이 그대로 남는다
+//   I project.docs 블록 안의 라이트 칸(D8 답) — 범위 낮추기 · docs-setup 이 연 블록 · restore 가 블록째 지우지 않는다
+//   J 새 worktree 에서 메인 트리의 걷어내기 백업을 찾는다(docs-setup backups · uninstall 앞선 백업)
+//   K 걷어내기 전부터 있던 미추적 폴더(안에 .git 이 있어 git 이 펴지 않는 것)는 verify 의 「새로 바뀐 파일」이 아니다
+//   L 지운 config 의 가드 규칙 id 를 인용하는 문서 줄은 남은 참조다
+//   M docs-setup record 가 영수증의 config 해시를 고친다(CRLF 그대로) — 걷어내기가 config 를 손댄 파일로 보지 않는다
+//   N 목적 질문의 선택지 — 범위 낮추기는 계측(또는 영수증 없음)일 때만 · 선택지마다 지우는 것·남는 것·새 세션
 // 대상 레포 밖(작업 디렉토리)에만 쓴다. 실패가 하나라도 있으면 종료코드 1.
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, existsSync, rmSync } from 'node:fs';
@@ -131,7 +137,7 @@ const SETTINGS_BASE = '{\n  "permissions": { "allow": ["Bash(git status)"] }\n}\
 const settingsFor = (tier) => `{\n  "permissions": { "allow": ["Bash(git status)"] },\n  "hooks": {\n${EVENTS[tier].map((e) => HOOK_JSON[e]).join(',\n')}\n  },\n  "extraKnownMarketplaces": { "harness-kit": { "source": { "source": "github", "repo": "surahha-ha/harness-kit" } } },\n  "enabledPlugins": { "harness-kit@harness-kit": true }\n}\n`;
 
 /** 설치 전 레포(커밋 1개) + 그 범위의 설치 흉내(커밋하지 않는다) + 영수증. */
-function setup(name, tier, { crlf = false } = {}) {
+function setup(name, tier, { crlf = false, example = EXAMPLE, cfg = null } = {}) {
   const repo = mkdtempSync(path.join(work, `tier-${name}-`));
   const git = (...a) => execFileSync('git', ['-C', repo, ...a], { encoding: 'utf8' });
   const eol = (t) => (crlf ? t.replace(/\n/g, '\r\n') : t);
@@ -146,13 +152,13 @@ function setup(name, tier, { crlf = false } = {}) {
   git('add', '.'); git('commit', '-q', '-m', 'base');
   // 설치 — 골격은 범위와 무관하게 통째로, 범위가 가르는 것은 훅 · config 칸 · 안내절
   for (const f of ['danger-guard.mjs', 'turn-end.mjs', 'turn-start.mjs']) w(`.harness/${f}`, 'export {};\n');
-  w('harness.config.mjs', tier === 'light' ? CFG_LIGHT : CFG_INSTR);
+  w('harness.config.mjs', cfg ?? (tier === 'light' ? CFG_LIGHT : CFG_INSTR));
   // 표시 줄은 문단 끝에 붙이고, 블록은 「빈 줄 + 블록」으로 파일 끝에 — 걷어내기가 그 빈 줄까지 지워 설치 전과 같아진다
   w('CLAUDE.md', `${r('CLAUDE.md')}하네스는 「개발 하네스」 절을 본다. <!-- harness-kit:line -->\n\n${BLOCK[tier]}`);
   w('.gitignore', `${r('.gitignore')}# harness-kit:begin\n.harness/*.jsonl\n# harness-kit:end\n`);
   w('.claude/settings.json', eol(settingsFor(tier)));
   const ex = path.join(repo + '-example.mjs');
-  writeFileSync(ex, EXAMPLE, 'utf8');
+  writeFileSync(ex, example, 'utf8');
   const draft = path.join(repo + '-draft.json');
   writeFileSync(draft, JSON.stringify({ source: { repo: 'harness-agent', sha: SHA }, tier, decisions: [{ id: 'D0', header: '하네스 설치범위', answer: tier }],
     files: [{ path: '.harness', role: 'skeleton' }, { path: 'harness.config.mjs', role: 'config' }],
@@ -393,6 +399,124 @@ await scenario('H', async () => {
   ok(U(t, 'scan').code === 0, 'H 낮춘 뒤 scan');
   const gb = t.state().plan.candidates.find((c) => c.id === 'text:.gitignore#block2');
   ok(gb && gb.recommend === 'keep', `H 낮춘 뒤 걷어내기: .gitignore 의 /graft/ 블록은 남김 권장 (${gb && gb.recommend})`);
+});
+
+// ── I project.docs 블록 안의 라이트 칸 — 블록째 되돌리거나 지우지 않는다 ──
+const EX_PROJECT = EXAMPLE.replace('};\n', "  project: {\n    name: '{프로젝트 이름}',\n  },\n};\n");
+const lowerAll = (t, label) => {
+  const blk = t.state().plan.candidates.find((c) => c.kind === 'text');
+  const nb = path.join(t.repo + '-light-block.md');
+  writeFileSync(nb, BLOCK.light, 'utf8');
+  if (blk) U(t, 'block', blk.id, nb);
+  const r = [U(t, 'answer', '--recommended'), U(t, 'backup'), U(t, 'apply'), U(t, 'verify')];
+  ok(r.every((x) => x.code === 0) && /failures=0/.test(r[3].out), `${label}: 낮추기 answer → verify 종료코드 0 (${last(r[3])})`);
+};
+await scenario('I', async () => {
+  // I-1 계측 설치가 example 에 없던 project.docs 블록을 열었다 — 영수증은 블록 하나(객체 칸)로 적는다. 안에 D8 칸(domainIndex)과 docs-setup 칸(archiveDir)이 섞였다
+  const cfg = CFG_INSTR.replace("  project: { name: 'demo' },\n", "  project: {\n    name: 'demo',\n    docs: {\n      domainIndex: 'docs/domain.md',\n      archiveDir: null, // docs-setup 에서 정함\n    },\n  },\n");
+  const t = setup('i1', 'instrumented', { example: EX_PROJECT, cfg });
+  ok(t.wm.code === 0 && JSON.parse(t.r('harness.install.json')).config.slots.some((s) => s.path === 'project.docs'), `I-1 영수증: project.docs 를 객체 칸 하나로 적었다 (${last(t.wm)})`);
+  ok(U(t, 'scan', '--tier', 'light').code === 0, 'I-1 scan --tier light');
+  const ids = t.state().plan.candidates.filter((c) => c.kind === 'slot').map((c) => c.id);
+  ok(!ids.includes('slot:project.docs') && ids.includes('slot:project.docs.archiveDir'), `I-1 블록째가 아니라 그 안의 계측 칸만 후보 (${ids.join(' ')})`);
+  lowerAll(t, 'I-1');
+  const after = t.r('harness.config.mjs');
+  ok(after.includes("domainIndex: 'docs/domain.md'") && !after.includes('archiveDir'), 'I-1 낮춘 뒤: 라이트 칸 domainIndex 는 남고 docs-setup 칸 archiveDir 만 빠진다');
+
+  // I-2 docs-setup 이 연 블록(여는 줄 표시) 안에 표시 없는 kit 칸(D8 · 재설치에서 되살린 칸)이 함께 있다
+  const cfg2 = CFG_INSTR.replace("  project: { name: 'demo' },\n", "  project: {\n    name: 'demo',\n    docs: { // harness-kit:docs-setup\n      archiveDir: 'docs/archive', // harness-kit:docs-setup — 시험\n      domainIndex: 'docs/domain.md',\n    },\n  },\n");
+  const u = setup('i2', 'instrumented', { example: EX_PROJECT, cfg: cfg2 });
+  const { ownedSlots } = await import(new URL('../../docs-setup/scripts/config-slots.mjs', import.meta.url).href);
+  const o = ownedSlots(cfg2);
+  ok(JSON.stringify(o.slots.map((s) => s.path)) === '["project.docs.archiveDir"]' && JSON.stringify(o.blocks.map((b) => b.path)) === '["project.docs"]', 'I-2 ownedSlots: 표시 칸은 archiveDir 하나 · domainIndex 는 docs-setup 소유가 아니다');
+  ok(U(u, 'scan', '--tier', 'light').code === 0, 'I-2 scan --tier light');
+  const sl = u.state().plan.candidates.filter((c) => c.kind === 'slot' && c.data.slot.startsWith('project.'));
+  ok(sl.every((c) => c.recommend === 'keep' && JSON.stringify(c.options) === '["keep"]'), `I-2 docs-setup 칸은 남김만 · 표시 없는 domainIndex 는 후보가 아니다 (${sl.map((c) => c.id).join(' ')})`);
+  lowerAll(u, 'I-2');
+  ok(u.r('harness.config.mjs').includes("    docs: { // harness-kit:docs-setup\n      archiveDir: 'docs/archive', // harness-kit:docs-setup — 시험\n      domainIndex: 'docs/domain.md',\n    },"), 'I-2 낮춘 뒤: docs-setup 블록과 그 안의 표시 없는 칸이 그대로다');
+  // I-3 docs-setup restore 가 같은 블록에 칸을 되살려도 표시 없는 칸은 남는다
+  const bdir = path.join(u.repo + '-bk');
+  mkdirSync(path.join(bdir, 'files'), { recursive: true });
+  writeFileSync(path.join(bdir, 'files', 'harness.config.mjs'), "export default {\n  project: {\n    docs: { // harness-kit:docs-setup\n      archiveDir: 'docs/old', // harness-kit:docs-setup — 앞선 값\n      autoloaded: ['CLAUDE.md'], // harness-kit:docs-setup — 앞선 값\n    },\n  },\n};\n", 'utf8');
+  u.w('docs/old/.keep', '');
+  const rs = run(CS, 'restore', u.repo, '--backup', bdir);
+  const rc = u.r('harness.config.mjs');
+  ok(rs.code === 0 && rc.includes("archiveDir: 'docs/old'") && rc.includes("autoloaded: ['CLAUDE.md']") && rc.includes("domainIndex: 'docs/domain.md'"), `I-3 restore: 표시 칸만 바꾸고 넣는다 · domainIndex 는 남는다 (${last(rs)})`);
+  // I-4 걷어낸 뒤 backups 가 표시 없는 kit 칸을 PREV 로 낸다(재설치 D8 이 권할 값)
+  U(u, 'finish');
+  rmSync(path.join(u.repo, 'docs'), { recursive: true, force: true });   // I-3 이 만든 시험 폴더 — 걷어낸 뒤 「설치 전과 같다」 판정에 섞이지 않게
+  removeAll(u, 'I-4 걷어내기');
+  const bk = run(CS, 'backups', u.repo);
+  ok(/^PREV project\.docs\.domainIndex = "docs\/domain\.md"/m.test(bk.out), `I-4 backups: 표시 없는 kit 칸 값을 PREV 로 낸다`);
+});
+
+// ── J 새 worktree 에서 메인 트리의 걷어내기 백업을 찾는다 ──
+await scenario('J', async () => {
+  const cfg = CFG_LIGHT.replace("    always: [],\n", "    always: ['README.md'], // harness-kit:docs-setup — 시험\n");
+  const t = setup('j', 'light', { cfg });
+  removeAll(t, 'J 메인 트리 걷어내기');
+  const wt = `${t.repo}-wt`;
+  t.git('worktree', 'add', '-q', '-b', 'chore/reinstall', wt);
+  const bk = run(CS, 'backups', wt);
+  ok(/^걷어내기 백업 1개 .* docs-setup 칸이 든 것 1개/m.test(bk.out) && /— 메인 트리$/m.test(bk.out), `J 새 worktree 의 backups 가 메인 .git 의 백업을 본다 (${(bk.out.match(/^걷어내기 백업 .*$/m) || [''])[0].slice(0, 70)})`);
+  const sc = run(UN, 'scan', wt);
+  ok(sc.code === 0 && /앞선 걷어내기 백업 1개/.test(sc.out), 'J 새 worktree 의 uninstall scan 도 메인 트리의 앞선 백업을 본다');
+});
+
+// ── K 걷어내기 전부터 있던 미추적 폴더(안에 .git) ──
+await scenario('K', async () => {
+  const t = setup('k', 'light');
+  const nested = path.join(t.repo, 'claude-plugins-official');
+  mkdirSync(nested, { recursive: true });
+  execFileSync('git', ['-C', nested, 'init', '-q'], { encoding: 'utf8' });
+  writeFileSync(path.join(nested, 'a.txt'), 'x\n', 'utf8');
+  ok(/^\?\? claude-plugins-official\/$/m.test(porcelain(t)), 'K git status 가 그 폴더를 「claude-plugins-official/」 한 줄로만 낸다(-uall 이어도)');
+  const steps = [['scan', '--refresh'], ['answer', 'purpose=remove', '--recommended'], ['backup'], ['apply'], ['plugin'], ['records'], ['verify']];
+  let v = null;
+  for (const s of steps) v = U(t, ...s);
+  ok(v.code === 0 && /failures=0/.test(v.out) && !/후보 밖에서 새로 바뀐 파일/.test(v.out), `K verify: 전부터 있던 폴더를 새로 바뀐 것으로 보지 않는다 (${last(v)})`);
+  rmSync(nested, { recursive: true, force: true });
+  const v2 = U(t, 'verify');
+  ok(v2.code === 1 && /후보 밖 폴더가 사라짐 claude-plugins-official\//.test(v2.out), 'K 그 폴더가 사라지면 verify 가 잡는다');
+});
+
+// ── L 가드 규칙 id 를 인용하는 문서 줄 ──
+await scenario('L', async () => {
+  const t = setup('l', 'instrumented');
+  t.w('.claude/commands/save.md', '# save\n\n- push 가 가드 규칙 rm-root 에 막히면 사람이 직접 친다\n- rm-rootx 는 다른 낱말이다\n');
+  ok(U(t, 'scan', '--refresh').code === 0, 'L scan');
+  const refs = t.state().plan.refs.filter((r) => r.path === '.claude/commands/save.md');
+  ok(refs.length === 1 && refs[0].line === 3, `L 남을 참조: config 의 deny 규칙 id(rm-root)를 인용한 줄 하나 (${refs.map((r) => r.line).join(',')})`);
+  U(t, 'answer', 'purpose=remove', '--recommended'); U(t, 'backup'); U(t, 'apply'); U(t, 'plugin'); U(t, 'records');
+  const v = U(t, 'verify');
+  ok(/INFO 남은 참조 \d+줄 .*가드 규칙 id rm-root/.test(v.out) && /\.claude\/commands\/save\.md: 3행/.test(v.out), 'L verify: config 를 지운 뒤에도 그 줄을 남은 참조로 낸다');
+});
+
+// ── M docs-setup record 가 영수증 config 해시를 고친다 ──
+await scenario('M', async () => {
+  const t = setup('m', 'light');
+  t.w('harness.install.json', t.r('harness.install.json').replace(/\n/g, '\r\n'));
+  t.w('harness.config.mjs', t.r('harness.config.mjs').replace("    always: [],\n", "    always: ['README.md'], // harness-kit:docs-setup — 시험\n"));
+  const rec = run(CS, 'record', t.repo);
+  const raw = t.r('harness.install.json');
+  ok(rec.code === 0 && /harness\.config\.mjs 해시를 지금 판으로 고쳤다/.test(rec.out), `M record: config 해시를 고쳤다 (${last(rec)})`);
+  ok(/\r\n/.test(raw) && !/[^\r]\n/.test(raw), 'M record 뒤에도 영수증은 CRLF 다');
+  ok(U(t, 'scan', '--refresh').code === 0, 'M scan');
+  const c = t.state().plan.candidates.find((x) => x.id === 'file:harness.config.mjs');
+  ok(c && c.status === 'clean', `M 걷어내기 scan: docs-setup 이 고친 config 가 「설치 뒤 손댄 파일」이 아니다 (${c && c.status})`);
+});
+
+// ── N 목적 질문의 선택지 ──
+await scenario('N', async () => {
+  const t = setup('n1', 'instrumented');
+  const sc = U(t, 'scan');
+  ok(/^ {2}remove {4}완전 제거 — 지움: .*kit 키 enabledPlugins\."harness-kit@harness-kit" · extraKnownMarketplaces\."harness-kit".* 새 세션: /m.test(sc.out) && /^ {2}reinstall 재설치 — 지움: .*완전 제거와 같은 파일.* 남음: kit 키 .* 새 세션: harness-install 이 뜬다/m.test(sc.out), 'N 계측: 완전 제거·재설치 선택지가 지우는 것·남는 것·새 세션을 말한다');
+  ok(/^ {2}lower {5}범위 낮추기\(계측 → 라이트\)/m.test(sc.out), 'N 계측: 범위 낮추기 선택지를 낸다');
+  const lw = U(t, 'answer', 'purpose=lower');
+  ok(lw.code === 2 && / scan "[^"]+" "--refresh" "--tier" "light"/.test(lw.out), 'N purpose=lower 는 scan --refresh --tier light 로 안내한다');
+  const l = setup('n2', 'light');
+  const sl = U(l, 'scan');
+  ok(!/^ {2}lower /m.test(sl.out) && /범위 낮추기 없음 — 지금 범위가 이미 라이트다/.test(sl.out), 'N 라이트: 범위 낮추기 선택지가 없다');
 });
 
 console.log(`\nscenarios: pass=${pass} fail=${fail}`);

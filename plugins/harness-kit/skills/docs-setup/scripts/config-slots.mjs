@@ -2,14 +2,18 @@
 // docs-setup 이 harness.config.mjs 에 채운 칸 — 표시로 찾고, 영수증에 적고, 걷어내기 백업에서 되살린다.
 // 사용:
 //   node config-slots.mjs list <레포 루트> [--json <파일>]          표시가 붙은 칸 · 값 · 영수증 기록과의 대조
-//   node config-slots.mjs record <레포 루트>                       harness.install.json 이 있으면 owners["docs-setup"] 에 칸과 값을 적는다
-//   node config-slots.mjs backups <레포 루트> [--json <파일>]       걷어내기 백업에 남은 칸 · 가리키는 경로가 있는가 · 권장
+//   node config-slots.mjs record <레포 루트>                       harness.install.json 이 있으면 owners["docs-setup"] 에 칸과 값을 적고,
+//                                                                 files 의 config 해시를 지금 판으로 고친다(걷어내기가 「손댄 파일」로 보지 않게)
+//   node config-slots.mjs backups <레포 루트> [--json <파일>]       걷어내기 백업에 남은 칸 · 가리키는 경로가 있는가 · 권장.
+//                                                                 백업은 이 트리 · 메인 트리 · 다른 worktree 의 git 자리를 모두 본다.
+//                                                                 docs-setup 소유가 아닌 kit 문서·메모리 칸 값은 PREV 줄로 낸다(재설치 D8 의 근거)
 //   node config-slots.mjs restore <레포 루트> --backup <백업 디렉토리> [--slots <칸,칸>]   그 백업의 칸을 지금 config 에 되살린다
 // 표시: 칸 줄 끝 주석이 `// harness-kit:docs-setup` 으로 시작한다. 칸 하나는 한 줄에 쓴다. docs-setup 이 새로 연 블록은
 //       여는 줄에 같은 표시를 단다. harness-uninstall 의 표시(`harness-kit:begin`·`harness-kit:line`)와 겹치지 않는다.
 // 이 스크립트는 git 에 쓰지 않는다. 파일을 쓰는 것은 record(영수증)와 restore(config) 뿐이다.
 import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -272,6 +276,18 @@ function writeJsonKeep(file, { json, bom, crlf, endNl }) {
   if (crlf) out = out.replace(/\n/g, '\r\n');
   writeFileSync(file, (bom ? '﻿' : '') + out, 'utf8');
 }
+/**
+ * 영수증 `files` 의 config 해시를 지금 config 글로 맞춘다 — write-manifest · harness-uninstall 의 `fileSha` 와 같은 계산
+ * (줄끝을 LF 로 맞춘 UTF-8 내용의 sha256). harness-uninstall 범위 낮추기의 영수증 갱신(updateReceipt)과 같은 일이다.
+ * docs-setup 이 config 를 고친 뒤 이것을 하지 않으면 다음 걷어내기가 config 를 「설치 뒤 손댄 파일」(modified)로 본다.
+ * @returns {{ changed: boolean }}
+ */
+export function refreshConfigHash(manifestJson, configText) {
+  const sha = createHash('sha256').update(configText.replace(/^﻿/, '').replace(/\r\n/g, '\n'), 'utf8').digest('hex');
+  let changed = false;
+  for (const f of manifestJson.files || []) if (f.path === CONFIG && f.sha256 !== sha) { f.sha256 = sha; changed = true; }
+  return { changed };
+}
 const personal = (v) => {
   const s = String(v).replace(/\\/g, '/');
   const home = os.homedir().replace(/\\/g, '/').toLowerCase();
@@ -303,13 +319,56 @@ export async function slotsFromBackup(dir) {
   return { dir, at: (idx && idx.at) || path.basename(dir), purpose: (idx && idx.purpose) || null, slots, blocks: fromText.blocks, errors: fromText.errors, manifest: (ds && ds.manifest) || null };
 }
 
-export async function listBackups(root) {
-  const base = gitPath(root, 'harness-uninstall-backup');
-  if (!existsSync(base)) return { base, runs: [] };
-  const dirs = readdirSync(base).map((d) => path.join(base, d)).filter((d) => statSync(d).isDirectory()).sort().reverse();
+/**
+ * 걷어내기 백업이 놓이는 곳 — harness-uninstall 은 그 트리의 `git-path`(메인 트리면 `.git/`, worktree 면 `.git/worktrees/<이름>/`)
+ * 아래 `harness-uninstall-backup/` 에 쓴다. 그래서 이 트리 것만 보면, 새 worktree 에서 돌린 재설치가 메인 트리의 백업을 0개로 본다
+ * (시험 설치에서 그랬다). 이 트리 → 메인 트리(git-common-dir) → 다른 worktree 순으로 모두 본다. 같은 자리는 한 번만.
+ * @returns {{ dir: string, where: string }[]}
+ */
+export function backupBases(root) {
+  const git = (...a) => path.resolve(root, execFileSync('git', ['-C', root, 'rev-parse', ...a], { encoding: 'utf8' }).trim());
+  const out = [], seen = new Set();
+  const add = (dir, where) => { const k = dir.replace(/\\/g, '/').toLowerCase(); if (seen.has(k)) return; seen.add(k); out.push({ dir, where }); };
+  add(gitPath(root, 'harness-uninstall-backup'), '이 트리');
+  const common = git('--git-common-dir');
+  add(path.join(common, 'harness-uninstall-backup'), '메인 트리');
+  const wt = path.join(common, 'worktrees');
+  if (existsSync(wt)) for (const d of readdirSync(wt).sort()) add(path.join(wt, d, 'harness-uninstall-backup'), `worktree ${d}`);
+  return out;
+}
+/** 모든 자리의 백업 디렉토리 — 시각(디렉토리 이름)이 새것부터. */
+export function backupRuns(root) {
   const runs = [];
-  for (const d of dirs) runs.push(await slotsFromBackup(d));
-  return { base, runs };
+  for (const b of backupBases(root)) {
+    if (!existsSync(b.dir)) continue;
+    for (const d of readdirSync(b.dir)) { const dir = path.join(b.dir, d); if (statSync(dir).isDirectory()) runs.push({ dir, at: d, where: b.where }); }
+  }
+  return runs.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
+}
+
+export async function listBackups(root) {
+  const bases = backupBases(root);
+  const runs = [];
+  for (const r of backupRuns(root)) runs.push({ ...(await slotsFromBackup(r.dir)), where: r.where });
+  return { base: bases[0].dir, bases: bases.map((b) => b.dir), runs };
+}
+
+/**
+ * 백업 config 에 남은 kit 문서·메모리 칸 가운데 docs-setup 소유가 아닌 것(`project.docs.domainIndex` 등).
+ * 이 칸은 harness-install D8 이 정한 값이라 docs-setup 이 되살리지 않는다 — 재설치 D8 이 이 값을 권한다.
+ */
+export async function kitValuesFromBackup(dir) {
+  const f = path.join(dir, 'files', CONFIG);
+  if (!existsSync(f)) return [];
+  let cfg;
+  try { cfg = await importConfig(f); } catch { return []; }
+  const out = [];
+  for (const blk of ['docs', 'memory']) {
+    const o = cfg.project && cfg.project[blk];
+    if (!o || typeof o !== 'object') continue;
+    for (const [k, v] of Object.entries(o)) { const p = `project.${blk}.${k}`; if (!OWNED.includes(p)) out.push({ path: p, value: v }); }
+  }
+  return out;
 }
 
 // ── restore — 지금 config 에 칸을 넣거나 바꾼다 ─────────────────────────────────
@@ -492,16 +551,26 @@ async function main() {
     if (slots.length || o.blocks.length) owners['docs-setup'] = { marker: MARK, recordedAt: new Date().toISOString(), blocks: o.blocks.map((b) => b.path), slots: slots.map(({ path: p, value }) => ({ path: p, value })) };
     else delete owners['docs-setup'];
     if (Object.keys(owners).length) manifest.json.owners = owners; else delete manifest.json.owners;
+    const h = refreshConfigHash(manifest.json, text);
     writeJsonKeep(mPath, manifest);
     console.log(`OK   ${MANIFEST} owners["docs-setup"] — 칸 ${slots.length}개 · 블록 ${o.blocks.length}개 (설치가 쓴 칸은 건드리지 않았다)`);
+    if (h.changed) console.log(`OK   ${MANIFEST} files 의 ${CONFIG} 해시를 지금 판으로 고쳤다 — 걷어내기가 docs-setup 이 고친 config 를 「설치 뒤 손댄 파일」로 보지 않게`);
     return;
   }
 
   if (cmd === 'backups') {
-    const { base, runs } = await listBackups(root);
+    const { base, bases, runs } = await listBackups(root);
     const withSlots = runs.filter((r) => r.slots.length);
-    console.log(`걷어내기 백업 ${runs.length}개 (${base.split(path.sep).join('/')}) · docs-setup 칸이 든 것 ${withSlots.length}개`);
-    if (!withSlots.length) { out({ base, runs: runs.map((r) => ({ dir: r.dir, at: r.at, slots: [] })), latest: null }); console.log('되살릴 docs-setup 칸 없음 — 묻지 않는다'); return; }
+    console.log(`걷어내기 백업 ${runs.length}개 (본 자리 ${bases.length}곳: ${bases.map((b) => b.split(path.sep).join('/')).join(' · ')}) · docs-setup 칸이 든 것 ${withSlots.length}개`);
+    for (const r of runs) console.log(`  ${r.at} — ${r.where}`);
+    // docs-setup 소유가 아닌 kit 문서·메모리 칸 — harness-install D8 이 재설치 때 권할 값(가장 새 백업 config 에서)
+    let kit = [], kitAt = null;
+    for (const r of runs) { const k = await kitValuesFromBackup(r.dir); if (k.length) { kit = k; kitAt = r.at; break; } }
+    for (const k of kit) {
+      const refs = typeof k.value === 'string' && /[\\/]|\.[A-Za-z]{1,6}$/.test(k.value) && !/\s/.test(k.value) ? [{ ref: k.value, ok: existsSync(path.join(root, k.value.replace(/\/+$/, ''))) }] : [];
+      console.log(`PREV ${k.path} = ${JSON.stringify(k.value)} (백업 ${kitAt} · docs-setup 소유 아님 — harness-install D8 이 권할 값)${refs.length ? ` | ${refs.map((x) => `${x.ref} ${x.ok ? '있음' : '없음'}`).join(' · ')}` : ''}`);
+    }
+    if (!withSlots.length) { out({ base, bases, runs: runs.map((r) => ({ dir: r.dir, at: r.at, where: r.where, slots: [] })), latest: null, kit: { at: kitAt, slots: kit } }); console.log('되살릴 docs-setup 칸 없음 — 묻지 않는다'); return; }
     const latest = withSlots[0];
     let cur = null;
     if (existsSync(cfgPath)) { try { cur = await importConfig(cfgPath); } catch { cur = null; } }
@@ -511,7 +580,7 @@ async function main() {
       const verdict = m.scalarMissing ? 'skip' : 'restore';
       return { path: s.path, backup: s.value, now: cur ? getPath(cur, s.path) ?? null : null, restore: m.value, refs, notes: m.notes, verdict };
     });
-    console.log(`최신: ${latest.at}${latest.purpose ? ` (목적 ${latest.purpose})` : ''} — ${latest.dir.split(path.sep).join('/')}`);
+    console.log(`최신: ${latest.at}${latest.purpose ? ` (목적 ${latest.purpose})` : ''} · ${latest.where} — ${latest.dir.split(path.sep).join('/')}`);
     for (const e of latest.errors) console.log(`WARN ${e}`);
     for (const r of rows) {
       const refTxt = r.refs.length ? r.refs.map((x) => `${x.ref} ${x.ok === null ? '확인 불가' : x.ok ? '있음' : '없음'}`).join(' · ') : '가리키는 경로 없음';
@@ -521,7 +590,7 @@ async function main() {
     console.log(`권장: ${allOk ? '되살림 — 가리키는 폴더·파일이 모두 남아 있다' : '골라 되살림 — 없는 경로가 있는 칸(SKIP·「없는 경로」)은 빼고 되살린다'}`);
     console.log(`되살리기: node "${fileURLToPath(import.meta.url).split(path.sep).join('/')}" restore "${root.split(path.sep).join('/')}" --backup "${latest.dir.split(path.sep).join('/')}"${allOk ? '' : ` --slots ${rows.filter((r) => r.verdict === 'restore').map((r) => r.path).join(',')}`}`);
     if (runs.length > 1) console.log(`INFO 앞선 백업 ${runs.length - 1}개는 보지 않는다(최신 것이 마지막 설치의 값이다)`);
-    out({ base, latest: { dir: latest.dir, at: latest.at, rows }, recommend: allOk ? 'restore' : 'pick', runs: runs.map((r) => ({ dir: r.dir, at: r.at, slots: r.slots.length })) });
+    out({ base, bases, latest: { dir: latest.dir, at: latest.at, where: latest.where, rows }, recommend: allOk ? 'restore' : 'pick', runs: runs.map((r) => ({ dir: r.dir, at: r.at, where: r.where, slots: r.slots.length })), kit: { at: kitAt, slots: kit } });
     return;
   }
 
