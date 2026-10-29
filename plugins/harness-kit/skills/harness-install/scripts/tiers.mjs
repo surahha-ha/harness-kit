@@ -58,6 +58,7 @@ export const deferredInLight = (projectPath) => LIGHT_DEFERRED.some((x) => under
 /**
  * 계측에서만 채우는 config 칸(앞머리). 라이트에서는 example 기본값 그대로(게이트 칸)이거나 키 없음(docs-setup 이 정하는 kit 칸)이다.
  * `testFirst` 는 범위 표에 들지 않는다 — `auditOnStop` 만 턴 종료 훅이 있어야 돌아 계측에 둔다.
+ * kit `project.review.*`(사후리뷰 설정)도 넣지 않는다 — review-pending 은 관찰 훅·계측 로그 없이 git 과 config 만 읽는 라이트 칸이다.
  */
 export const INSTRUMENTED_SLOTS = [
   'testFirst.auditOnStop', 'qualityCycle.evidence', 'drift', 'metrics', 'promotion',

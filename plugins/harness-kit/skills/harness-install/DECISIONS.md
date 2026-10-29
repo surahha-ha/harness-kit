@@ -99,6 +99,7 @@
 | D7 `qualityCycle.evidence` · `drift.mirrors` | 묻지 않는다 — example 기본값(비움) | 묻는다 |
 | D7 `project.memory.slugs` · D8 kit `project.docs.archiveDir`·`pathValidator`·`autoloaded` — **docs-setup 이 정하는 넷뿐**(`tiers.mjs` `LIGHT_DEFERRED` = docs-setup `ARCHIVE_CYCLE`) | 묻지 않는다 — **키를 넣지 않는다**(읽는 자산이 쓸 때 묻는다 · `install.mjs slots` 가 `DEFER` 로 낸다). 10단계 문서 구조 질문이 채운다 | 묻는다 |
 | D8 kit `project.docs.domainIndex`·`screenMap`·`repoMap`·`testGuide`·`uiUxRules` · `project.memory.policy` | **묻는다** — docs-setup 이 채우지 않는 칸이다. 키 없이 두면 `slots` 가 실패한다 | 묻는다 |
+| D8 kit `project.review.*`(사후리뷰 설정 — D8 「사후리뷰 설정」) | **묻는다** — 라이트 칸이다. `/harness-kit:review-pending` 은 관찰 훅·계측 로그 없이 git 과 config 만 읽는다 | 묻는다 |
 | D8 그 밖의 kit 칸(`commands`·`risk`·`git`·`contract` …) | D8 대로 | D8 대로 |
 | D8-2 문서 칸 되살리기 | 백업에 값이 있으면 묻는다 — 되살리면 그 칸은 키가 생긴다 | 묻는다 |
 | D9 graft 사용 · D10 전역 상태 줄 | 묻는다 — 범위와 따로인 선택 항목이다. graft 훅은 `settings.local.json` 에만 들고 `.harness/` 를 가리키지 않아 범위의 훅 수(`install.mjs hooks`)에 들지 않는다 | 묻는다 |
@@ -515,6 +516,7 @@ harness-kit 의 스킬·커맨드·에이전트는 config `project` 블록의 �
 | `risk.sharedDbSuites`·`sharedDbProfiles`·`destructive` | save · change-verifier · data-migration | 실행 전 환경 확인 안내 | D2·D2-2 근거로 채운다 — 비우지 않는다(없으면 `[]`) |
 | `risk.devServer` | frontend-engineer | dev 서버 프록시 경고 | 근거로 채운다. 프록시가 없으면 `null` + 주석 |
 | `git.*` | save · frontend-engineer | 커밋·push 단계 | **묻는다**(D5) |
+| `review.notesRef`·`integrationBranch`·`remote`·`batchAsk` | review-pending · save(`notesRef`) | `review` 또는 `notesRef` 가 `null` 이면 사후리뷰 전체 · `remote` 가 `null` 이면 원격 기록 받기·올리기 · `integrationBranch` 가 `null` 이면 기본 범위의 첫 자리(`@{upstream}..HEAD` 로 간다) · `batchAsk` 가 `null` 이면 많을 때 묻기 | **두 범위 모두 묻는다**(아래 「사후리뷰 설정」). 임계는 `git.reviewThreshold`(D5)를 같이 쓴다 — 여기에 다시 두지 않는다 |
 | `docs.domainIndex`·`screenMap`·`repoMap`·`testGuide`·`uiUxRules` | fe-be-trace · qa-cycle · ui-ux-guide · 에이전트 | 그 문서를 읽는 단계 | **두 범위 모두** 근거로 채운다(파일이 있을 때만). 없으면 `null` + 자산 이름 주석. 재설치면 `slots` 의 `PREV` 값을 권한다(아래 주) |
 | `docs.archiveDir`·`pathValidator`·`autoloaded` | archive-cycle | ④ 레포 문서 이동 · ⑤-2 경로 검사 · ① 상시 적재 계측 | **근거가 있을 때만** 채운다. 없으면 `null` + 주석(아래 주) |
 | `memory.slugs` | archive-cycle · qa-cycle | 메모리 계측·정리 | D7 규칙대로(근거 있을 때만, 대소문자 차이는 하나로) |
@@ -549,6 +551,39 @@ harness-kit 의 스킬·커맨드·에이전트는 config `project` 블록의 �
   - `docs/task/goal-`·`docs/phase` 같은 앞머리는 아직 살아 있는 같은 이름의 문서까지 검사에서 뺀다(사고: PITFALLS §4).
   - 넣을 수 있는 것은 아카이브 폴더 하나(`<archiveDir>/`)나 끝난 문서의 파일 경로뿐이다.
   - 근거가 없으면 `[]` 로 둔다.
+
+**사후리뷰 설정 — `project.review` 네 칸을 한 번에 묻는다**
+
+`/harness-kit:review-pending` 은 save 의 리뷰를 거치지 않은 커밋을 나중에 리뷰하고, 결과를 git notes 에 남긴다. 네 칸을 칸마다 아래 표로 계산한다. 계산한 값 표를 응답 본문에 먼저 낸 뒤에 묻는다(TEMPLATES.md §8 `사후리뷰 설정` 꼴).
+
+- 라이트 칸이다. `tiers.mjs` `INSTRUMENTED_SLOTS` 에 넣지 않는다. 관찰 훅·계측 로그 없이 돈다.
+- 임계는 `git.reviewThreshold`(D5)다. `review` 에 같은 값을 다시 두지 않는다.
+
+| 칸 | 관찰 | 권장 값 |
+| - | - | - |
+| `notesRef` | 레포 문서·`git for-each-ref refs/notes/` 에 이미 쓰는 리뷰 기록 ref 가 있다 | 그 이름(`refs/notes/` 뒤) |
+| `notesRef` | 없다 | `'harness-review'` — kit 의 기본 이름 |
+| `remote` | `git remote` 가 하나다 | 그 이름 |
+| `remote` | 여럿이고 `origin` 이 있다 | `'origin'` |
+| `remote` | 여럿이고 `origin` 이 없다 | 판단 근거 부족 |
+| `remote` | 없다 | `null` + 주석 「원격 없음 — review-pending 의 기록 받기·올리기가 건너뛴다」 |
+| `integrationBranch` | 레포 문서가 MR·PR 대상 브랜치를 적는다 | 그 브랜치 |
+| `integrationBranch` | `git symbolic-ref refs/remotes/<remote>/HEAD` 가 있다 | 그 브랜치 |
+| `integrationBranch` | 0단계 `precheck` 가 낸 메인 트리 브랜치(9단계 `commit-where` 의 작업 브랜치)가 있다 | 그 브랜치 |
+| `integrationBranch` | 셋 다 없다 | 판단 근거 부족 |
+| `batchAsk` | (어느 관찰이든) | `5` — 이보다 많으면 리뷰 전에 묻는다 |
+
+| 관찰 | 권장 |
+| - | - |
+| 네 칸 모두 권장 값이 있다 | **표대로** — 권장 이유: 칸마다 위 표의 관찰(파일:행·명령 결과)을 적는다 |
+| 한 칸이라도 판단 근거 부족 | 권장 없음 — 그 칸과 찾지 못한 것을 적는다. 직접 골라 주세요 |
+
+- 선택지 — 바뀌는 것
+  - **표대로** — `project.review` 에 네 칸이 표의 값으로 들어간다. `null` 칸에는 주석이 붙는다.
+  - **값 고쳐서** — 사용자가 칸 값을 적는다. 고친 칸은 체크포인트 답에 `followed: false` 로 남긴다.
+  - **사후리뷰 끔** — `review: null, // review-pending 이 건너뛴다(사후리뷰 끔)` 한 줄. save 도 리뷰 기록을 남기지 않는다.
+- `null` 칸의 주석에는 `review-pending` 과 꺼지는 단계를 적는다. `install.mjs slots` 가 주석에 읽는 자산 이름이 없으면 실패로 낸다.
+- 체크포인트에는 `D8` 답의 `recs` 에 칸마다 한 줄(`item: "review.remote"` 등)을 적는다.
 
 ### D8-2. 문서 칸 되살리기 — 앞선 걷어내기 백업에 docs-setup 값이 있을 때만
 

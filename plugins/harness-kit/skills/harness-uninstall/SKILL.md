@@ -56,6 +56,7 @@ description: 지금 레포에서 harness-install 이 넣은 것만 걷어 낸다
   - `git restore`·`git checkout -- <파일>`·커밋 되돌리기로 걷어 내지 않는다.
   - 이유: 같은 파일의 하네스와 무관한 변경까지 되돌린 사고가 있었다([PITFALLS.md](PITFALLS.md) §4).
   - 예외는 HEAD 와 내용이 같고 줄끝만 다른 파일 하나뿐이다(6단계 · PITFALLS §6).
+  - 사후리뷰 기록(git notes ref · fetch refspec)은 넣은 것이 아니라 사용자 데이터다. 후보가 아니다. 보고에 지우는 명령만 적는다(8단계).
 - **묻는다**
   - 결정마다 권장과 근거를 보이고 묻는다([DECISIONS.md](DECISIONS.md)).
   - 고르는 것은 사용자다.
@@ -588,6 +589,12 @@ R=<레포 루트>; B=<브랜치>
   - 재설치할 수 있으면, 백업을 레포 밖으로 옮겨 두라고 적는다.
   - **앞선 걷어내기의 백업·증거 사본**도 함께 적는다(요약의 「앞선 백업」·「앞선 증거 사본」 줄).
   - 앞선 증거 사본은 손으로 지워야 남지 않는다고 적는다.
+- **사후리뷰 기록** — 요약의 「리뷰 기록(사용자 데이터 — 남겼다)」 줄과 「지우려면」 줄을 그대로 옮긴다.
+  - 대상: `refs/notes/<notesRef>` · 받아 둔 기록 `refs/notes/<notesRef>-<remote>` · `remote.<remote>.fetch` 의 notes refspec
+  - 이것은 설치물이 아니라 `/harness-kit:review-pending`·save 가 남긴 리뷰 결과다. 후보로 뽑지 않고 지우지 않는다.
+  - 기본은 남긴다. 사용자가 지우겠다고 하면 그 줄의 명령을 건넨다. 이 스킬이 대신 돌리지 않는다.
+  - 원격의 같은 ref 는 팀 공용이라 다루지 않는다.
+  - 줄이 없으면(기록·refspec 이 없거나 config 에 `notesRef` 가 없었다) 적지 않는다.
 - **docs-setup 칸** — 요약의 「docs-setup 칸 N개」 줄을 지운 항목과 따로 옮긴다.
   - 옮길 것: 칸과 값 · 백업 config 경로 · 되살리는 길
   - 되살리는 길: docs-setup 다시 돌리기 · 재설치면 harness-install D8-2

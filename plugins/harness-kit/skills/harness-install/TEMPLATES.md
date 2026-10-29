@@ -166,6 +166,7 @@
 | `testFirst.auditOnStop` · `qualityCycle.evidence` · `drift` · `metrics` · `promotion` · 게이트 `docs.always`·`docs.archive` | example 기본값 그대로(턴 종료 훅이 없어 읽는 쪽이 없다) | 2단계 답대로 |
 | kit `project.docs.archiveDir`·`pathValidator`·`autoloaded` · `project.memory.slugs` — docs-setup 이 정하는 넷 | **키를 넣지 않는다.** 키가 없으면 읽는 자산이 쓸 때 멈추고 묻는다(`null` 과 달리 말없이 건너뛰지 않는다) | D8 대로 |
 | kit `project.docs.domainIndex`·`screenMap`·`repoMap`·`testGuide`·`uiUxRules` · `project.memory.policy` | D8 대로(재설치면 `PREV` 값을 권한다) | D8 대로 |
+| kit `project.review.*`(사후리뷰 설정) | D8 대로 — 라이트에서도 묻는다(관찰 훅 없이 돈다) | D8 대로 |
 | 그 밖의 kit `project` 칸 | D8 대로 | D8 대로 |
 
 라이트에서 넣지 않은 넷은 10단계 문서 구조 질문(docs-setup)이 채운다. docs-setup 은 그 넷만 채운다 — 나머지 문서·메모리 칸을 라이트에서 미루면 아무도 채우지 않는다.
@@ -173,6 +174,17 @@
 넷의 목록은 `scripts/tiers.mjs` 의 `LIGHT_DEFERRED` 다. 그 목록은 docs-setup `config-slots.mjs` 의 `ARCHIVE_CYCLE` 과 같아야 한다(`tiers.test.mjs` ① 이 대조한다).
 
 범위 밖 칸의 목록은 `scripts/tiers.mjs` 의 `INSTRUMENTED_SLOTS` 가 기준이다 — 영수증 `config.slots` 의 `tier` 와 answer-trace 의 `TIER` 줄이 그것을 읽는다.
+
+`project.review` 는 두 범위에 같은 꼴로 넣는다. `null` 칸에는 꺼지는 자산과 단계를 주석으로 단다.
+
+```js
+    review: {
+      notesRef: 'harness-review',
+      integrationBranch: '<브랜치>',
+      remote: null, // 원격 없음 — review-pending 의 기록 받기·올리기가 건너뛴다
+      batchAsk: 5,
+    },
+```
 
 - 시작·끝 표시는 절 전체를 감싼다.
   - 표시 줄에는 앞뒤 공백 말고는 그 문자열만 있어야 한다.
@@ -376,6 +388,10 @@ example 을 복사한 직후 **첫 줄 앞에** 한 줄을 넣는다(Edit). 정�
 | `testFirst` · 경계표 | 테스트 없이 소스를 고치면 막는 가드 · 어느 소스에 테스트가 먼저 있어야 하는지 정한 표 |
 | `drift.mirrors` | 레포 안 사본이 원본과 달라지면 알린다 |
 | `reviewThreshold` | 이만큼 넘게 바뀌면 커밋 전에 리뷰를 돌린다(파일 수·줄 수) |
+| 사후리뷰 · `review-pending` | 이미 한 커밋 가운데 리뷰를 거치지 않은 것을 나중에 리뷰한다 |
+| notes · `review.notesRef` | 커밋을 바꾸지 않고 커밋 옆에 붙여 두는 메모. 여기에 리뷰 결과(pass·fail)를 적는다 |
+| `review.integrationBranch` | 작업 브랜치를 합쳐 넣는 브랜치. 여기에 아직 없는 커밋을 리뷰 대상으로 본다 |
+| `review.batchAsk` | 리뷰할 커밋이 이 수보다 많으면 리뷰 전에 묻는다 |
 | probe · 프로브 | 훅이 실제로 도는지 확인하는 가짜 명령. 아무것도 막지 않는다 |
 | 라이트 · 설치 범위 | 위험한 명령을 실행 전에 막는 가드 하나만 건다. 관찰·기록은 하지 않는다 |
 | 계측 | 막는 가드에 더해, 턴마다 무엇을 했는지 관찰해 기록(계측 로그)한다. 하네스 자체를 개발·평가하는 설치처용이다 |
@@ -487,6 +503,26 @@ D6-2. <플러그인> 을 이 레포에서 끄면, 폴더를 통째로 지우는 
 3. 막지 않음
    바뀌는 것: 이 레포에서 묻지 않고 실행된다. 보고의 「빈자리」 목록에 남는다
 
+(응답 본문에 먼저 — 질문 창에는 표가 보이지 않는다)
+| 칸 | 권장 값 | 근거 |
+| - | - | - |
+| review.notesRef | 'harness-review' | 레포에 리뷰 기록 ref 없음(git for-each-ref refs/notes/ — 0개) |
+| review.remote | 'origin' | git remote — origin 하나 |
+| review.integrationBranch | '<브랜치>' | git symbolic-ref refs/remotes/origin/HEAD → origin/<브랜치> |
+| review.batchAsk | 5 | 기본값 |
+
+header: 사후리뷰 설정
+D8. 이미 한 커밋 가운데 리뷰를 거치지 않은 것을 나중에 리뷰하고, 결과를 커밋 옆 메모(git notes)에 남깁니다. 위 표대로 둘까요? 리뷰 크기 기준은 앞에서 정한 리뷰 문턱(git.reviewThreshold)을 같이 씁니다. (project.review.* — /harness-kit:review-pending)
+근거: 위 표의 근거 칸
+
+1. 표대로 (권장)
+   권장 이유: 네 칸 모두 이 레포의 관찰로 값을 정했다(origin 하나 · 원격 기본 브랜치 <브랜치>)
+   바뀌는 것: project.review 에 네 칸. 리뷰 기록은 refs/notes/harness-review 에 쌓이고, 올리기는 review-pending 이 매번 묻는다
+2. 값 고쳐서
+   바뀌는 것: 적어 준 값으로 넣는다
+3. 사후리뷰 끔
+   바뀌는 것: review: null 한 줄. review-pending 이 돌지 않고, save 도 리뷰 기록을 남기지 않는다
+
 header: 문서칸 되살리기
 D8-2. 지난번 하네스를 걷어 낼 때 문서 정리 설정(아카이브 폴더 위치 등 <N>칸)이 백업에 남았습니다. 이번 설정에 그 값을 다시 넣을까? (docs-setup 이 채운 project.docs.* · memory.slugs · 게이트 docs.*)
 근거: 백업 <시각> · 가리키는 폴더·파일 <K>개 중 <K>개 있음(<아카이브 폴더> · <CLAUDE.md> …)
@@ -554,6 +590,7 @@ D10. Claude Code 아래 상태 줄에 지금 쓰는 줄과 graft 줄을 함께 �
 | D5 (push — 근거 줄에 가드 push 규칙) | `save push방식` | 11 |
 | D7 (testFirst) | `테스트먼저 가드` | 8 |
 | D7 (증거 슬롯) | `완료증거 관찰` | 7 |
+| D8 (사후리뷰) | `사후리뷰 설정` | 7 |
 | D8-2 | `문서칸 되살리기` | 8 |
 | D9 | `graft 사용` | 8 |
 | D10 | `전역 상태줄 합치기` | 10 |

@@ -267,6 +267,7 @@ description: 지금 레포에 harness-agent 게이트(.harness/ 훅)와 harness-
   - kit 칸 가운데 docs-setup 이 정하는 넷(`project.docs.archiveDir`·`pathValidator`·`autoloaded`·`project.memory.slugs`)만 키를 넣지 않는다(TEMPLATES.md §4 「라이트 config 의 꼴」).
   - 키가 없는 그 넷은 10단계 문서 구조 질문이 채운다.
   - 그 밖의 문서·메모리 칸(`domainIndex`·`screenMap`·`repoMap`·`testGuide`·`uiUxRules`·`memory.policy`)은 라이트도 D8 에서 묻고 채운다.
+  - 사후리뷰 칸 `project.review.*` 도 라이트에서 D8 「사후리뷰 설정」으로 묻고 채운다. 관찰 훅 없이 도는 라이트 칸이다.
 - **재설치면** `install.mjs slots` 의 `PREV` 줄(앞선 걷어내기 백업 config 의 값)을 D8 의 권장으로 쓴다.
   - 백업은 이 트리 · 메인 트리 · 다른 worktree 의 것을 모두 본다(`config-slots.mjs backups` 와 같은 목록).
 - **kit 자산이 읽는 칸은 비워 두지 않는다.**
@@ -294,6 +295,7 @@ description: 지금 레포에 harness-agent 게이트(.harness/ 훅)와 harness-
   - 범위는 체크포인트 `tier` 에서 읽는다.
   - 라이트에서 docs-setup 이 정하는 넷의 「키 없음」만 `DEFER` 줄로 나오고 실패가 아니다.
   - 그 밖의 문서·메모리 칸이 키 없으면 라이트도 `FAIL` 이다 — D8 에서 묻고 채운다.
+  - `project.review.*` 가 키 없으면 두 범위 모두 `FAIL` 이다.
 
 ## 5. settings.json 반영 — 직접 편집하고 기계 대조
 
