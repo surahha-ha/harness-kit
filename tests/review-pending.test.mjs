@@ -6,7 +6,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { pickDefaultRange, countNumstat, overThreshold, formatNote, parseNote } from '../plugins/harness-kit/scripts/review-pending.mjs';
+import { pickDefaultRange, countNumstat, overThreshold, formatNote, parseNote, pickLanes, parseDiff } from '../plugins/harness-kit/scripts/review-pending.mjs';
 
 // 이 PC 의 git 전역·시스템 설정이 판정에 섞이지 않게 비운다 — 스크립트를 띄우는 자식에도 물려준다
 const EMPTY_GITCONFIG = path.join(mkdtempSync(path.join(os.tmpdir(), 'hk-gitcfg-')), 'gitconfig');
@@ -247,4 +247,102 @@ test('config — 짝 레포는 자기 config 에 없는 칸을 pairOwner 주 레
   assert.equal(cfg.from['review.remote'], 'self');
   assert.deepEqual(cfg.threshold, { files: 2, lines: 50 });
   assert.equal(cfg.from['git.reviewThreshold'], 'pairOwner');
+});
+
+// ── lanes — 리뷰 갈래 고르기 ─────────────────────────────────────────────────
+
+/** 파일 하나의 -U0 diff 글. added·removed 는 줄 배열. */
+function udiff(file, added = [], removed = [], start = 10) {
+  const body = [...removed.map((l) => `-${l}`), ...added.map((l) => `+${l}`)].join('\n');
+  return `diff --git a/${file} b/${file}\n--- a/${file}\n+++ b/${file}\n@@ -${start},${removed.length} +${start},${added.length} @@\n${body}\n`;
+}
+const reasonOf = (r, lane) => r.reasons[lane].map((x) => `${x.file}${x.line ? `:${x.line}` : ''} ${x.kind} ${x.pattern}`);
+
+test('lanes 순수 — 평범한 변경은 A 하나만 켠다', () => {
+  const r = pickLanes(udiff('src/order/total.js', ['const sum = items.reduce((a, b) => a + b.price, 0);', '// select the cheapest item from the list']));
+  assert.deepEqual(r.lanes, ['A']);
+  assert.deepEqual(r.reasons, { B: [], C: [] }, '주석 속 소문자 select … from 은 SQL 로 보지 않는다');
+});
+
+test('lanes 순수 — B 는 경로 낱말 · SQL 문자열 결합 · 비밀값 리터럴 · 지운 인가 검사로 켜고 이유를 낸다', () => {
+  const r = pickLanes(
+    udiff('src/web/LoginController.java', ['return ok();'])
+    + udiff('src/user/find.js', ['const q = "SELECT * FROM users WHERE id = " + id;'])
+    + udiff('src/conf/app.js', ['const apiKey = "sk_live_abcdef123";', 'const password = "<password>";'])
+    + udiff('src/admin/Panel.java', [], ['    @PreAuthorize("hasRole(\'ADMIN\')")'], 40),
+  );
+  assert.deepEqual(r.lanes, ['A', 'B', 'C']);
+  assert.deepEqual(reasonOf(r, 'B'), [
+    'src/web/LoginController.java path path:login',
+    'src/user/find.js:10 added sql-concat',
+    'src/conf/app.js:10 added secret-literal',
+    'src/admin/Panel.java:40 removed auth-check-removed',
+  ], 'camelCase 경로를 끊어 login 을 찾고, 자리표시 값(<password>)은 비밀값으로 세지 않는다');
+  const secret = r.reasons.B.find((x) => x.pattern === 'secret-literal');
+  assert.equal(secret.text, '<값 가림>', '비밀값 원문을 이유에 옮기지 않는다');
+  assert.deepEqual(reasonOf(r, 'C'), ['src/user/find.js:10 added sql'], 'SQL 문은 C 도 켠다');
+});
+
+test('lanes 순수 — C 는 반복문 몸통 안의 IO·질의·정렬만 본다(반복 대상 식 · 몸통 밖 줄은 아니다)', () => {
+  const inLoop = pickLanes(udiff('src/order/sync.js', ['for (const id of ids) {', '  const row = await db.query(sql, [id]);', '}']));
+  assert.deepEqual(reasonOf(inLoop, 'C'), ['src/order/sync.js:11 added orm-call', 'src/order/sync.js:11 added io-in-loop'], '질의 호출 자체와 반복 안 호출을 둘 다 이유로 낸다');
+  const header = pickLanes(udiff('src/order/count.js', ["for (const l of readFileSync(f, 'utf8').split('\\n')) n++;"]));
+  assert.deepEqual(header.lanes, ['A'], '반복 대상 식은 한 번만 돈다');
+  const after = pickLanes(udiff('src/order/after.js', ['for (const x of xs) n += x;', 'const cfg = await load();']));
+  assert.deepEqual(after.lanes, ['A'], '같은 들여쓰기의 다음 줄은 몸통이 아니다');
+  const sorted = pickLanes(udiff('src/order/rank.js', ['while (queue.length) {', '  queue.sort((a, b) => a.p - b.p);', '}']));
+  assert.deepEqual(reasonOf(sorted, 'C'), ['src/order/rank.js:11 added sort-in-loop']);
+  const chain = pickLanes(udiff('src/order/view.js', ['const top = rows.filter((r) => r.ok).map((r) => r.id).sort();']));
+  assert.deepEqual(chain.lanes, ['A'], 'filter·map·sort 사슬은 반복문으로 보지 않는다');
+  const repoPath = pickLanes(udiff('src/order/OrderRepository.java', ['return list;']));
+  assert.deepEqual(reasonOf(repoPath, 'C'), ['src/order/OrderRepository.java path path:repository']);
+});
+
+test('lanes 순수 — 문서 · 시험은 보지 않는다. .env 는 늘 B 다', () => {
+  const r = pickLanes(
+    udiff('docs/auth.md', ['"SELECT * FROM t WHERE a = " + b'])
+    + udiff('tests/login.test.js', ['const password = "hunter2hunter2";'])
+    + udiff('src/order/__tests__/sync.spec.ts', ['for (const id of ids) {', '  await db.query(sql);', '}']),
+  );
+  assert.deepEqual(r.lanes, ['A']);
+  assert.deepEqual(r.skipped, ['docs/auth.md', 'tests/login.test.js', 'src/order/__tests__/sync.spec.ts']);
+  assert.deepEqual(reasonOf(pickLanes(udiff('.env.local', ['DB_HOST=db'])), 'B'), ['.env.local path path:file']);
+});
+
+test('lanes 순수 — parseDiff 는 지운 줄의 "-- " 내용을 머리줄로 읽지 않고 줄 번호를 센다', () => {
+  const text = 'diff --git a/q.sql b/q.sql\n--- a/q.sql\n+++ b/q.sql\n@@ -3,2 +3,1 @@\n--- old comment\n-select 1\n+select 2\n';
+  const [f] = parseDiff(text);
+  assert.equal(f.path, 'q.sql');
+  assert.deepEqual(f.removed, [{ line: 3, text: '-- old comment', hunk: 1 }, { line: 4, text: 'select 1', hunk: 1 }]);
+  assert.deepEqual(f.added, [{ line: 3, text: 'select 2', hunk: 1 }]);
+});
+
+test('lanes 명령 — 커밋 sha · 커밋 전 diff(미추적 파일 포함) · 잘못된 인자', () => {
+  const t = repo();
+  mkdirSync(path.join(t.root, 'src', 'auth'), { recursive: true });
+  const plain = t.commit('plain', { 'note.js': 2 });
+  writeFileSync(path.join(t.root, 'src', 'auth', 'guard.js'), 'export const ok = 1;\n');
+  t.git('add', '-A');
+  t.git('commit', '-qm', 'auth');
+  const auth = t.git('rev-parse', 'HEAD');
+
+  const a = t.json('lanes', plain);
+  assert.equal(a.code, 0, a.err);
+  assert.deepEqual(a.j.lanes, ['A']);
+  const b = t.json('lanes', auth);
+  assert.equal(b.code, 0, b.err);
+  assert.deepEqual(b.j.lanes, ['A', 'B']);
+  assert.deepEqual(b.j.reasons.B.map((x) => `${x.file} ${x.pattern}`), ['src/auth/guard.js path:auth']);
+  const text = t.run('lanes', auth);
+  assert.equal(text.code, 0, text.err);
+  assert.match(text.out, /^갈래: A\(정확성\) · B\(보안\)\nA: 늘 켠다\nB: src\/auth\/guard\.js — 경로 path:auth\nC: 꺼짐\n$/);
+
+  writeFileSync(path.join(t.root, 'src', 'order.js'), 'for (const id of ids) {\n  await fetch(url + id);\n}\n');
+  const w = t.json('lanes', '--worktree', '--', 'src/order.js');
+  assert.equal(w.code, 0, w.err);
+  assert.equal(w.j.source, 'worktree -- src/order.js');
+  assert.deepEqual(w.j.reasons.C.map((x) => `${x.file}:${x.line} ${x.pattern}`), ['src/order.js:2 io-in-loop'], '미추적 새 파일도 본다');
+
+  assert.equal(t.run('lanes').code, 2, 'sha 도 --worktree 도 없으면 종료 2');
+  assert.equal(t.run('lanes', 'nope123').code, 2, '커밋이 아니면 종료 2');
 });

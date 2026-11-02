@@ -12,13 +12,26 @@
   - 신뢰도(`높음` · `확인 필요`)는 심각도와 따로 단다
   - 결과 꼴: `walkthrough:` 한 줄 · 발견 줄 `<파일>:<행> · <심각도> · <결함> · 신뢰도 …[ · 번짐: … | · 번짐 의심]` · `summary: critical C · major M · minor m — …`
 - 판정을 바꾼다. `critical`·`major` 가 1건 이상이면 fail, `minor` 만이면 pass 다(전에는 발견이 하나라도 있으면 fail)
-  - minor 는 버리지 않는다. note `Summary` 끝에 `· minor <파일:행>, …` 을 붙인다. 스크립트·note 키는 그대로다
+  - minor 는 버리지 않는다. note `Summary` 끝에 `· minor <파일:행>, …` 을 붙인다. note 키는 그대로다
 - review-pending 결과 요약을 두 층으로 낸다
   - 요약층: 판정 · 심각도 집계 · 주의 필요(`critical`·`major` 전부와 `번짐 의심` minor) · 다음 할 일. 잘된 점은 적지 않는다
   - 상세층: 커밋별 walkthrough 와 발견 전부(minor 포함, 심각도 순)
   - 커밋 크기 칸 이름을 「등급」에서 「크기」로 바꾼다. 심각도와 헷갈리지 않게 한다
 - save 리뷰 게이트가 minor 만 나오면 묻지 않고 커밋하고 pass 기록(minor 위치 포함)을 남긴다. `critical`·`major` 또는 `번짐 의심` 이 있으면 지금처럼 묻는다
   - pass 기록 조건을 「발견 0건」에서 「critical·major 0건이고 리뷰한 diff 그대로 커밋」으로 바꾼다
+- 리뷰를 세 갈래로 나눈다. A 정확성(`change-verifier`)은 늘 돈다. B 보안·개인정보 · C 성능·CPU 는 조건부다
+  - 새 에이전트 `security-reviewer`(B) · `performance-reviewer`(C). 규칙은 각 6개다. 공통 규칙은 change-verifier 「커밋 리뷰 모드」 규칙 1 · 3~8 을 가리킨다
+  - 발견 줄 앞에 갈래 표시(`[A]` · `[B]` · `[C]`)를 붙인다
+- `review-pending.mjs lanes <sha>` · `lanes --worktree -- <경로…>` 를 더한다
+  - 바뀐 경로의 낱말과 추가 줄의 패턴으로 B·C 를 켜고 켠 이유(파일 · 줄 · 패턴)를 낸다. 지운 인가 검사 줄도 B 를 켠다
+  - 문서 · 시험 · 잠금 파일은 보지 않는다. 비밀값 리터럴은 이유에 원문을 옮기지 않는다
+  - config 를 읽지 않는다. 새 config 칸은 없다
+  - 이 저장소 최근 병합 아닌 커밋 25개에서 B·C 가 켜진 커밋은 2개(C)다
+- review-pending · save 가 켠 갈래를 병렬로 부르고 합친다
+  - 같은 `파일:행` 은 높은 심각도 · 높은 신뢰도 쪽 하나로 합치고 갈래 표시를 합친다(`[A·B]`)
+  - 갈래 하나라도 결과가 없으면 그 커밋은 기록하지 않는다(부분 결과로 pass 금지)
+  - 요약층에 「돈 갈래」 줄을 더한다
+- README 구성 줄의 에이전트 수를 표와 맞춘다(6 → 8). 매니페스트 설명에 리뷰 에이전트를 적는다
 
 ## 미발행 — 사후리뷰 `/harness-kit:review-pending`
 
