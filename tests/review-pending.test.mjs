@@ -298,6 +298,47 @@ test('lanes 순수 — C 는 반복문 몸통 안의 IO·질의·정렬만 본�
   assert.deepEqual(reasonOf(repoPath, 'C'), ['src/order/OrderRepository.java path path:repository']);
 });
 
+test('lanes 순수 — B 는 직접 만든 권한 판정의 선언·호출과 결재·범위·마스킹 경로 낱말로도 켠다', () => {
+  const r = pickLanes(udiff('src/flow/StepService.java', [
+    '        if (isFinalApprover(step.getApprover())) {',
+    '    private boolean isFinalApprover(User approver) {',
+    '        validateApprover(step, user);',
+  ]));
+  assert.deepEqual(reasonOf(r, 'B'), [
+    'src/flow/StepService.java:10 added authz-helper',
+    'src/flow/StepService.java:11 added authz-helper',
+    'src/flow/StepService.java:12 added authz-helper',
+  ], '경로 낱말이 없어도 is·validate 뒤에 권한 낱말이 이어지는 식별자면 켠다');
+  const plain = pickLanes(udiff('src/flow/List.js', ['if (isEmpty(xs)) return;', 'if (obj.hasOwnProperty(k)) n++;', 'checkLength(name);']));
+  assert.deepEqual(plain.lanes, ['A'], '권한 낱말이 없는 is·has·check 식별자는 켜지 않는다');
+  const known = pickLanes(udiff('src/flow/Menu.vue', ['<li v-if="auth.hasPermission(\'EDIT\')">']));
+  assert.deepEqual(reasonOf(known, 'B'), ['src/flow/Menu.vue:10 added auth-check'], '이미 아는 인가 호출은 auth-check 하나로만 센다');
+  const paths = pickLanes(
+    udiff('src/approval/StepView.vue', ['<span>{{ label }}</span>'])
+    + udiff('src/audit/SensitiveValueMasker.java', ['return value;'])
+    + udiff('src/log/mask.js', ['export const keep = 4;'])
+    + udiff('src/report/ScopeFilter.java', ['return ids;']),
+  );
+  assert.deepEqual(reasonOf(paths, 'B'), [
+    'src/approval/StepView.vue path path:approval',
+    'src/audit/SensitiveValueMasker.java path path:sensitive',
+    'src/log/mask.js path path:mask',
+    'src/report/ScopeFilter.java path path:scope',
+  ]);
+});
+
+test('lanes 순수 — C 는 반복 몸통 안의 저장소 쓰기 호출도 본다(긴 몸통 포함 · 목록·Map 의 쓰기는 아니다)', () => {
+  const body = ['for (Change c : changed) {', '    Row row = Row.builder()'];
+  for (let i = 0; i < 12; i++) body.push(`            .f${i}(c.v${i}())`);
+  body.push('            .build();', '    rowRepository.save(row);', '}');
+  const longLoop = pickLanes(udiff('src/flow/Writer.java', body));
+  assert.deepEqual(reasonOf(longLoop, 'C'), ['src/flow/Writer.java:25 added io-in-loop'], '빌더 사슬로 몸통이 길어도 그 안의 save 를 찾는다');
+  const qualified = pickLanes(udiff('src/flow/Sync.java', ['for (Item it : items) {', '    itemMapper.update(it);', '}']));
+  assert.deepEqual(reasonOf(qualified, 'C'), ['src/flow/Sync.java:11 added io-in-loop'], '받는 쪽이 저장소면 update 도 쓰기다');
+  const local = pickLanes(udiff('src/flow/Seen.js', ['for (const k of keys) {', '  seen.delete(k);', '  counts.merge(k, 1);', '  order.insert(0, k);', '}']));
+  assert.deepEqual(local.lanes, ['A'], 'Set·Map·목록의 delete · merge · insert 는 쓰기 호출이 아니다');
+});
+
 test('lanes 순수 — 문서 · 시험은 보지 않는다. .env 는 늘 B 다', () => {
   const r = pickLanes(
     udiff('docs/auth.md', ['"SELECT * FROM t WHERE a = " + b'])

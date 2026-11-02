@@ -14,6 +14,7 @@ argument-hint: "[<rev 범위> 예: main..HEAD]"
   - 리뷰에 critical·major 발견이 있었는데 그대로 한 커밋
 - notes 는 커밋을 다시 쓰지 않는다. 그래서 이미 push 한 커밋에도 기록을 남길 수 있다.
 - 리뷰는 세 갈래다. 갈래 A(정확성, `harness-kit:change-verifier`)는 늘 돈다. B(보안)·C(성능)는 스크립트가 켤 때만 돈다(Step 5).
+- critical·major 지적은 반박자(`harness-kit:review-refuter`)가 하나씩 한 번 더 본다. 판정은 그 검증 뒤 값으로 한다(Step 5 「검증」).
 - 🔴 **이 커맨드는 코드를 고치지 않는다.**
   - fail 이면 보고만 한다.
   - 고칠지는 사용자가 정한다. 고칠 때는 새 커밋으로 한다(`/harness-kit:save`).
@@ -48,6 +49,7 @@ argument-hint: "[<rev 범위> 예: main..HEAD]"
 | 크기(`grade`) | 커밋이 임계를 넘었는가(`over` · `all` · `unknown`). 결함의 무게가 아니다 |
 | 심각도(critical · major · minor) | 결함이 얼마나 번지는가. 정의는 change-verifier 「커밋 리뷰 모드」 규칙 4·5 |
 | 갈래(A · B · C) | 리뷰가 보는 쪽 — 정확성 · 보안 · 성능. 갈래마다 리뷰어가 따로 붙는다 |
+| 반박자 · 검증 | critical·major 지적이 틀렸음을 보이려 시도하는 두 번째 리뷰어. 지적 하나에 하나씩 붙는다 |
 
 ## Step 0: 스크립트 경로
 
@@ -144,7 +146,7 @@ echo "[exit=$ec]"; cat "$T/rp-pending.json" "$T/rp-pending.err"
 
 ```text
 header: 사후리뷰 대상범위
-리뷰 안 된 커밋이 <N>건입니다(기준 <batchAsk>건). 커밋마다 리뷰어 1~3개가 붙습니다(갈래마다 하나). 모두 리뷰할까요?
+리뷰 안 된 커밋이 <N>건입니다(기준 <batchAsk>건). 커밋마다 리뷰어 1~3개가 붙습니다(갈래마다 하나). critical·major 지적에는 반박자가 하나씩 더 붙습니다. 모두 리뷰할까요?
 근거: unreviewed — 범위 <range> · 크기 <over N건 · all M건>
 ```
 
@@ -204,9 +206,33 @@ node "<RP>" lanes <sha> --json; echo "[exit=$?]"
 3. 심각도 순으로 정렬한다.
 4. summary 를 합친 목록으로 다시 센다(`critical <C> · major <M> · minor <m> — <가장 심각한 것>`). walkthrough 는 갈래 A 의 것을 쓴다.
 
+### 검증 — critical·major 지적마다 반박자 하나
+
+합친 목록에 `critical`·`major` 줄이 있으면 그 줄마다 `harness-kit:review-refuter` 를 하나씩 붙인다. 없으면 이 단계를 건너뛴다.
+
+- 모든 커밋의 반박자를 **한 메시지에서 병렬로** 부른다.
+- 호출 프롬프트에는 **sha 와 지적 줄 하나만** 담는다. 지적 줄은 합친 줄 그대로다(갈래 표시 포함). 결과는 반박자 규칙 5 의 꼴로 낸다.
+
+> 🔴 **리뷰어의 walkthrough · 다른 발견 · 추론 · 커밋 메시지를 넘기지 않는다.**
+> 이유: 리뷰어 추론을 받은 반박자는 그 추론을 따라 읽는다. 그러면 틀린 지적을 같이 맞다고 본다.
+
+반박자 결과를 지적 줄에 반영한다.
+
+| 반박자 결과 | 반영 |
+| - | - |
+| `틀림` | 「주의 필요」 · summary · 판정에서 뺀다. 상세층에는 `반박됨` 을 붙여 남긴다 |
+| `맞음` · 심각도 `<새 값>` | 새 심각도를 쓴다. 상세층에 원래 값을 `(원래 <값>)` 으로 붙인다 |
+| `맞음` · 심각도 `유지` | 그대로 둔다 |
+| `불확실` | 원래 심각도를 둔다. 신뢰도를 「확인 필요」로 바꾼다 |
+| 기원 `기존 <파일:행>` | 지적 줄에 `기존: <파일:행>` 이 없으면 붙인다 |
+| 결과 없음(오류 · 중단 · 꼴 어긋남) | 원래 값을 둔다. 상세층에 `검증 못 함` 을 붙인다. 그 커밋을 기록 실패로 만들지 않는다 |
+
+- 반영한 뒤 심각도 순으로 다시 정렬하고 summary 를 다시 센다. `반박됨` 줄은 세지 않는다.
+- 판정(Step 6)과 note `Summary` 는 이 검증 뒤 값으로 한다. major 에서 minor 로 내려간 줄은 note 의 minor 위치에 들어간다.
+
 ## Step 6: 결과 기록
 
-합친 목록으로 판정한다. `critical` 또는 `major` 가 1건 이상이면 `fail` 이다(「확인 필요」 포함). `minor` 만이거나 「없음」이면 `pass` 다.
+합친 목록(검증 뒤 값)으로 판정한다. `critical` 또는 `major` 가 1건 이상이면 `fail` 이다(「확인 필요」 포함). `minor` 만이거나 「없음」이면 `pass` 다.
 
 ```bash
 node "<RP>" note <sha> pass --summary "<요약>"; echo "[exit=$?]"
@@ -249,6 +275,7 @@ node "<RP>" note <sha> fail --summary "<요약>"; echo "[exit=$?]"
 판정: 리뷰 <N>건 — pass <a> · fail <b> · 기록 실패 <c> · 건너뜀 <d>
 심각도: critical <C> · major <M> · minor <m>
 돈 갈래: A <N>건 · B <x>건(1a2b3c4d5 — src/user/find.js:10 sql-concat) · C <y>건
+검증: 반박자 4명 — 맞음 3(심각도 조정 1) · 틀림 1 · 불확실 0 · 검증 못 함 0
 
 주의 필요 <K>건
 | sha | 갈래 | 심각도 | 위치 | 결함 | 신뢰도 · 번짐 |
@@ -264,7 +291,8 @@ node "<RP>" note <sha> fail --summary "<요약>"; echo "[exit=$?]"
 ```
 
 - 돈 갈래 줄은 갈래마다 돈 커밋 수다. B·C 는 괄호에 켠 이유를 커밋마다 하나씩 적는다(`lanes` 의 첫 이유). lanes 실패로 모두 돈 커밋은 「lanes 실패 — 모두」로 적는다.
-- 주의 필요는 `critical`·`major` 전부와 `번짐 의심` minor 다. 심각도 순으로 적는다. 0건이면 「주의 필요 없음」 한 줄만 적는다.
+- 검증 줄은 반박자 결과 수다. 반박자를 부르지 않았으면 「검증: critical·major 없음 — 건너뜀」으로 적는다.
+- 주의 필요는 검증 뒤 값의 `critical`·`major` 전부와 `번짐 의심` minor 다. `반박됨` 줄은 넣지 않는다. 심각도 순으로 적는다. 0건이면 「주의 필요 없음」 한 줄만 적는다.
 - 다음 할 일은 주의 필요 줄마다 고칠 곳 또는 확인할 것을 적는다. 마지막 줄은 Step 7 질문이다(물을 때만).
 - 잘된 점 · 총평은 적지 않는다.
 
@@ -279,13 +307,15 @@ node "<RP>" note <sha> fail --summary "<요약>"; echo "[exit=$?]"
 1a2b3c4d5 — 갈래 A·B · walkthrough: 사용자 조회에 정렬 인자를 더한다
 - [B] src/user/find.js:10 · critical · … · 신뢰도 높음
 - [A] src/order/key.js:7 · major · … · 신뢰도 높음 · 번짐: 캐시 키 — buildKey 를 3곳이 부른다
+- [A] src/order/cache.js:3 · major · … · 반박됨(근거 src/order/cache.js:9, src/order/load.js:21)
 6e7f8a9b0 — 갈래 A · walkthrough: …
 - [A] src/order/round.js:30 · minor · … · 신뢰도 확인 필요 · 번짐 의심
-- [A] src/order/format.js:12 · minor · … · 신뢰도 높음
+- [A] src/order/format.js:12 · minor(원래 major) · … · 신뢰도 높음
 ```
 
 - sha 는 앞 9자리다. 크기 칸은 Step 3 의 `grade` 다. 심각도가 아니다.
 - 커밋마다 돈 갈래 · walkthrough 한 줄과 합친 발견 전부(minor 포함)를 심각도 순으로 적는다.
+- 검증 결과도 그 줄에 적는다. `반박됨` 은 반박자 근거를 괄호에 적는다. 심각도를 바꿨으면 `(원래 <값>)`, 반박자 결과가 없었으면 `검증 못 함` 을 붙인다.
 - 기록 실패 · 사용자가 건너뛴 커밋도 verdict 칸에 그렇게 적어 표에 남긴다.
 - 두 층을 낸 뒤에만 Step 7 질문을 낸다.
 
@@ -369,5 +399,6 @@ git config --add remote.<REMOTE>.fetch "+<NOTES>:<TRACKING>"
 - 코드·테스트·커밋을 고치지 않는다. fail 은 보고만 한다.
 - 리뷰 기록 올리기는 사용자 확인 뒤에만 한다. 강제로 올리지 않는다.
 - 스크립트 출력도 빌드·테스트 출력처럼 파이프로 넘기지 않는다. 종료코드로 판정한다.
-- 리뷰어에게 커밋 메시지를 넘기지 않는다.
+- 리뷰어에게 커밋 메시지를 넘기지 않는다. 반박자에게는 sha 와 지적 줄만 넘긴다.
 - 갈래 하나라도 결과가 없으면 그 커밋은 기록하지 않는다. 부분 결과로 pass 를 남기지 않는다.
+- 반박자 결과가 없으면 그 지적은 원래 값으로 둔다. 기록 실패로 만들지 않는다.

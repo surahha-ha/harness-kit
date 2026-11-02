@@ -207,19 +207,24 @@ const PII = word('ssn|social_?security(_?(no|number))?|resident_?(registration|r
 const LOG_CALL = /\b(console\.(log|info|warn|error|debug)|log(ger)?\.(info|warn|error|debug|trace)|logging\.\w+|print(ln|f)?)\s*\(/;
 const SENSITIVE = word('password|passwd|secret|token|api_?key|ssn|email|phone|card_?(no|number)');
 const AUTH_CHECK = /@(PreAuthorize|PostAuthorize|Secured|RolesAllowed|PermitAll|DenyAll)\b|\b(permitAll|hasRole|hasAnyRole|hasAuthority|hasPermission|isAuthenticated|checkPermission|requireAuth\w*)\s*\(/;
+// 직접 만든 권한 판정 — validate·is·has… 뒤에 대문자로 이어지고 권한 낱말을 품은 식별자의 선언·호출(isFinalApprover · validateApprover · canAccessOrder)
+const AUTHZ_NAME = /\b(?:validate|verify|check|ensure|require|is|has|can)(?=[A-Z])\w*?(?:Approv|Permission|Owner|Role|Access|Auth|Scope|Admin|Privilege|Grant)\w*\s*\(/;
 const UNSAFE = /\beval\s*\(|\bnew\s+Function\s*\(|shell\s*=\s*True|Runtime\.getRuntime\(\)\.exec|\.innerHTML\s*=|dangerouslySetInnerHTML|\bv-html\b/;
 const ORM = /\.(findAll|findMany|findUnique|findFirst|findBy\w+|selectList|selectOne|selectMap|createQuery|createNativeQuery|executeQuery|executeUpdate|batchUpdate|queryFor\w+|query)\s*\(|\b(jdbcTemplate|entityManager|knex|sequelize|prisma)\.\w+/;
 const UNBOUNDED = /\.(findAll|selectList)\s*\(\s*\)/;
+// 쓰기 호출 — 저장소 메서드 이름(save · persist · insertUser…)과, 받는 쪽이 저장소·DB 인 insert · update · delete · remove · merge.
+// 목록의 insert, Map·Set 의 delete · merge 는 받는 쪽이 저장소가 아니라 잡지 않는다
+const WRITE = /\.(save|saveAll|saveAndFlush|persist|persistAndFlush|insert[A-Z]\w*|upsert\w*|bulkCreate|bulkWrite)\s*\(|\b\w*(?:Repository|Repo|Dao|Mapper|repository|repo|dao|mapper|entityManager|db|knex)\.(insert|update\w*|delete\w*|remove\w*|merge)\s*\(/;
 // 반복문 — 문장 반복(for · while)과 몸통이 도는 콜백(forEach · map(async …)). filter·sort 사슬은 반복문으로 보지 않는다
 const LOOP = /^\s*(\}\s*)?(for|while)\b|\.forEach\s*\(|\.(map|flatMap)\s*\(\s*async\b/;
 const IO = /\bawait\b|\bfetch\s*\(|\baxios\.|\bhttps?\.(get|request)\s*\(|\b(read|write)FileSync\s*\(|\b(exec|execFile|spawn)Sync\s*\(|\brequests\.(get|post)\s*\(/;
 const SORT = /\.sort\s*\(|\bsorted\s*\(|Collections\.sort\s*\(/;
-const LOOP_WINDOW = 8;
+const LOOP_WINDOW = 24;
 
 /** 기본 패턴 목록. 경로 낱말은 camelCase 와 / . _ - 로 끊은 낱말과 맞춘다. */
 export const LANE_RULES = {
   B: {
-    pathWords: ['auth', 'authn', 'authz', 'authentication', 'authorization', 'login', 'logout', 'oauth', 'jwt', 'token', 'password', 'passwd', 'secret', 'secrets', 'credential', 'credentials', 'permission', 'permissions', 'acl', 'role', 'roles', 'session', 'sessions', 'cookie', 'cookies', 'crypto', 'cipher'],
+    pathWords: ['auth', 'authn', 'authz', 'authentication', 'authorization', 'login', 'logout', 'oauth', 'jwt', 'token', 'password', 'passwd', 'secret', 'secrets', 'credential', 'credentials', 'permission', 'permissions', 'acl', 'role', 'roles', 'session', 'sessions', 'cookie', 'cookies', 'crypto', 'cipher', 'approve', 'approval', 'approvals', 'approver', 'approvers', 'scope', 'scopes', 'owner', 'owners', 'ownership', 'grant', 'grants', 'privilege', 'privileges', 'mask', 'masking', 'masker', 'sensitive', 'privacy'],
     pathFile: /(^|\/)\.env(\.[^/]*)?$|\.(pem|p12|pfx|jks|keystore)$|(^|\/)id_(rsa|ed25519|ecdsa)$/i,
     added: {
       'sql-concat': (t, f) => sqlHit(t, f) && CONCAT.test(t),
@@ -227,6 +232,7 @@ export const LANE_RULES = {
       'pii-field': (t) => PII.test(norm(t)),
       'sensitive-log': (t) => LOG_CALL.test(t) && SENSITIVE.test(norm(t)),
       'auth-check': (t) => AUTH_CHECK.test(t),
+      'authz-helper': (t) => !AUTH_CHECK.test(t) && AUTHZ_NAME.test(t),
       'unsafe-exec': (t) => UNSAFE.test(t),
     },
     removed: { 'auth-check-removed': (t) => AUTH_CHECK.test(t) },
@@ -298,7 +304,7 @@ function bodyStart(text) {
 
 /**
  * C 의 반복문 몸통 — 반복문 줄의 머리 뒤(bodyStart)와, 바로 이어지는 더 깊게 들여 쓴 추가 줄 LOOP_WINDOW 개.
- * 반복 대상 식(머리)은 한 번만 돌므로 보지 않는다. 몸통에 IO·질의·정렬이 있으면 낸다. 순수.
+ * 반복 대상 식(머리)은 한 번만 돌므로 보지 않는다. 몸통에 IO·질의·쓰기 호출·정렬이 있으면 낸다. 순수.
  */
 function loopHits(file, added) {
   const out = [];
@@ -314,7 +320,7 @@ function loopHits(file, added) {
       if (b.text.trim() && indentOf(b.text) <= base) break;
       body.push(b);
     }
-    const io = body.find((w) => IO.test(w.text) || ORM.test(w.text) || sqlHit(w.text, file));
+    const io = body.find((w) => IO.test(w.text) || ORM.test(w.text) || WRITE.test(w.text) || sqlHit(w.text, file));
     if (io) out.push({ pattern: 'io-in-loop', at: added.find((x) => x.line === io.line) });
     const so = body.find((w) => SORT.test(w.text));
     if (so) out.push({ pattern: 'sort-in-loop', at: added.find((x) => x.line === so.line) });
