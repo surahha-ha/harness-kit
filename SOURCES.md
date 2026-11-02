@@ -50,3 +50,5 @@
 | `plugins/harness-kit/skills/docs-setup/scripts/observe.test.mjs` · `refs.test.mjs` | `f4e59af` | 반입 커밋 메시지 |
 | `plugins/harness-kit/scripts/graft-localize.mjs` · `statusline-combined.cjs` · `statusline-setup.mjs` | `3b6a437` | 반입 커밋 메시지. 외부 도구 graft(npm `@nanonets/graft`)의 산출물을 옮길 뿐 graft 코드를 담지 않는다 |
 | `tests/graft-localize.test.mjs` · `install-local-items.test.mjs` · `statusline.test.mjs` | `3b6a437` | 반입 커밋 메시지 |
+| `plugins/harness-kit/agents/security-reviewer.md` · `performance-reviewer.md` | `3ca6790` | 반입 커밋 메시지(리뷰 갈래 B·C 를 이 저장소에서 처음 씀) · 사용자 승인 설계(2026-11-02) |
+| `plugins/harness-kit/agents/review-refuter.md` | `7f8e2dd` | 반입 커밋 메시지(사후리뷰 검증 단계의 반박자를 이 저장소에서 처음 씀) · 사용자 승인 설계(2026-11-02) |

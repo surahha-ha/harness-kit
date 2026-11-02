@@ -137,14 +137,17 @@ R="<ROOT>"; B="<BRANCH>"
 - 커밋 직후 두 가지를 본다.
   - `git -C "$R" show --stat HEAD` 의 파일 목록이 `<PATHS>` 와 같은지
   - `git -C "$R" status --short` 에 커밋 전부터 있던 남의 변경(stage 된 것 포함)이 그대로 남았는지
-- **리뷰 기록** — diff 리뷰 게이트가 **발견 없이** 끝났고 이 커맨드가 커밋했을 때만 남긴다.
+- **리뷰 기록** — diff 리뷰 게이트가 **critical·major 없이**(검증 뒤 값) 끝났고, 리뷰한 diff 그대로 이 커맨드가 커밋했을 때만 남긴다.
   - 그 커밋이 `/harness-kit:review-pending` 목록에 다시 나오지 않게 한다.
   - 게이트를 건너뛰었으면(임계 미만 · `git.reviewThreshold` 가 `null`) 남기지 않는다.
-  - 발견이 있었으면 남기지 않는다. 「고치고 커밋」이어도 고친 diff 는 리뷰하지 않았다. 「그대로 커밋」도 같다.
+  - critical·major 가 있었으면 남기지 않는다. 「그대로 커밋」이어도 같다.
+  - 「고치고 커밋」이면 남기지 않는다. 고친 diff 는 리뷰하지 않았다.
+  - 켠 갈래 하나라도 결과가 없었으면 남기지 않는다.
+  - `<요약>` 은 갈래를 합친 summary 문구다. minor 가 있으면 review-pending Step 6 처럼 ` · minor <파일:행>, …` 을 붙인다. 셸이 해석하는 `"` · `$` · 백틱은 뺀다.
 
   ```bash
   # <SHA>=방금 만든 커밋(git -C "$R" rev-parse HEAD) — 스크립트는 지금 디렉토리의 레포에 쓴다
-  ( cd "$R" && node "${CLAUDE_PLUGIN_ROOT}/scripts/review-pending.mjs" note <SHA> pass --by save ); echo "[exit=$?]"
+  ( cd "$R" && node "${CLAUDE_PLUGIN_ROOT}/scripts/review-pending.mjs" note <SHA> pass --by save --summary "<요약>" ); echo "[exit=$?]"
   ```
 
   - 종료 0 이면 기록했거나 사후리뷰가 꺼져 있다(`project.review` 가 `null` — stderr 에 그렇게 나온다).
@@ -184,17 +187,39 @@ git diff HEAD --numstat -- <PATHS…> | awk '{f++; a+=$1; d+=$2} END {print "fil
 - **임계: `git.reviewThreshold`(파일 수 초과 또는 추가+삭제 줄 수 초과).** 둘 중 하나만 넘어도 태운다. 슬롯이 없으면 임계를 묻는다.
 - 임계 미만이면 리뷰 없이 다음 번호로 간다.
   - 이유: **한 줄짜리 수정까지 리뷰를 돌리면 그 경고는 곧 무시된다.** 게이트를 두는 목적 자체가 사라진다.
-- 태울 때는 `harness-kit:change-verifier` 를 **diff 리뷰 전용**으로 호출한다. 빌드·lint·테스트는 Step 1 에서 이미 그린으로 판정했으므로 **다시 돌리지 않는다.**
+- 태울 때는 **diff 리뷰 전용**으로 호출한다. 빌드·lint·테스트는 Step 1 에서 이미 그린으로 판정했으므로 **다시 돌리지 않는다.**
+- 갈래는 `/harness-kit:review-pending` Step 5 와 같다. A(`harness-kit:change-verifier`)는 늘 부르고, B·C 는 아래 출력이 켤 때만 부른다. 켠 갈래를 한 메시지에서 병렬로 부른다.
+
+  ```bash
+  ( cd "<ROOT>" && node "${CLAUDE_PLUGIN_ROOT}/scripts/review-pending.mjs" lanes --worktree --json -- <PATHS…> ); echo "[exit=$?]"
+  ```
+
+  - 미추적 새 파일도 본다. 종료 2 면 A·B·C 를 모두 부른다.
 
 호출 프롬프트에 반드시 담을 것:
 
 - 대상은 `git diff HEAD -- <PATHS…>` 뿐이다. 워킹트리에 남겨둔 미선택 변경과 남이 stage 해 둔 변경은 리뷰 범위가 아니다.
-- **고신뢰 결함 우선**, 불확실한 것은 "확인 필요" 라벨로 남기고 단정하지 않는다 (에이전트 절대원칙 4).
-- **스타일·포맷·네이밍 지적 금지.** 요청에 없는 변경을 부르고, 리뷰어도 테스트도 그 변경을 보고 있지 않게 된다.
+- 갈래 이름. B·C 에는 그 갈래의 `reasons` 도 담는다.
+- change-verifier 「커밋 리뷰 모드」 규칙 2~7(B·C 는 각 리뷰어 규칙)을 따른다. 규칙 7 의 꼴로 낸다. 호출처는 작업본에서 grep 한다.
 
-**결과 처리 — 판정은 사용자가 한다.** 발견이 있으면 목록을 보여주고 «고치고 커밋 / 그대로 커밋 / 커밋 중단» 을 묻는다.
-발견이 없으면 커밋 뒤 Step 3 의 「리뷰 기록」을 남긴다.
-리뷰를 근거로 **에이전트가 스스로 프로덕션 코드를 고치지 않는다** (`harness-kit:change-verifier` 는 실행·판정 전용).
+**결과 처리 — 판정은 사용자가 한다.** 갈래 결과를 review-pending Step 5 「합치기」대로 합친다.
+
+합친 목록에 `critical`·`major` 가 있으면 review-pending Step 5 「검증」대로 반박자(`harness-kit:review-refuter`)를 지적마다 하나씩 병렬로 부른다. 없으면 부르지 않는다.
+
+- 호출 프롬프트에는 대상 diff(`git diff HEAD -- <PATHS…>`)와 지적 줄 하나만 담는다. 리뷰어의 추론과 다른 발견은 넘기지 않는다.
+- 결과 반영도 review-pending Step 5 「검증」의 표를 따른다. 반박자 결과가 없는 지적은 원래 값으로 둔다.
+
+검증 뒤 목록을 심각도 순으로 보인다. 아래 표는 검증 뒤 값으로 가른다.
+
+| 발견 | 할 일 |
+| - | - |
+| 갈래 하나라도 결과가 없다 | «고치고 커밋 / 그대로 커밋 / 커밋 중단» 을 묻는다. 「갈래 <X> 결과 없음」을 같이 보인다. 리뷰 기록은 남기지 않는다 |
+| `critical`·`major` 1건 이상(승격 포함) | «고치고 커밋 / 그대로 커밋 / 커밋 중단» 을 묻는다. `검증 못 함` 줄이 있으면 같이 보인다 |
+| `번짐 의심` minor 가 있다 | 같은 셋을 묻는다 |
+| 그 밖의 minor 만 있다 | 묻지 않고 커밋한다. minor 목록을 보고에 남긴다. 커밋 뒤 Step 3 의 「리뷰 기록」을 남긴다 |
+| 없음 | 커밋 뒤 Step 3 의 「리뷰 기록」을 남긴다 |
+
+리뷰를 근거로 **에이전트가 스스로 프로덕션 코드를 고치지 않는다** (리뷰어는 모두 실행·판정 전용).
 
 > ⚠️ **"리뷰를 돌렸으니 봤다" 로 눈검증을 건너뛰지 않는다.** 이 게이트는 눈검증을 대체하지 않는다.
 >

@@ -3,6 +3,57 @@
 매니페스트에 `version` 필드를 두지 않는다. 판은 main 커밋 SHA 로 갈린다. 절은 병합 단위로 적는다.
 (0.1.0 까지는 `plugin.json` 과 `marketplace.json` 의 명시 버전을 함께 올렸다.)
 
+## 미발행 — 사후리뷰 심각도와 두 층 보고
+
+- change-verifier 「커밋 리뷰 모드」를 리뷰어 규칙 8개로 다시 쓴다. save 「diff 리뷰 게이트」도 규칙 2~7 을 쓴다
+  - 심각도 셋(`critical` · `major` · `minor`)을 번짐(영향 범위)으로 가른다. diff 크기로 가르지 않는다. nit 는 두지 않는다
+  - minor 후보는 호출처를 grep 한다. 공유 상태 · 데이터 쓰기 · 예외 처리 · 동시성 · 외부 계약 · 여러 호출처에 닿으면 major 로 올리고 `번짐: …` 을 적는다. 불확실하면 `번짐 의심` 을 적는다
+  - `파일:행` 과 구체적 실패 상황을 댈 수 없는 발견은 적지 않는다. 개수 상한은 두지 않는다
+  - 신뢰도(`높음` · `확인 필요`)는 심각도와 따로 단다
+  - 결과 꼴: `walkthrough:` 한 줄 · 발견 줄 `<파일>:<행> · <심각도> · <결함> · 신뢰도 …[ · 번짐: … | · 번짐 의심]` · `summary: critical C · major M · minor m — …`
+- 판정을 바꾼다. `critical`·`major` 가 1건 이상이면 fail, `minor` 만이면 pass 다(전에는 발견이 하나라도 있으면 fail)
+  - minor 는 버리지 않는다. note `Summary` 끝에 `· minor <파일:행>, …` 을 붙인다. note 키는 그대로다
+- review-pending 결과 요약을 두 층으로 낸다
+  - 요약층: 판정 · 심각도 집계 · 주의 필요(`critical`·`major` 전부와 `번짐 의심` minor) · 다음 할 일. 잘된 점은 적지 않는다
+  - 상세층: 커밋별 walkthrough 와 발견 전부(minor 포함, 심각도 순)
+  - 커밋 크기 칸 이름을 「등급」에서 「크기」로 바꾼다. 심각도와 헷갈리지 않게 한다
+- save 리뷰 게이트가 minor 만 나오면 묻지 않고 커밋하고 pass 기록(minor 위치 포함)을 남긴다. `critical`·`major` 또는 `번짐 의심` 이 있으면 지금처럼 묻는다
+  - pass 기록 조건을 「발견 0건」에서 「critical·major 0건이고 리뷰한 diff 그대로 커밋」으로 바꾼다
+- 리뷰를 세 갈래로 나눈다. A 정확성(`change-verifier`)은 늘 돈다. B 보안·개인정보 · C 성능·CPU 는 조건부다
+  - 새 에이전트 `security-reviewer`(B) · `performance-reviewer`(C). 규칙은 각 6개다. 공통 규칙은 change-verifier 「커밋 리뷰 모드」 규칙 1 · 3~8 을 가리킨다
+  - 발견 줄 앞에 갈래 표시(`[A]` · `[B]` · `[C]`)를 붙인다
+- `review-pending.mjs lanes <sha>` · `lanes --worktree -- <경로…>` 를 더한다
+  - 바뀐 경로의 낱말과 추가 줄의 패턴으로 B·C 를 켜고 켠 이유(파일 · 줄 · 패턴)를 낸다. 지운 인가 검사 줄도 B 를 켠다
+  - 문서 · 시험 · 잠금 파일은 보지 않는다. 비밀값 리터럴은 이유에 원문을 옮기지 않는다
+  - config 를 읽지 않는다. 새 config 칸은 없다
+  - 이 저장소 최근 병합 아닌 커밋 25개에서 B·C 가 켜진 커밋은 2개(C)다
+- review-pending · save 가 켠 갈래를 병렬로 부르고 합친다
+  - 같은 `파일:행` 은 높은 심각도 · 높은 신뢰도 쪽 하나로 합치고 갈래 표시를 합친다(`[A·B]`)
+  - 갈래 하나라도 결과가 없으면 그 커밋은 기록하지 않는다(부분 결과로 pass 금지)
+  - 요약층에 「돈 갈래」 줄을 더한다
+- README 구성 줄의 에이전트 수를 표와 맞춘다(6 → 8). 매니페스트 설명에 리뷰 에이전트를 적는다
+- 근거: 다른 레포 코드 커밋 10개 비교 시험. critical·major 지적 6건을 반박 검증했다. 결함 존재 오탐은 0건, 심각도 과대는 4건이었다. lanes 는 직접 만든 권한 판정의 보안 결함과 반복 안 저장 호출을 놓쳤다
+- 검증 단계를 더한다. 새 에이전트 `review-refuter`(반박자)가 critical·major 지적마다 하나씩 붙는다. 규칙은 6개다
+  - 반박자는 sha(save 는 대상 diff)와 지적 줄만 받는다. 리뷰어 추론은 받지 않는다
+  - 지적이 틀렸음을 보이려 시도하고, 반례를 못 찾을 때만 맞음이다. 결함 존재 · 심각도(발생 조건 반영) · 기원(이 커밋 · 기존 `<파일:행>`)을 판정한다
+  - 반영: 틀림은 「주의 필요」 · summary · 판정에서 빼고 상세층에 `반박됨` 으로 남긴다. 심각도 조정은 새 값을 쓰고 원래 값을 상세층에 적는다. 불확실은 원래 심각도에 신뢰도 「확인 필요」다
+  - 반박자 결과가 없으면 원래 값으로 두고 `검증 못 함` 을 적는다. 기록 실패로 만들지 않는다
+  - 판정 · note `Summary` 는 검증 뒤 값으로 한다. review-pending 과 save 리뷰 게이트 둘 다다. save 는 critical·major 가 있을 때만 부른다
+  - 요약층에 「검증」 줄을 더한다
+- change-verifier 공통 규칙을 보강한다. 규칙 수는 8개 그대로다
+  - 규칙 2: 갈래 A 의 셋째 범주로 테스트 단언 약화를 더한다. 어떤 회귀가 이제 통과하는지 댈 수 있을 때만 적는다. 심각도는 그 회귀의 번짐으로 정한다
+  - 규칙 3: diff 가 커밋 전부터 있던 결함에 새 경로를 열거나 피해를 넓혔으면 적고, 근본 원인을 `기존: <파일:행>` 으로 적는다. 규칙 7 의 발견 줄 꼴에 그 자리를 더한다
+  - 규칙 4: 발생 조건이 좁으면(드문 데이터 · 장애 상황 · 특수 권한 · 겹친 조건) 한 단계 낮춘다. 갈래 규칙의 심각도 기준이 공통 표보다 우선한다
+- performance-reviewer 규칙 3: 규모를 코드 · 스키마 · 문서로 확인하지 못하면 `minor` 를 넘기지 않는다. 작게 고정된 반복은 반복 안 질의여도 적지 않는다. 규칙 2 의 N+1 에 반복 안 쓰기를 더한다
+- security-reviewer 규칙 2: 직접 만든 권한 판정 함수와 범위 필터도 인가로 보고, 판정 대상이 요청한 자원에 속하는지 확인한다
+- `lanes` 패턴을 넓힌다
+  - B 경로 낱말: scope · owner · grant · privilege · mask · masking · masker · sensitive · privacy(복수형 포함). 결재(approval · approver) 같은 도메인 낱말은 프로젝트마다 달라 경로 낱말에 두지 않는다. 그런 권한 판정은 아래 `authz-helper` 가 잡는다
+  - B 추가 줄 `authz-helper`: `validate`·`verify`·`check`·`ensure`·`require`·`is`·`has`·`can` 뒤에 대문자로 이어지고 권한 낱말(Approv · Permission · Owner · Role · Access · Auth · Scope · Admin · Privilege · Grant)을 품은 식별자의 선언·호출. 이미 `auth-check` 에 걸린 줄은 다시 세지 않는다
+  - C `io-in-loop`: 반복 몸통 안의 쓰기 호출(persist · insert… · upsert…, 받는 쪽이 저장소·DB 인 save · saveAll · insert · update · delete · remove · merge)을 더한다. 캔버스 `ctx.save()` · 목록 · Map · Set 의 쓰기는 잡지 않는다. 몸통 창을 8줄에서 24줄로 넓힌다
+  - 측정: 다른 레포 코드 커밋 10개에서 B 1 → 3 · C 5 → 6 · A 만 4 → 3. 새로 켜진 B 는 권한 판정 식별자 1개와 경로 낱말 sensitive 1개다. 이 저장소 최근 병합 아닌 커밋 25개는 그대로다(B 0 · C 2). 몸통 창 8 · 12 · 16 은 같은 결과였고, 24 에서 빌더 사슬 뒤 저장 호출 1건이 더 켜졌다
+  - 시험 2건을 더한다(권한 판정 선언·호출과 경로 낱말, approval 경로 제외 · 긴 몸통의 저장 호출과 캔버스 save · 목록·Map 쓰기 제외). 기존 단언은 그대로다
+- README 구성 줄의 에이전트 수를 표와 맞춘다(8 → 9). 매니페스트 설명에 리뷰 반박을 적는다
+
 ## 미발행 — 확인 근거 칸
 
 - 근거: `surahha-ha/harness-agent` main `f29eb6f` 의 v2 수단 A(`docs/01` §3 절차 4 · §6 · `docs/16` 수단 A 소절)
@@ -15,7 +66,7 @@
 - qa-cycle: Stage 4.2 검증 결과에 칸을 더하고, Anti-pattern 의 「4 단계 형식 리포트」 줄에 잇는다
 - harness-install: TEMPLATES §4 「개발 하네스」 절의 라이트 · 계측 두 판에 같은 여섯 줄을 넣는다. SKILL 8단계에 그 줄을 담으라고 적는다. 이미 설치한 레포에는 이 판이 저절로 들어가지 않는다 — 따로 반영한다
 - 에이전트 응답 형식에 칸을 더한다 — change-verifier(1부) · backend-engineer · frontend-engineer · unit-test-engineer · data-migration-engineer
-  - change-verifier 「커밋 리뷰 모드」의 결과 꼴은 바꾸지 않는다. review-pending 이 `없음` 한 줄로 pass 를 가른다
+  - change-verifier 「커밋 리뷰 모드」에는 이 칸을 달지 않는다. 결과 꼴과 pass 판정은 「사후리뷰 심각도와 두 층 보고」 절을 따른다
   - plugin-curator 는 바꾸지 않는다. 근거 규칙과 「미확인」 분리가 이미 있다
 
 ## 미발행 — 사후리뷰 `/harness-kit:review-pending`
