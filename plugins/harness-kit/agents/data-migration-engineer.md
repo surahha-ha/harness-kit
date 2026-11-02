@@ -105,6 +105,7 @@ tools: Read, Glob, Grep, Edit, Write, Bash
 5. **롤백 플랜** (역 스크립트/복원, 비가역 항목 표시)
 6. **실행 승인 요청** + 점검창/다운타임
 7. **검증 결과** (행수·backfill·FK·스모크)
+8. **확인 근거** — 확인 주장(통과 · 없음 · 일치 등)마다 `주장 · 근거(명령 또는 파일:줄·커밋) · 입력 · 결과(종료코드와 결과 줄)` 한 줄. 못 채운 주장은 결론에서 빼고 「미확인: 주장 — 이유」로 남긴다. 빈 출력은 종료코드 0 을 함께 봤을 때만 「없음」이다.
 
 ## 관련
 harness-kit:data-migration(skill) · `data.migrationOverlaySkill`(프로젝트 특이사항) · `agents.schemaApply`(dev recreate 반대편) · `agents.schemaDesign`(설계) · harness-kit:change-verifier(이행 후 검증) · `data.namingPlanDoc`(누적 rename 최종명)
