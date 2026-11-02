@@ -54,6 +54,21 @@
   - 시험 2건을 더한다(권한 판정 선언·호출과 경로 낱말, approval 경로 제외 · 긴 몸통의 저장 호출과 캔버스 save · 목록·Map 쓰기 제외). 기존 단언은 그대로다
 - README 구성 줄의 에이전트 수를 표와 맞춘다(8 → 9). 매니페스트 설명에 리뷰 반박을 적는다
 
+## 미발행 — 확인 근거 칸
+
+- 근거: `surahha-ha/harness-agent` main `f29eb6f` 의 v2 수단 A(`docs/01` §3 절차 4 · §6 · `docs/16` 수단 A 소절)
+- 위임 결과와 사람에게 하는 완료 보고에 확인 근거 칸을 단다
+  - 꼴: `주장 · 근거 · 입력 · 결과`. 확인 주장(통과 · 없음 · 일치 등)마다 한 줄이다
+  - 못 채운 주장은 결론에서 빼고 「미확인: 주장 — 이유」로 남은 레드에 둔다
+  - 빈 출력은 같은 실행의 종료코드 0 을 함께 봤을 때만 「없음」이다
+  - 아무것도 막지 않는다. 코드 · 설정 칸 · 골격은 바뀌지 않는다
+- coordinator: 결과 계약 줄에 칸을 더한다. §2 에 「확인 근거 칸」(규칙 1~5 · 미확인 라벨 셋)을 두고, §5 리포트의 검증 결과가 그 칸을 단다
+- qa-cycle: Stage 4.2 검증 결과에 칸을 더하고, Anti-pattern 의 「4 단계 형식 리포트」 줄에 잇는다
+- harness-install: TEMPLATES §4 「개발 하네스」 절의 라이트 · 계측 두 판에 같은 여섯 줄을 넣는다. SKILL 8단계에 그 줄을 담으라고 적는다. 이미 설치한 레포에는 이 판이 저절로 들어가지 않는다 — 따로 반영한다
+- 에이전트 응답 형식에 칸을 더한다 — change-verifier(1부) · backend-engineer · frontend-engineer · unit-test-engineer · data-migration-engineer
+  - change-verifier 「커밋 리뷰 모드」에는 이 칸을 달지 않는다. 결과 꼴과 pass 판정은 「사후리뷰 심각도와 두 층 보고」 절을 따른다
+  - plugin-curator 는 바꾸지 않는다. 근거 규칙과 「미확인」 분리가 이미 있다
+
 ## 미발행 — 사후리뷰 `/harness-kit:review-pending`
 
 - 새 커맨드 `/harness-kit:review-pending [범위]` 를 더한다

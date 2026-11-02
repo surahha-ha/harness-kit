@@ -114,6 +114,7 @@ tools: Read, Glob, Grep, Edit, Write, Bash
 3. **실행 결과**: passed/failed/skipped 카운트, 실패 케이스 상세
 4. **분석**: 실패 시 — production 코드 버그인지 vs 테스트 의도 불일치인지 판단
 5. **위임 필요 시**: "production 코드 수정 필요 — harness-kit:frontend-engineer/harness-kit:backend-engineer 또는 메인 Claude에 위임 권장" 명시
+6. **확인 근거**: 확인 주장(통과 · 없음 · 일치 등)마다 `주장 · 근거(명령 또는 파일:줄·커밋) · 입력 · 결과(종료코드와 결과 줄)` 한 줄. 못 채운 주장은 결론에서 빼고 「미확인: 주장 — 이유」로 남긴다. 빈 출력은 종료코드 0 을 함께 봤을 때만 「없음」이다.
 
 ## 금지 사항
 - Production 코드 직접 수정 (테스트 외)
