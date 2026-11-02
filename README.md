@@ -72,8 +72,10 @@
 - 대상: 범위 안의 병합 아닌 커밋 가운데 리뷰 기록이 없는 것. 기본 범위는 통합 브랜치(`review.integrationBranch`)에 아직 없는 커밋이다.
 - `git.reviewThreshold` 가 있으면 그 임계를 넘은 커밋만 고른다. save 의 diff 리뷰 게이트와 같은 판정이다. `null` 이면 모두 고른다.
 - 커밋마다 `change-verifier` 「커밋 리뷰 모드」가 diff 만 보고 리뷰한다. 커밋 메시지는 넘기지 않는다.
-- 결과(pass·fail)는 `refs/notes/<review.notesRef>` 에 남긴다. 코드는 고치지 않는다. 원격에 올리기는 묻고 나서, 강제 없이 한다.
-- save 가 리뷰를 발견 없이 통과시킨 커밋에는 save 가 pass 기록을 남긴다. 그래서 그 커밋은 목록에 다시 나오지 않는다.
+- 발견마다 심각도(critical · major · minor)를 단다. 작아 보여도 번지는 minor 는 major 로 올린다. critical·major 가 있으면 fail, minor 만이면 pass 다.
+- 결과(pass·fail)는 `refs/notes/<review.notesRef>` 에 남긴다. minor 위치도 `Summary` 에 남긴다. 코드는 고치지 않는다. 원격에 올리기는 묻고 나서, 강제 없이 한다.
+- 보고는 두 층이다. 요약층(판정 · 심각도 집계 · 주의 필요 · 다음 할 일)을 먼저, 상세층(커밋별 walkthrough · 발견 전부)을 아래에 낸다.
+- save 가 리뷰를 critical·major 없이 통과시킨 커밋에는 save 가 pass 기록을 남긴다. 그래서 그 커밋은 목록에 다시 나오지 않는다.
 - **라이트 범위에서 돈다.** 하네스의 관찰 훅·계측 로그를 읽지 않는다. 읽는 것은 git 과 config 뿐이다.
 - 보조 스크립트: `plugins/harness-kit/scripts/review-pending.mjs`(`config` · `unreviewed` · `note`)
 - 리뷰 기록 ref 와 fetch refspec 은 사용자 데이터다. `harness-uninstall` 은 지우지 않고 지우는 명령만 보고에 적는다.

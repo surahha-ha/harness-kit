@@ -3,6 +3,23 @@
 매니페스트에 `version` 필드를 두지 않는다. 판은 main 커밋 SHA 로 갈린다. 절은 병합 단위로 적는다.
 (0.1.0 까지는 `plugin.json` 과 `marketplace.json` 의 명시 버전을 함께 올렸다.)
 
+## 미발행 — 사후리뷰 심각도와 두 층 보고
+
+- change-verifier 「커밋 리뷰 모드」를 리뷰어 규칙 8개로 다시 쓴다. save 「diff 리뷰 게이트」도 규칙 2~7 을 쓴다
+  - 심각도 셋(`critical` · `major` · `minor`)을 번짐(영향 범위)으로 가른다. diff 크기로 가르지 않는다. nit 는 두지 않는다
+  - minor 후보는 호출처를 grep 한다. 공유 상태 · 데이터 쓰기 · 예외 처리 · 동시성 · 외부 계약 · 여러 호출처에 닿으면 major 로 올리고 `번짐: …` 을 적는다. 불확실하면 `번짐 의심` 을 적는다
+  - `파일:행` 과 구체적 실패 상황을 댈 수 없는 발견은 적지 않는다. 개수 상한은 두지 않는다
+  - 신뢰도(`높음` · `확인 필요`)는 심각도와 따로 단다
+  - 결과 꼴: `walkthrough:` 한 줄 · 발견 줄 `<파일>:<행> · <심각도> · <결함> · 신뢰도 …[ · 번짐: … | · 번짐 의심]` · `summary: critical C · major M · minor m — …`
+- 판정을 바꾼다. `critical`·`major` 가 1건 이상이면 fail, `minor` 만이면 pass 다(전에는 발견이 하나라도 있으면 fail)
+  - minor 는 버리지 않는다. note `Summary` 끝에 `· minor <파일:행>, …` 을 붙인다. 스크립트·note 키는 그대로다
+- review-pending 결과 요약을 두 층으로 낸다
+  - 요약층: 판정 · 심각도 집계 · 주의 필요(`critical`·`major` 전부와 `번짐 의심` minor) · 다음 할 일. 잘된 점은 적지 않는다
+  - 상세층: 커밋별 walkthrough 와 발견 전부(minor 포함, 심각도 순)
+  - 커밋 크기 칸 이름을 「등급」에서 「크기」로 바꾼다. 심각도와 헷갈리지 않게 한다
+- save 리뷰 게이트가 minor 만 나오면 묻지 않고 커밋하고 pass 기록(minor 위치 포함)을 남긴다. `critical`·`major` 또는 `번짐 의심` 이 있으면 지금처럼 묻는다
+  - pass 기록 조건을 「발견 0건」에서 「critical·major 0건이고 리뷰한 diff 그대로 커밋」으로 바꾼다
+
 ## 미발행 — 사후리뷰 `/harness-kit:review-pending`
 
 - 새 커맨드 `/harness-kit:review-pending [범위]` 를 더한다
