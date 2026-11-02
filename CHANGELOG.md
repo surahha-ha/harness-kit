@@ -47,11 +47,11 @@
 - performance-reviewer 규칙 3: 규모를 코드 · 스키마 · 문서로 확인하지 못하면 `minor` 를 넘기지 않는다. 작게 고정된 반복은 반복 안 질의여도 적지 않는다. 규칙 2 의 N+1 에 반복 안 쓰기를 더한다
 - security-reviewer 규칙 2: 직접 만든 권한 판정 함수와 범위 필터도 인가로 보고, 판정 대상이 요청한 자원에 속하는지 확인한다
 - `lanes` 패턴을 넓힌다
-  - B 경로 낱말: approve · approval · approver · scope · owner · grant · privilege · mask · masking · masker · sensitive · privacy(복수형 포함)
+  - B 경로 낱말: scope · owner · grant · privilege · mask · masking · masker · sensitive · privacy(복수형 포함). 결재(approval · approver) 같은 도메인 낱말은 프로젝트마다 달라 경로 낱말에 두지 않는다. 그런 권한 판정은 아래 `authz-helper` 가 잡는다
   - B 추가 줄 `authz-helper`: `validate`·`verify`·`check`·`ensure`·`require`·`is`·`has`·`can` 뒤에 대문자로 이어지고 권한 낱말(Approv · Permission · Owner · Role · Access · Auth · Scope · Admin · Privilege · Grant)을 품은 식별자의 선언·호출. 이미 `auth-check` 에 걸린 줄은 다시 세지 않는다
-  - C `io-in-loop`: 반복 몸통 안의 쓰기 호출(save · saveAll · persist · insert… · upsert…, 받는 쪽이 저장소·DB 인 insert · update · delete · remove · merge)을 더한다. 목록 · Map · Set 의 쓰기는 잡지 않는다. 몸통 창을 8줄에서 24줄로 넓힌다
-  - 측정: 다른 레포 코드 커밋 10개에서 B 1 → 6 · C 5 → 6 · A 만 4 → 1. B 가 새로 켜진 5개 가운데 2개는 화면 색만 바꾼 커밋이다(경로 낱말 approval). 이 저장소 최근 병합 아닌 커밋 25개는 그대로다(B 0 · C 2). 몸통 창 8 · 12 · 16 은 같은 결과였고, 24 에서 빌더 사슬 뒤 저장 호출 1건이 더 켜졌다
-  - 시험 2건을 더한다(권한 판정 선언·호출과 경로 낱말 · 긴 몸통의 저장 호출과 목록·Map 쓰기 제외). 기존 단언은 그대로다
+  - C `io-in-loop`: 반복 몸통 안의 쓰기 호출(persist · insert… · upsert…, 받는 쪽이 저장소·DB 인 save · saveAll · insert · update · delete · remove · merge)을 더한다. 캔버스 `ctx.save()` · 목록 · Map · Set 의 쓰기는 잡지 않는다. 몸통 창을 8줄에서 24줄로 넓힌다
+  - 측정: 다른 레포 코드 커밋 10개에서 B 1 → 3 · C 5 → 6 · A 만 4 → 3. 새로 켜진 B 는 권한 판정 식별자 1개와 경로 낱말 sensitive 1개다. 이 저장소 최근 병합 아닌 커밋 25개는 그대로다(B 0 · C 2). 몸통 창 8 · 12 · 16 은 같은 결과였고, 24 에서 빌더 사슬 뒤 저장 호출 1건이 더 켜졌다
+  - 시험 2건을 더한다(권한 판정 선언·호출과 경로 낱말, approval 경로 제외 · 긴 몸통의 저장 호출과 캔버스 save · 목록·Map 쓰기 제외). 기존 단언은 그대로다
 - README 구성 줄의 에이전트 수를 표와 맞춘다(8 → 9). 매니페스트 설명에 리뷰 반박을 적는다
 
 ## 미발행 — 사후리뷰 `/harness-kit:review-pending`

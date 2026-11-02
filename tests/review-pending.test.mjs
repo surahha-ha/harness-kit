@@ -298,7 +298,7 @@ test('lanes 순수 — C 는 반복문 몸통 안의 IO·질의·정렬만 본�
   assert.deepEqual(reasonOf(repoPath, 'C'), ['src/order/OrderRepository.java path path:repository']);
 });
 
-test('lanes 순수 — B 는 직접 만든 권한 판정의 선언·호출과 결재·범위·마스킹 경로 낱말로도 켠다', () => {
+test('lanes 순수 — B 는 직접 만든 권한 판정의 선언·호출과 범위·마스킹 경로 낱말로도 켠다', () => {
   const r = pickLanes(udiff('src/flow/StepService.java', [
     '        if (isFinalApprover(step.getApprover())) {',
     '    private boolean isFinalApprover(User approver) {',
@@ -320,11 +320,10 @@ test('lanes 순수 — B 는 직접 만든 권한 판정의 선언·호출과 �
     + udiff('src/report/ScopeFilter.java', ['return ids;']),
   );
   assert.deepEqual(reasonOf(paths, 'B'), [
-    'src/approval/StepView.vue path path:approval',
     'src/audit/SensitiveValueMasker.java path path:sensitive',
     'src/log/mask.js path path:mask',
     'src/report/ScopeFilter.java path path:scope',
-  ]);
+  ], '도메인 낱말(approval)은 경로 낱말로 세지 않는다');
 });
 
 test('lanes 순수 — C 는 반복 몸통 안의 저장소 쓰기 호출도 본다(긴 몸통 포함 · 목록·Map 의 쓰기는 아니다)', () => {
@@ -337,6 +336,8 @@ test('lanes 순수 — C 는 반복 몸통 안의 저장소 쓰기 호출도 본
   assert.deepEqual(reasonOf(qualified, 'C'), ['src/flow/Sync.java:11 added io-in-loop'], '받는 쪽이 저장소면 update 도 쓰기다');
   const local = pickLanes(udiff('src/flow/Seen.js', ['for (const k of keys) {', '  seen.delete(k);', '  counts.merge(k, 1);', '  order.insert(0, k);', '}']));
   assert.deepEqual(local.lanes, ['A'], 'Set·Map·목록의 delete · merge · insert 는 쓰기 호출이 아니다');
+  const canvas = pickLanes(udiff('src/view/draw.js', ['for (const s of shapes) {', '  ctx.save();', '  ctx.fill(s.path);', '  ctx.restore();', '}']));
+  assert.deepEqual(canvas.lanes, ['A'], '받는 쪽이 저장소가 아닌 save(캔버스 ctx.save)는 쓰기 호출이 아니다');
 });
 
 test('lanes 순수 — 문서 · 시험은 보지 않는다. .env 는 늘 B 다', () => {

@@ -212,9 +212,9 @@ const AUTHZ_NAME = /\b(?:validate|verify|check|ensure|require|is|has|can)(?=[A-Z
 const UNSAFE = /\beval\s*\(|\bnew\s+Function\s*\(|shell\s*=\s*True|Runtime\.getRuntime\(\)\.exec|\.innerHTML\s*=|dangerouslySetInnerHTML|\bv-html\b/;
 const ORM = /\.(findAll|findMany|findUnique|findFirst|findBy\w+|selectList|selectOne|selectMap|createQuery|createNativeQuery|executeQuery|executeUpdate|batchUpdate|queryFor\w+|query)\s*\(|\b(jdbcTemplate|entityManager|knex|sequelize|prisma)\.\w+/;
 const UNBOUNDED = /\.(findAll|selectList)\s*\(\s*\)/;
-// 쓰기 호출 — 저장소 메서드 이름(save · persist · insertUser…)과, 받는 쪽이 저장소·DB 인 insert · update · delete · remove · merge.
-// 목록의 insert, Map·Set 의 delete · merge 는 받는 쪽이 저장소가 아니라 잡지 않는다
-const WRITE = /\.(save|saveAll|saveAndFlush|persist|persistAndFlush|insert[A-Z]\w*|upsert\w*|bulkCreate|bulkWrite)\s*\(|\b\w*(?:Repository|Repo|Dao|Mapper|repository|repo|dao|mapper|entityManager|db|knex)\.(insert|update\w*|delete\w*|remove\w*|merge)\s*\(/;
+// 쓰기 호출 — 저장소 메서드 이름(persist · insertUser · upsert…)과, 받는 쪽이 저장소·DB 인 save · insert · update · delete · remove · merge.
+// 캔버스의 save, 목록의 insert, Map·Set 의 delete · merge 는 받는 쪽이 저장소가 아니라 잡지 않는다
+const WRITE = /\.(persist|persistAndFlush|insert[A-Z]\w*|upsert\w*|bulkCreate|bulkWrite)\s*\(|\b\w*(?:Repository|Repo|Dao|Mapper|repository|repo|dao|mapper|entityManager|db|knex)\.(save\w*|insert|update\w*|delete\w*|remove\w*|merge)\s*\(/;
 // 반복문 — 문장 반복(for · while)과 몸통이 도는 콜백(forEach · map(async …)). filter·sort 사슬은 반복문으로 보지 않는다
 const LOOP = /^\s*(\}\s*)?(for|while)\b|\.forEach\s*\(|\.(map|flatMap)\s*\(\s*async\b/;
 const IO = /\bawait\b|\bfetch\s*\(|\baxios\.|\bhttps?\.(get|request)\s*\(|\b(read|write)FileSync\s*\(|\b(exec|execFile|spawn)Sync\s*\(|\brequests\.(get|post)\s*\(/;
@@ -224,7 +224,7 @@ const LOOP_WINDOW = 24;
 /** 기본 패턴 목록. 경로 낱말은 camelCase 와 / . _ - 로 끊은 낱말과 맞춘다. */
 export const LANE_RULES = {
   B: {
-    pathWords: ['auth', 'authn', 'authz', 'authentication', 'authorization', 'login', 'logout', 'oauth', 'jwt', 'token', 'password', 'passwd', 'secret', 'secrets', 'credential', 'credentials', 'permission', 'permissions', 'acl', 'role', 'roles', 'session', 'sessions', 'cookie', 'cookies', 'crypto', 'cipher', 'approve', 'approval', 'approvals', 'approver', 'approvers', 'scope', 'scopes', 'owner', 'owners', 'ownership', 'grant', 'grants', 'privilege', 'privileges', 'mask', 'masking', 'masker', 'sensitive', 'privacy'],
+    pathWords: ['auth', 'authn', 'authz', 'authentication', 'authorization', 'login', 'logout', 'oauth', 'jwt', 'token', 'password', 'passwd', 'secret', 'secrets', 'credential', 'credentials', 'permission', 'permissions', 'acl', 'role', 'roles', 'session', 'sessions', 'cookie', 'cookies', 'crypto', 'cipher', 'scope', 'scopes', 'owner', 'owners', 'ownership', 'grant', 'grants', 'privilege', 'privileges', 'mask', 'masking', 'masker', 'sensitive', 'privacy'],
     pathFile: /(^|\/)\.env(\.[^/]*)?$|\.(pem|p12|pfx|jks|keystore)$|(^|\/)id_(rsa|ed25519|ecdsa)$/i,
     added: {
       'sql-concat': (t, f) => sqlHit(t, f) && CONCAT.test(t),
