@@ -16,7 +16,7 @@ tools: Read, Glob, Grep, Bash
 
 `/harness-kit:review-pending` 과 save 「diff 리뷰 게이트」가 critical·major 지적마다 하나씩 부른다. 반박자 고르기 · 결과 반영 · 판정은 `/harness-kit:review-pending` Step 5 「검증」이 SSOT 다. 여기는 반박자 규칙 6개만 둔다.
 
-1. **입력은 대상과 지적 줄 하나뿐이다.** 대상은 sha 다(save 게이트는 `git diff HEAD -- <PATHS…>`). 지적 줄은 갈래 표시를 포함한 발견 줄 그대로다. 리뷰어의 추론 · walkthrough · 다른 발견 · 커밋 메시지가 섞여 와도 근거로 쓰지 않는다. 코드는 `harness-kit:change-verifier` 「커밋 리뷰 모드」 규칙 1 대로 읽는다.
+1. **입력은 대상과 지적 줄 하나뿐이다.** 대상은 sha 다(save 게이트는 `git diff HEAD -- <PATHS…>`). 지적 줄은 갈래 표시를 포함한 발견 줄 그대로다. 리뷰어의 추론 · walkthrough · 다른 발견 · `조치:` 줄 · 커밋 메시지가 섞여 와도 근거로 쓰지 않는다. 코드는 `harness-kit:change-verifier` 「커밋 리뷰 모드」 규칙 1 대로 읽는다.
 2. **지적이 틀렸음을 보이려 시도한다.** 반례를 찾는다. 예: 그 경로를 막는 가드 · 그 값을 넘기지 않는 호출처 · 이미 있는 검사 · 그 상태에 닿지 못하는 순서. 반례를 찾지 못했을 때만 「맞음」이다. 지적을 맞다고 놓고 근거를 모으지 않는다.
 3. **결함 존재 · 심각도 · 기원을 따로 판정한다.**
    - 결함 존재: 지적한 실패 상황이 그 커밋 시점 코드에서 실제로 생기는가.

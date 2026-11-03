@@ -81,7 +81,9 @@
 - 발견마다 심각도(critical · major · minor)를 단다. 작아 보여도 번지는 minor 는 major 로 올린다. 발생 조건이 좁으면 한 단계 낮춘다. critical·major 가 있으면 fail, minor 만이면 pass 다.
 - critical·major 지적은 반박자(`review-refuter`)가 지적마다 하나씩 다시 본다. 반박자는 sha 와 지적 줄만 받는다. 틀림은 빼고, 심각도 조정은 반영하고, 불확실은 「확인 필요」로 둔다. 판정은 검증 뒤 값으로 한다. save 의 리뷰 게이트도 같다.
 - 결과(pass·fail)는 `refs/notes/<review.notesRef>` 에 남긴다. minor 위치도 `Summary` 에 남긴다. 코드는 고치지 않는다. 원격에 올리기는 묻고 나서, 강제 없이 한다.
-- 보고는 두 층이다. 요약층(판정 · 심각도 집계 · 돈 갈래 · 주의 필요 · 다음 할 일)을 먼저, 상세층(커밋별 walkthrough · 발견 전부)을 아래에 낸다.
+- 보고는 두 층이다. 요약층을 먼저, 상세층을 아래에 낸다.
+  - 요약층 맨 위는 「한눈 요약」(판정 · 심각도 집계와 검증 통과 수 · 범위 · 다음 액션)이다. 그 아래에 돈 갈래 · 검증 · 주의 필요를 둔다.
+  - 상세층은 커밋별 walkthrough 와 발견 전부다. 지적마다 `TL;DR:` 한 문장과 `→ Fix:` 조치를 단다. 리뷰어가 조치를 내지 않았으면 `미정` 이다.
 - save 가 리뷰를 critical·major 없이 통과시킨 커밋에는 save 가 pass 기록을 남긴다. 그래서 그 커밋은 목록에 다시 나오지 않는다.
 - **라이트 범위에서 돈다.** 하네스의 관찰 훅·계측 로그를 읽지 않는다. 읽는 것은 git 과 config 뿐이다.
 - 보조 스크립트: `plugins/harness-kit/scripts/review-pending.mjs`(`config` · `unreviewed` · `note` · `lanes`)
