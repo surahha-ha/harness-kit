@@ -3,6 +3,16 @@
 매니페스트에 `version` 필드를 두지 않는다. 판은 main 커밋 SHA 로 갈린다. 절은 병합 단위로 적는다.
 (0.1.0 까지는 `plugin.json` 과 `marketplace.json` 의 명시 버전을 함께 올렸다.)
 
+## 미발행 — 범용 모니터 화면 스킬 monitor-view
+
+- 스킬 `monitor-view` 를 더한다. 두 개 이상의 시스템이 주고받는 메시지·이벤트를 브라우저에서 실시간으로 보는 모니터 화면과 사용 가이드를 만든다
+  - 절차: 결정 → 결정 기록 → BE → FE → 검증 → 사용 가이드 → 완료 체크. 현황판은 선택 단계(3B)다
+  - 보조 파일: DECISIONS(D1~D12 · 현황판) · CONTRACT · RULES · UI · MASKING · GUIDE · PITFALLS
+  - 전송·스택 무관으로 쓴다. 전송마다 갈리는 답은 질문 T1~T12 로 모으고 전송 부록이 답한다. 지금 있는 부록은 `transports/MQTT.md` 하나다
+  - 부록이 없는 전송은 결정 기록의 「전송」 절에 답을 적는다. 빈 부록 파일은 두지 않는다
+- 매니페스트 설명과 README 구성 표(스킬 11)를 맞춘다
+- README 「프로젝트 프로필」 슬롯 표 7행(`layout` · `sides` · `commands.be` · `commands.fe` · `contract` · `risk` · `docs`)의 읽는 자산 칸에 `monitor-view` 를 더한다
+
 ## 미발행 — 사후리뷰 한눈 요약과 지적별 TL;DR · Fix
 
 - review-pending 요약층 맨 위에 「한눈 요약」을 고정 순서로 둔다

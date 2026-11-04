@@ -52,3 +52,4 @@
 | `tests/graft-localize.test.mjs` · `install-local-items.test.mjs` · `statusline.test.mjs` | `3b6a437` | 반입 커밋 메시지 |
 | `plugins/harness-kit/agents/security-reviewer.md` · `performance-reviewer.md` | `3ca6790` | 반입 커밋 메시지(리뷰 갈래 B·C 를 이 저장소에서 처음 씀) · 사용자 승인 설계(2026-11-02) |
 | `plugins/harness-kit/agents/review-refuter.md` | `7f8e2dd` | 반입 커밋 메시지(사후리뷰 검증 단계의 반박자를 이 저장소에서 처음 씀) · 사용자 승인 설계(2026-11-02) |
+| `plugins/harness-kit/skills/monitor-view/`(SKILL · DECISIONS · CONTRACT · RULES · UI · MASKING · GUIDE · PITFALLS · transports/MQTT) | 커밋 전(같은 브랜치 후속 커밋에서 채움) | 이 저장소에서 처음 씀. 비공개 프로젝트의 구현·리뷰에서 설계·규칙·함정을 뽑아 전송·스택 무관하게 새로 썼다. 원문 코드·문구를 옮기지 않았고 예시 값은 합성값이다 · 사용자 지시(2026-11-04) |
