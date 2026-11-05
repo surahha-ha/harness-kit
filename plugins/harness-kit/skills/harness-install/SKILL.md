@@ -201,7 +201,8 @@ description: 지금 레포에 harness-agent 게이트(.harness/ 훅)와 harness-
   - 권장 규칙은 [DECISIONS.md](DECISIONS.md) 「D 번호 밖 질문」 표다.
   - 답은 체크포인트 `asked` 에 header · recommended(없으면 `null`) · basis · answer 로 적는다(TEMPLATES.md §7).
   - 시험 설치에서 이 질문 다섯 개가 권장도 「권장 없음」도 없이 나갔다. `answer-trace.mjs` ⑤-2 가 `asked` 를 보고 실패로 낸다.
-- 질문 header 는 D 번호 없이 **대상 + 결정** 명사구로 쓴다(`push 가드 처리` · `설치범위` · `설치 커밋`).
+- 질문 header 는 D 번호 없이 **대상 + 결정** 명사구로 쓴다(`push 가드 처리` · `하네스 설치범위` · `설치 커밋`).
+  - 항목마다 쓸 header 는 [TEMPLATES.md](TEMPLATES.md) §8 의 header 표가 기준이다. 여기의 예와 표가 다르면 표를 따른다.
   - 12자 이하로 쓴다.
   - 선택지 하나를 header 에 쓰지 않는다(`push 막기유지` 는 틀린 꼴이다 — 다른 답을 고르면 header 와 답이 어긋난다).
   - 한 번에 묻는 질문끼리 겹치지 않게 짓는다.
@@ -316,10 +317,15 @@ description: 지금 레포에 harness-agent 게이트(.harness/ 훅)와 harness-
    - `OK` 가 아니면 다음으로 가지 않는다.
 4. 편집 뒤 판을 뜬다: `$I settings-snap <레포 루트> after-edit` — CLI 뒤 대조·복원의 기준이다.
 5. 이 PC 에 플러그인 설치 기록을 남긴다(사용자 확인 뒤).
-   - 대상 트리에서 `claude plugin list` 가 harness-kit 을 enabled 로 보이면 5·6번을 건너뛴다(「not installed」 없이).
+   - 대상 트리에서 `claude plugin list` 가 harness-kit 을 enabled 로 보이면 CLI(마켓 등록 · install)와 6번은 건너뛴다(「not installed」 없이). 아래 scope 확인은 건너뛰지 않는다.
    - `claude plugin marketplace list` 로 마켓 등록을 본다.
    - 없으면 `claude plugin marketplace add surahha-ha/harness-kit --scope project` 를 돌린다.
    - 이어서 `claude plugin install harness-kit@harness-kit --scope project` 를 돌린다.
+   - **설치했든 건너뛰었든 설치 기록의 scope 를 확인한다.** `~/.claude/plugins/installed_plugins.json` 의 `plugins["harness-kit@harness-kit"]` 배열에서 `scope: "project"` 이고 `projectPath` 가 이 레포 루트(Windows 는 대소문자 무시 · 슬래시 통일)인 항목을 찾는다.
+     - 인수 시험: 사용자가 `/plugin install … --scope project` 를 쳤고 「Installed」가 나왔다. 그런데 기록은 `scope: "user"` 하나뿐이었고 이 레포의 project 기록은 없었다. 그 user 기록의 `installedAt`(`2026-10-29T05:21:43.738Z`)은 명령 시각(05:21:44.072Z)과 같은 순간이다. 세션 안 `/plugin install … --scope project` 가 user 범위 기록을 새로 만들었다. 원인 미확인 — Claude Code 동작으로 보고 확인 절차만 둔다.
+     - 그 항목이 없으면 같은 명령을 되풀이하지 않는다. 보고에 「이 레포의 project scope 설치 기록 없음 — 이 PC 는 `<scope>` 기록(<gitCommitSha 앞 12자>)으로 불러온다」를 적는다.
+     - 체크포인트·영수증 `plugin.scope` 에는 찾은 기록의 scope 를 적는다(`user` 등). `installRecord` 는 CLI 를 돌렸으면 `installed`, 아니면 `skipped` 다.
+     - 2번에서 넣은 project settings 키(`enabledPlugins` · `extraKnownMarketplaces`)는 그대로 둔다. 다른 PC 의 첫 설치는 그 키를 보고 계측 판 플러그인 항목(1~3)을 따른다.
 6. **CLI 를 돌렸으면 바로** `$I after-cli <레포 루트>` 를 돌린다.
    - CLI 는 settings.json 을 통째로 다시 써 키 순서·줄끝을 바꾸고 다른 도구의 값을 지운다.
    - 스크립트가 after-edit 스냅숏과 대조한다.

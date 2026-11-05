@@ -117,6 +117,10 @@
 | `enabledPlugins` false 키 (`key:…`) | 영수증에 있다 · 「개발 하네스」 절이 그 키를 적었다 · 설치 커밋에서 생겼다 | 지움 |
 | `enabledPlugins` false 키 | HEAD 에 없고 미추적 config 와 함께 생겼을 뿐이다 | 권장 없음 — 고정 순서는 남김 → 지움 |
 
+- false 키는 `settings.json` 과 `settings.local.json` 둘 다에서 찾는다.
+  - `settings.local.json` 의 키는 harness-install D6 「`settings.local.json` 에서 끈다」 답이다. 영수증 키의 `file` 이 `.claude/settings.local.json` 이면 그 파일에서 찾는다(harness-install TEMPLATES.md §9). header 는 `로컬끈플러그인 복원` 이다.
+  - 영수증이 없으면 `settings.local.json` 의 키는 「개발 하네스」 절이 그 키를 적었을 때만 후보다. 이 파일은 커밋 기록이 없어 설치 커밋·HEAD 로 가를 수 없다.
+
 - 선택지 — 바뀌는 것
   - **지움 (백업 남음)** — 그 파일·블록·줄·훅·키가 작업본에서 빠진다. 백업 디렉토리에 원본이 남는다.
   - **남김** — 그대로 둔다. 영수증이 있으면 영수증도 남긴다(다음 걷어내기의 기준).
@@ -398,7 +402,7 @@ header: 다른세션 확인
 | `.gitignore` 줄 | `무시목록 줄삭제` | 8 |
 | 문서 치환 | `문서줄 되돌림` (여럿이면 `문서줄 되돌림 3`) | 7 |
 | 훅 | `Stop훅 삭제` · `PreTool훅 삭제` · `PostTool훅 삭제` · `PostFail훅 삭제` · `Prompt훅 삭제` · `Session훅 삭제` (개인 설정 파일이면 앞에 `로컬`) | 6~12 |
-| false 키 | `끈플러그인 복원` | 8 |
+| false 키 | `끈플러그인 복원` (`settings.local.json` 의 키면 `로컬끈플러그인 복원`) | 8 · 10 |
 | 설치 뒤 손댄 것 | `손댄파일 처리` | 7 |
 | 런타임 산출물 | `계측로그 보관` | 7 |
 | 영수증 | `영수증 삭제` | 6 |

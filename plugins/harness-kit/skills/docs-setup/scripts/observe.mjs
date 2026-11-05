@@ -18,7 +18,27 @@ const git = (...a) => { try { return execFileSync('git', ['-C', root, ...a], { e
 // ── 표지(힌트) — 판정은 본문을 열어 사람이 한다 ──
 const DONE = /✅|\bDONE\b|\bCOMPLETE(D)?\b|\bCLOSED\b|완료|종료|마감/g;
 const OPEN = /\bTODO\b|IN[_ ]PROGRESS|\bACTIVE\b|\bBLOCKED\b|진행 ?중|대기|미완|후속|착수 전|예정/g;
-const BANNER = /현행 아님|시점 (문서|기록)|archived|superseded|폐기됨/i;
+// 배너 — 문서 첫머리의 배너 줄. 첫머리는 첫 15줄 안 · 코드 펜스 밖에서, 첫 제목을 하나 본 뒤 나오는 다음 제목(수준 무관) 전까지다.
+// 첫 제목이 `#` 이든 `##` 이든 그 제목 바로 아래(제목이 없으면 맨 위)가 배너 자리다(TEMPLATES §1).
+// 배너 줄은 인용(`>`)·경고 표시(⚠)·굵은 글씨(`**`)로 시작하고 표지 낱말을 담는다. 표 줄 · 목록 줄 · 일반 문단은 배너가 아니다 —
+// 인수 시험에서 docs-setup 이 만든 docs/README.md 의 성격표 줄(「시점 기록 — 현행 아님」)을 배너로 읽어 아카이브 문서로 오판했다
+const BANNER_WORD = /현행 아님|시점 (문서|기록)|archived|superseded|폐기됨/i;
+const BANNER_LEAD = /^\s*(?:>|⚠|\*\*|:warning:)/;
+const HEADING = /^\s*#{1,6}(?:\s|$)/;
+function hasBanner(lines) {
+  const inFence = fenceTracker();
+  let seenHeading = false;
+  for (const l of lines.slice(0, 15)) {
+    if (inFence(l)) continue;
+    if (HEADING.test(l)) {
+      if (seenHeading) break;
+      seenHeading = true;
+      continue;
+    }
+    if (BANNER_LEAD.test(l) && BANNER_WORD.test(l)) return true;
+  }
+  return false;
+}
 const count = (t, re) => (t.match(re) || []).length;
 
 const texts = new Map();
@@ -46,7 +66,7 @@ const docs = docFiles.map(({ rel, tracked }) => {
     title: (lines.find((l) => /^#\s/.test(l)) || '').replace(/^#\s+/, '').slice(0, 80),
     done: count(body, DONE), open: count(body, OPEN),
     unchecked: count(body, /^\s*[-*]\s+\[ \]/gm), checked: count(body, /^\s*[-*]\s+\[[xX]\]/gm),
-    statusLines, banner: BANNER.test(lines.slice(0, 15).join('\n')),
+    statusLines, banner: hasBanner(lines),
     dated: (rel.match(/20\d{6}|20\d{2}-\d{2}-\d{2}/) || [null])[0],
   };
   // 첫 상태 줄에서 먼저 나오는 표지로 가른다 — 미체크 상자는 체크하지 않은 채 끝난 문서에도 흔하다
