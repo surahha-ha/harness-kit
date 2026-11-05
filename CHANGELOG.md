@@ -9,6 +9,20 @@
   - 고친 곳: DECISIONS D0 · SKILL · `tiers.mjs` 머리 주석 · `tiers.test.mjs` 메시지 하나. 판정 로직은 그대로다
   - D0 에 다시 여는 조건과 「행동을 바꾸는 수단은 두 범위에 함께 넣는다」 규칙을 적는다
 
+## 미발행 — 새 레포 인수 시험의 결함 5건
+
+- 시험: 2026-10-29 원격 없는 새 연습 레포에서 harness-install 라이트 0~10단계와 docs-setup 을 끝까지 돌렸다(kit `eaffd89` 판)
+  - 7단계 발동 확인(훅이 실제로 도는지)은 결과를 받지 못해 미확인이다
+- answer-trace 가 D6 「`settings.local.json` 에서 끈다」 답을 읽는다 — slot `file: "settings.local"` 을 그 파일에서 대조한다. 모르는 `file` 값은 config 로 읽지 않고 실패로 낸다
+- 영수증 `settings.keys[]` 에 `file`(`.claude/settings.local.json`)을 둔다
+  - write-manifest 가 그 파일에서 값을 대조한다. 파일이 없거나 값이 다르거나 다른 경로면 영수증을 쓰지 않는다
+  - harness-uninstall 이 `settings.local.json` 의 false 키도 후보로 낸다(header `로컬끈플러그인 복원`). 전에는 영수증에 없어 그 키를 걷지 못했다
+- D0 header 를 `하네스 설치범위` 하나로 맞춘다. SKILL.md 의 예가 대상 없는 `설치범위` 였다. TEMPLATES §8 header 표 · uninstall.mjs 범위 낮추기 기록은 이미 이 값이었다
+- 라이트 안내절 · TEMPLATES §8 용어 풀이 표 · DECISIONS D0 의 「계측 로그가 쌓이지 않는다」를 고친다. 실행 전 가드는 명령마다 판정(`fire` · `pass`)을 `.harness/log.jsonl` 에 남긴다. 쌓이지 않는 것은 턴·실행 뒤·증거 기록이다
+- `--scope project` 설치가 `user` scope 로만 기록된 일 — 세션 안 `/plugin install … --scope project` 가 user 범위 기록을 새로 만들었다(그 기록의 `installedAt` 이 명령 시각과 같다). 원인 미확인 — Claude Code 동작으로 보고 확인 절차만 둔다. 5단계 5번에 `installed_plugins.json` 의 이 레포 project 기록 확인과 없을 때의 보고·기록(`plugin.scope`)을 적는다. 이미 enabled 라 CLI 를 건너뛰어도 이 확인은 한다
+- docs-setup observe 의 배너 판정을 문서 첫머리 배너 줄로 좁힌다 — 첫 15줄 안 · 펜스 밖 · 첫 제목을 하나 본 뒤 나오는 다음 제목(수준 무관) 전에서 인용(`>`)·경고 표시·굵은 글씨로 시작하는 줄만 본다. 첫 제목이 `##` 인 문서도 그 제목 바로 아래 배너를 읽는다. 새로 만든 `docs/README.md` 성격표 줄의 「현행 아님」을 배너로 읽어 아카이브 문서로 오판했다
+- 시험: `tiers.test.mjs` ④ · ⑤ · ⑦(D0 header), `scenarios.test.mjs` P, `observe.test.mjs` ④(시험 때 README 본문 · 진짜 배너 넷 — 첫 제목 `##` 아래 배너 포함)
+
 ## 미발행 — 범용 모니터 화면 스킬 monitor-view
 
 - 스킬 `monitor-view` 를 더한다. 두 개 이상의 시스템이 주고받는 메시지·이벤트를 브라우저에서 실시간으로 보는 모니터 화면과 사용 가이드를 만든다

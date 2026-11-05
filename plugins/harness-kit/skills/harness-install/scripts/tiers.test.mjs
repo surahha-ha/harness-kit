@@ -4,7 +4,8 @@
 //   ② install.mjs slots — 라이트면 문서·메모리 칸의 「키 없음」은 DEFER(실패 아님), 계측이면 실패
 //   ③ install.mjs hooks — 범위 훅은 정확히 1번, 범위 밖 훅은 0번
 //   ④ write-manifest — tier 필수 · 범위와 settings 훅이 어긋나면 실패 · schema 2
-//   ⑤ answer-trace — 체크포인트 tier(D0) 필수 · 라이트의 범위 밖 칸은 TIER · 범위 때문에 채운 답은 AUTO
+//   ⑤ answer-trace — 체크포인트 tier(D0) 필수 · 라이트의 범위 밖 칸은 TIER · 범위 때문에 채운 답은 AUTO · slot file settings.local
+//   ⑦ D0 header — SKILL · TEMPLATES · uninstall.mjs 가 같은 문자열
 // 대상 레포 밖(작업 디렉토리)에만 쓴다. 실패가 하나라도 있으면 종료코드 1.
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
@@ -232,6 +233,20 @@ const settingsOf = (hs) => {
   ok(good.code === 0 && m.schema === 2 && m.tier === 'light', `④ 라이트 영수증 — schema 2 · tier light (${good.out.trim().split('\n').pop()})`);
   const slots = (m.config && m.config.slots) || [];
   ok(JSON.stringify(slots.map((s) => [s.path, s.tier, s.before])) === JSON.stringify([['dangerGuard.deny', 'light', '[]'], ['metrics.enabled', 'instrumented', 'false']]), `④ config.slots — 바뀐 칸 · 범위 · 설치 전 값 (${JSON.stringify(slots.map((s) => s.path))})`);
+  // D6 을 「settings.local.json 에서 끈다」로 답한 키 — 영수증 키에 file 을 남겨 걷어내기가 찾게 한다(인수 시험: 영수증에 없었다)
+  const LOCAL_KEY = { path: ['enabledPlugins', 'other-tools@other-market'], value: false, parentCreated: true, decision: 'D6', file: '.claude/settings.local.json' };
+  const keysDraft = (keys) => draft({ tier: 'light', settings: { path: '.claude/settings.json', hooks: [{ ...H.PreToolUse, eventCreated: true }], keys } });
+  const noLocal = run(WM, t.repo, keysDraft([LOCAL_KEY]));
+  ok(noLocal.code === 1 && /의 file \.claude\/settings\.local\.json 이 없다/.test(noLocal.out), '④ settings.local.json 키인데 그 파일이 없다 → 영수증을 쓰지 않는다');
+  t.w('.claude/settings.local.json', '{ "enabledPlugins": { "other-tools@other-market": false } }\n');
+  const lk = run(WM, t.repo, keysDraft([LOCAL_KEY]));
+  const lkKey = lk.code === 0 ? JSON.parse(readFileSync(path.join(t.repo, 'harness.install.json'), 'utf8')).settings.keys[0] : {};
+  ok(lk.code === 0 && lkKey.file === '.claude/settings.local.json' && lkKey.decision === 'D6' && lkKey.value === false, `④ settings.local.json 의 D6 키 — 그 파일에서 대조하고 영수증 키에 file 을 남긴다 (${lk.out.trim().split('\n').pop()})`);
+  const { file: _drop, ...noFileKey } = LOCAL_KEY;
+  const wrong = run(WM, t.repo, keysDraft([noFileKey]));
+  ok(wrong.code === 1 && /settings 키 값이 다름: enabledPlugins\.other-tools@other-market = undefined/.test(wrong.out), '④ file 이 없는 키는 settings.json 에서 찾는다 — settings.local.json 에만 있으면 실패');
+  const odd = run(WM, t.repo, keysDraft([{ ...LOCAL_KEY, file: '.claude/other.json' }]));
+  ok(odd.code === 1 && /settings 키 file 이 settings\.path 도 \.claude\/settings\.local\.json 도 아님/.test(odd.out), '④ 키 file 은 settings.path 또는 settings.local.json 만');
 }
 
 // ── ⑤ answer-trace ──
@@ -271,6 +286,31 @@ const settingsOf = (hs) => {
   state({ tier: 'light', decisions: [{ ...D7, header: 'D7 턴종료 감사' }], docsHookup: { answer: 'later', recommend: 'later', why: '' } });
   const hd = run(AT, t.repo, ex);
   ok(hd.code === 1 && /^FAIL D7 header 「D7 턴종료 감사」 에 D 번호/m.test(hd.out) && /^FAIL docsHookup 권장·권장 이유 없음/m.test(hd.out), '⑤ header 에 D 번호 · 10단계 답에 권장 이유 없음 → 실패');
+  // D6 「settings.local.json 에서 끈다」 답 — slot file 'settings.local' 은 그 파일에서 읽는다(인수 시험: 값이 있는데 FAIL 이 났다)
+  const D6 = { id: 'D6', answer: '이 레포에서 끈다 — settings.local.json', slots: [{ file: 'settings.local', path: ['enabledPlugins', 'other-tools@other-market'], value: false }],
+    recs: [{ item: 'other-tools@other-market', recommended: 'local', followed: true, basis: '같은 이름 스킬 겹침 · worktree 흔적 없음' }] };
+  state({ tier: 'light', decisions: [D7, D6] });
+  const nl = run(AT, t.repo, ex);
+  ok(nl.code === 1 && /^FAIL D6 enabledPlugins\.other-tools@other-market 답=false 값=undefined/m.test(nl.out), '⑤ settings.local 칸인데 settings.local.json 이 없다 → 실패');
+  t.w('.claude/settings.local.json', '{ "enabledPlugins": { "other-tools@other-market": false } }\n');
+  const lc = run(AT, t.repo, ex);
+  ok(lc.code === 0 && /^OK {3}D6 enabledPlugins\.other-tools@other-market$/m.test(lc.out), `⑤ settings.local 칸 — settings.local.json 의 값과 대조해 통과 (${(lc.out.match(/^FAIL .*/m) || ['FAIL 없음'])[0]})`);
+  state({ tier: 'light', decisions: [D7, { ...D6, slots: [{ ...D6.slots[0], file: 'settings' }] }] });
+  const sj = run(AT, t.repo, ex);
+  ok(sj.code === 1 && /^FAIL D6 enabledPlugins\.other-tools@other-market 답=false 값=undefined/m.test(sj.out), '⑤ settings 칸은 settings.json 에서만 읽는다 — settings.local.json 의 값으로 통과하지 않는다');
+  state({ tier: 'light', decisions: [D7, { ...D6, slots: [{ ...D6.slots[0], file: 'local' }] }] });
+  const uf = run(AT, t.repo, ex);
+  ok(uf.code === 1 && /^FAIL D6 enabledPlugins\.other-tools@other-market 모르는 file 「local」/m.test(uf.out), '⑤ 모르는 slot file 은 config 로 읽지 않고 실패');
+}
+
+// ── ⑦ D0 header — 질문 꼴 · header 표 · 걷어내기의 범위 낮추기 기록이 같은 문자열(인수 시험: SKILL 과 TEMPLATES 가 달랐다) ──
+{
+  const D0_HEADER = '하네스 설치범위';   // 대상(하네스) + 정할 것(설치범위) — TEMPLATES §8 header 규칙
+  const read = (rel) => readFileSync(path.join(HERE, rel), 'utf8');
+  const skill = read('../SKILL.md'), tpl = read('../TEMPLATES.md'), un = read('../../harness-uninstall/scripts/uninstall.mjs');
+  ok(new RegExp(`^\\| D0 \\| \`${D0_HEADER}\` \\|`, 'm').test(tpl) && new RegExp(`^header: ${D0_HEADER}$`, 'm').test(tpl), `⑦ TEMPLATES §8 — header 표 D0 줄과 D0 질문 꼴이 「${D0_HEADER}」`);
+  ok(skill.includes(`\`${D0_HEADER}\``) && !/`설치범위`/.test(skill), `⑦ SKILL.md header 예 — 「${D0_HEADER}」, 대상 없는 「설치범위」 없음`);
+  ok(un.includes(`id: 'D0', header: '${D0_HEADER}'`), `⑦ uninstall.mjs 범위 낮추기가 영수증에 적는 D0 header 가 「${D0_HEADER}」`);
 }
 
 // ── ⑥ commit-where — 설치가 만든 worktree·브랜치의 커밋이 작업 브랜치에서 닿는가 · 다음 할 일 ──

@@ -28,6 +28,7 @@ if (!rootArg || !draftArg) { console.error('사용: node write-manifest.mjs <레
 const root = path.resolve(rootArg);
 const draft = JSON.parse(readFileSync(path.resolve(draftArg), 'utf8'));
 const OUT = 'harness.install.json';
+const SETTINGS_LOCAL = '.claude/settings.local.json';
 const abs = (rel) => path.join(root, rel);
 const read = (rel) => readFileSync(abs(rel), 'utf8');
 
@@ -108,10 +109,16 @@ if (st) {
     const hit = groups.some((g) => (g.matcher ?? null) === (h.matcher ?? null) && (g.hooks || []).some((x) => x.command === h.command));
     if (!hit) bad(`settings 훅 없음: ${h.event} | ${h.matcher ?? '*'} | ${h.command}`);
   }
+  // 키의 file — 없으면 settings.path. D6 을 「settings.local.json 에서 끈다」로 답했으면 그 키만 SETTINGS_LOCAL 을 적는다
+  //   (영수증에 없으면 걷어내기가 그 false 키를 찾지 못한다)
+  const localJson = existsSync(abs(SETTINGS_LOCAL)) ? JSON.parse(read(SETTINGS_LOCAL).replace(/^\uFEFF/, '')) : null;
   for (const k of st.keys || []) {
-    let v = json;
+    const file = k.file ?? (st.path || '.claude/settings.json');
+    if (file !== (st.path || '.claude/settings.json') && file !== SETTINGS_LOCAL) { bad(`settings 키 file 이 settings.path 도 ${SETTINGS_LOCAL} 도 아님: ${file}`); continue; }
+    if (file === SETTINGS_LOCAL && !localJson) { bad(`settings 키 ${k.path.join('.')} 의 file ${SETTINGS_LOCAL} 이 없다`); continue; }
+    let v = file === SETTINGS_LOCAL ? localJson : json;
     for (const s of k.path) v = v == null ? undefined : v[s];
-    if (JSON.stringify(v) !== JSON.stringify(k.value)) bad(`settings 키 값이 다름: ${k.path.join('.')} = ${JSON.stringify(v)}`);
+    if (JSON.stringify(v) !== JSON.stringify(k.value)) bad(`settings 키 값이 다름: ${file === SETTINGS_LOCAL ? `${SETTINGS_LOCAL} ` : ''}${k.path.join('.')} = ${JSON.stringify(v)}`);
   }
 }
 
