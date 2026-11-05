@@ -378,7 +378,7 @@
 | `활동 중` 방식, 칸에 줄 3개 | — | 최신 1줄만 |
 | `전체` 방식, 쉬는 칸 | — | 줄 그대로, 쉼 표시 없음 |
 
-## 12. 연결 — `classifyStreamProbe` · `resolveConnectionView` · `resolveEmptyState`
+## 12. 연결 — `classifyStreamProbe` · `resolveConnectionView` · `resolveTransportView` · `resolveEmptyState`
 
 `classifyStreamProbe({status, message, refresh}) → issue | null` — 닫힌 연결 하나의 상태를 판정한다. 상태의 출처는 D8 수단마다 다르다(SSE 는 상태 확인 응답, fetch 스트림은 연결 응답, SKILL.md 3단계 2).
 
@@ -417,9 +417,25 @@
 | - | - | - |
 | stopped | 403 | 403 문제 |
 | reconnecting | 503 | 503 문제 |
-| open | 없음 | 연결됨 |
-| reconnecting | 없음 | 재연결 중 |
-| idle · connecting | 없음 | 연결 시도 중 |
+| open | 없음 | 화면 연결됨 |
+| reconnecting | 없음 | 화면 재연결 중 |
+| idle · connecting | 없음 | 화면 연결 시도 중 |
+
+`resolveTransportView(state, transport, nowMs)`: 전송 연결 표시(UI.md §7). T13 이 「해당 없음」이면 이 함수와 아래 표를 빼고 센다.
+
+- `state` 는 화면 연결 상태(SKILL.md 3단계 2)다. `transport` 는 이번 연결에서 마지막으로 받은 `transportStatus`(CONTRACT.md §2)다. 받지 않았으면 null 이다.
+- 화면 연결이 open 이 아니면 전송 상태를 모른다. 마지막으로 받은 값을 쓰지 않는다.
+- 호출측은 화면 연결이 open 을 벗어나는 순간 `transport` 를 null 로 지운다. 다시 열린 뒤 새 이벤트가 오기 전까지 지난 연결의 값을 보이지 않는다.
+- 미연결 시각은 `changedAt` 의 시:분이다. `changedAt` 이 `nowMs` 와 다른 날이면 날짜를 붙인다.
+- `transportStatus` 의 `data` 는 `connected` 가 boolean, `changedAt` 이 문자열일 때만 받는다. 아니면 그 이벤트를 버리고 앞의 값을 둔다. 버린 건수를 개발 콘솔에 남긴다(SKILL.md 3단계 3).
+
+| state | transport | 기대 |
+| - | - | - |
+| open | null | 확인 중 |
+| open | `connected: true` | 연결됨 |
+| open | `connected: false`, `changedAt` 이 `nowMs` 와 같은 날 09:58 | 미연결 · `09:58부터` |
+| open | `connected: false`, `changedAt` 이 `nowMs` 전날 23:50 | 미연결 · 날짜 + `23:50부터` |
+| idle · connecting · reconnecting · stopped | `connected: true`(지난 값) | 확인 불가 |
 
 `resolveEmptyState(issue, receivedCount)`: 연결 문제 > 받은 것 없음 > 걸러져 비었음. 보이는 목록이 비었을 때만 부른다.
 
