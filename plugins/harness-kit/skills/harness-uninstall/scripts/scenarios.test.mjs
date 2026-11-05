@@ -17,6 +17,7 @@
 //   M docs-setup record 가 영수증의 config 해시를 고친다(CRLF 그대로) — 걷어내기가 config 를 손댄 파일로 보지 않는다
 //   N 목적 질문의 선택지 — 범위 낮추기는 계측(또는 영수증 없음)일 때만 · 선택지마다 지우는 것·남는 것·새 세션
 //   O 사후리뷰 기록(notes ref · 받아 둔 ref · fetch refspec)은 걷어 내지 않고, verify 요약이 남긴 것과 지우는 명령을 낸다
+//   P D6 을 settings.local.json 에서 끈 설치 — 영수증 키의 file 로 그 false 키를 찾아 걷어 낸다
 // 대상 레포 밖(작업 디렉토리)에만 쓴다. 실패가 하나라도 있으면 종료코드 1.
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, existsSync, rmSync } from 'node:fs';
@@ -540,6 +541,34 @@ await scenario('O', async () => {
   const left = t.git('for-each-ref', '--format=%(refname)', 'refs/notes/').trim().split('\n');
   ok(JSON.stringify(left) === JSON.stringify(['refs/notes/team-review', 'refs/notes/team-review-origin']) && /team-review-origin/.test(t.git('config', '--get-all', 'remote.origin.fetch')), 'O 걷어낸 뒤에도 notes ref 와 fetch refspec 이 그대로다');
   U(t, 'finish');
+});
+
+// ── P D6 을 「settings.local.json 에서 끈다」로 답한 설치 — 영수증 키의 file 로 그 false 키를 찾아 걷어 낸다 ──
+//   인수 시험: D6 답이 settings.local.json 에 들어갔는데 영수증에 없어 걷어내기가 그 키를 몰랐다
+await scenario('P', async () => {
+  const t = setup('p', 'light');
+  const OTHER = 'other-tools@other-market';
+  const LOCAL_BEFORE = { permissions: { allow: ['Bash(ls)'] } };
+  const exclude = path.resolve(t.repo, t.git('rev-parse', '--git-path', 'info/exclude').trim());
+  mkdirSync(path.dirname(exclude), { recursive: true });
+  writeFileSync(exclude, '/.claude/settings.local.json\n', 'utf8');
+  t.w('.claude/settings.local.json', `${JSON.stringify({ ...LOCAL_BEFORE, enabledPlugins: { [OTHER]: false } }, null, 2)}\n`);
+  const d = JSON.parse(readFileSync(t.draft, 'utf8'));
+  d.decisions.push({ id: 'D6', answer: '이 레포에서 끈다 — settings.local.json' });
+  d.settings.keys.push({ path: ['enabledPlugins', OTHER], value: false, parentCreated: true, decision: 'D6', file: '.claude/settings.local.json' });
+  writeFileSync(t.draft, JSON.stringify(d), 'utf8');
+  const wm = run(WM, t.repo, t.draft, '--example', t.ex);
+  ok(wm.code === 0, `P 영수증 — settings.local.json 의 D6 키를 받는다 (${last(wm)})`);
+  const m = JSON.parse(t.r('harness.install.json'));
+  const mk = m.settings.keys.find((k) => k.path[1] === OTHER);
+  ok(mk && mk.file === '.claude/settings.local.json' && mk.decision === 'D6' && mk.value === false, 'P 영수증: D6 키에 file .claude/settings.local.json 이 남는다');
+  ok(U(t, 'scan', '--refresh').code === 0, 'P scan');
+  const key = t.state().plan.candidates.find((c) => c.kind === 'key');
+  ok(key && key.data.file === '.claude/settings.local.json' && key.recommend === 'remove' && key.status === 'clean' && key.header === '로컬끈플러그인 복원',
+    `P 후보: settings.local.json 의 끈 플러그인 키 · 권장 지움 · header 「로컬끈플러그인 복원」 (${key && `${key.id} ${key.header}`})`);
+  if (!removeAll(t, 'P D6 로컬 키')) return;
+  const after = JSON.parse(t.r('.claude/settings.local.json'));
+  ok(!(after.enabledPlugins && OTHER in after.enabledPlugins) && JSON.stringify(after.permissions) === JSON.stringify(LOCAL_BEFORE.permissions), 'P 걷어낸 뒤: 끈 플러그인 키만 빠지고 settings.local.json 의 다른 키는 그대로다');
 });
 
 console.log(`\nscenarios: pass=${pass} fail=${fail}`);
