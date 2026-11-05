@@ -13,7 +13,7 @@
 
 ## 구성
 
-스킬 10 · 에이전트 9 · 커맨드 2 · 훅 0
+스킬 11 · 에이전트 9 · 커맨드 2 · 훅 0
 
 | 종류 | 이름 | 언제 쓰나 |
 | - | - | - |
@@ -23,6 +23,7 @@
 | 스킬 | `archive-cycle` | 쌓인 메모리·문서를 계측 → 판정 → 이관 → 연표 접기 → 검증 |
 | 스킬 | `ui-ux-guide` | 화면·문구·인터랙션을 만들거나 고칠 때 6단계 + 7원칙 + 체크리스트 |
 | 스킬 | `data-migration` | 데이터가 있는 DB 의 스키마 이행 · 타 서비스 ETL |
+| 스킬 | `monitor-view` | 시스템 사이에 오가는 메시지·이벤트를 실시간으로 보는 모니터 화면과 사용 가이드 — 전송·스택 무관, 전송 부록(MQTT) |
 | 스킬 | `plugin-sync` | 플러그인(이 플러그인 또는 프로젝트 오버레이) 최신화 사이클 — 명시 호출 전용 |
 | 스킬 | `harness-install` | "하네스 설치해줘" — harness-agent 게이트와 이 플러그인을 함께 설치(아래 세부) |
 | 스킬 | `harness-uninstall` | "하네스 제거해줘" · "하네스 재설치" — harness-install 이 넣은 것만 걷어 냄(아래 세부) |
@@ -219,17 +220,17 @@ node <harness-kit 플러그인>/scripts/graft-localize.mjs localize <레포 루�
 
 | 키 | 내용 | 읽는 자산 |
 | - | - | - |
-| `layout` | `'single'` \| `'paired'` — 한 레포인가, BE·FE 가 짝 레포로 나뉘었나 | coordinator · save · backend/frontend |
+| `layout` | `'single'` \| `'paired'` — 한 레포인가, BE·FE 가 짝 레포로 나뉘었나 | coordinator · save · backend/frontend · monitor-view |
 | `pairOwner` | 짝 레포 쪽에서만: 주 레포 상대경로. 주 레포는 `null` | 전부(읽기 순서) |
 | `repos.peers` | (harness 기존 슬롯) 짝 레포 `{ name, path, detect }` | coordinator · save · plugin-curator |
-| `sides.be` · `sides.fe` | `root`(상대경로) · `marker`(판별 파일) · `stack` · `persistence`(BE) · `conventionsDoc` · `uiTipsDoc`(FE) | 에이전트 · fe-be-trace · save |
-| `commands.be` | `build` · `compile` · `testAll` · `testOne` · `run` — 명령 문자열, **파이프 금지** | 에이전트 · qa-cycle · save |
-| `commands.fe` | `dev` · `devMock` · `build` · `lint` · `testAll` · `testOne` · `e2e` — 같은 형식 | 에이전트 · qa-cycle · ui-ux-guide · save |
+| `sides.be` · `sides.fe` | `root`(상대경로) · `marker`(판별 파일) · `stack` · `persistence`(BE) · `conventionsDoc` · `uiTipsDoc`(FE) | 에이전트 · fe-be-trace · save · monitor-view |
+| `commands.be` | `build` · `compile` · `testAll` · `testOne` · `run` — 명령 문자열, **파이프 금지** | 에이전트 · qa-cycle · save · monitor-view |
+| `commands.fe` | `dev` · `devMock` · `build` · `lint` · `testAll` · `testOne` · `e2e` — 같은 형식 | 에이전트 · qa-cycle · ui-ux-guide · save · monitor-view |
 | `e2e.modeSwitch` | mock/실서버 전환 스위치의 위치 | qa-cycle · unit-test-engineer |
-| `contract` | `beGlobs`(계약 DTO·Controller glob) · `feDirs`(api·store) · `feMocks` · `rulesDoc`(계약 규율 문서) · `dataSourceRule`(데이터 소스 판별 문서) | coordinator · fe-be-trace · save · 에이전트 |
+| `contract` | `beGlobs`(계약 DTO·Controller glob) · `feDirs`(api·store) · `feMocks` · `rulesDoc`(계약 규율 문서) · `dataSourceRule`(데이터 소스 판별 문서) | coordinator · fe-be-trace · save · 에이전트 · monitor-view |
 | `data` | `schemaMgmt`(`'flyway'` \| `'liquibase'` \| `'init-sql'`) · `schemaHome` · `schemaProcedureSkill` · `migrationOverlaySkill` · `namingPlanDoc` | data-migration · coordinator |
-| `risk` | `sharedDbSuites` · `sharedDbProfiles` · `devServer` · `destructive` — 표 아래 「`risk` 하위 키」 | change-verifier · unit-test-engineer · save · data-migration |
-| `docs` | `domainIndex` · `screenMap` · `repoMap` · `testGuide` · `uiUxRules` · `archiveDir` · `pathValidator` · `autoloaded`(자동 로드 `CLAUDE.md` 목록) | 여러 자산 · `archiveDir`·`pathValidator`·`autoloaded` 는 docs-setup 이 채운다 |
+| `risk` | `sharedDbSuites` · `sharedDbProfiles` · `devServer` · `destructive` — 표 아래 「`risk` 하위 키」 | change-verifier · unit-test-engineer · save · data-migration · monitor-view(`devServer`) |
+| `docs` | `domainIndex` · `screenMap` · `repoMap` · `testGuide` · `uiUxRules` · `archiveDir` · `pathValidator` · `autoloaded`(자동 로드 `CLAUDE.md` 목록) | 여러 자산(monitor-view 는 `uiUxRules`) · `archiveDir`·`pathValidator`·`autoloaded` 는 docs-setup 이 채운다 |
 | `git` | `protectedBranches` · `commitFormat`(한 문장) · `commitExecution`(`'auto'` \| `'message-only'`) · `push`(`'auto'` \| `'ask'` \| `'never'`) · `coAuthor`(trailer 허용 여부) · `reviewThreshold`(`{ files, lines }`) | save · frontend-engineer · plugin-sync·archive-cycle(`commitExecution`) · review-pending(`reviewThreshold`·`push`) |
 | `review` | `notesRef` · `integrationBranch` · `remote` · `batchAsk` — 표 아래 「`review` 하위 키」. 임계는 `git.reviewThreshold` 를 같이 쓴다 | review-pending · save(`notesRef`) |
 | `agents` | 역할 → 에이전트 이름 덮어쓰기. 역할: `schemaDesign` · `schemaApply` · `migration` · `backend` · `frontend` · `testAuthor` · `verifier` | coordinator · 에이전트 |
