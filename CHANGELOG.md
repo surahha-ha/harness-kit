@@ -3,8 +3,12 @@
 매니페스트에 `version` 필드를 두지 않는다. 판은 main 커밋 SHA 로 갈린다. 절은 병합 단위로 적는다.
 (0.1.0 까지는 `plugin.json` 과 `marketplace.json` 의 명시 버전을 함께 올렸다.)
 
-## 미발행 — 걷어내기 후보 header 통일 · 출처 대장 · 스킬 시험 스크립트 · 사후리뷰 원격 받기 실패 표시
+## 미발행 — 걷어내기 후보 header 통일 · 출처 대장 · 스킬 시험 스크립트 · 사후리뷰 원격 받기 실패 표시 · lanes 패턴 둘
 
+- review-pending lanes 패턴 둘을 고친다
+  - `doc/` · `docs/` 아래 `.sql` 은 갈래 고르기에서 뺀다. 전에는 `docs/schema.sql` 이 경로 낱말 `sql` 로 C 를 켰다. 그 밖의 `.sql` 은 그대로 C 다
+  - `@RequirePermission` 을 인가 검사로 본다. 더하면 `auth-check`, 지우면 `auth-check-removed` 로 B 를 켠다. 전에는 이 어노테이션을 바꾼 커밋에 B 가 켜지지 않았다
+  - 시험: `tests/review-pending.test.mjs`
 - review-pending 이 원격 리뷰 기록 받기 실패를 요약에 드러낸다
   - 전에는 대상이 0건이면 실패가 보고되지 않았다. 1건 이상이어도 한눈 요약 아래 줄에만 나왔다
   - 이제 한눈 요약의 범위 줄 아래에 「원격 기록 받기 실패」 줄을 둔다. 0건이면 「사후리뷰 대상 없음」 줄 뒤에 붙인다

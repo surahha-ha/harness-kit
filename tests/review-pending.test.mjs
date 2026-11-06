@@ -351,6 +351,32 @@ test('lanes 순수 — 문서 · 시험은 보지 않는다. .env 는 늘 B 다'
   assert.deepEqual(reasonOf(pickLanes(udiff('.env.local', ['DB_HOST=db'])), 'B'), ['.env.local path path:file']);
 });
 
+test('lanes 순수 — 문서 폴더의 .sql 은 보지 않는다. 그 밖의 .sql 은 C 다', () => {
+  for (const p of ['docs/schema.sql', 'doc/db/init.sql', 'src/docs/sample.sql']) {
+    const r = pickLanes(udiff(p, ['INSERT INTO t VALUES (1);']));
+    assert.deepEqual(r.lanes, ['A'], `${p} 는 문서다`);
+    assert.deepEqual(r.skipped, [p]);
+  }
+  for (const p of ['db/schema.sql', 'src/mydocs/init.sql', 'docs.sql']) {
+    const r = pickLanes(udiff(p, ['-- 주석']));
+    assert.deepEqual(r.lanes, ['A', 'C'], `${p} 는 문서 폴더가 아니다`);
+    assert.deepEqual(reasonOf(r, 'C'), [`${p} path path:sql`]);
+    assert.deepEqual(r.skipped, []);
+  }
+});
+
+test('lanes 순수 — @RequirePermission 을 더하거나 지우면 B 를 켠다', () => {
+  const file = 'src/deploy/DeployController.java';
+  const added = pickLanes(udiff(file, ['    @RequirePermission("DEPLOY_WRITE")']));
+  assert.deepEqual(added.lanes, ['A', 'B']);
+  assert.deepEqual(reasonOf(added, 'B'), [`${file}:10 added auth-check`]);
+  const removed = pickLanes(udiff(file, [], ['    @RequirePermission("DEPLOY_WRITE")']));
+  assert.deepEqual(removed.lanes, ['A', 'B']);
+  assert.deepEqual(reasonOf(removed, 'B'), [`${file}:10 removed auth-check-removed`]);
+  const longer = pickLanes(udiff(file, ['    @RequirePermissionLogged("x")']));
+  assert.deepEqual(longer.lanes, ['A'], '이름이 더 긴 다른 어노테이션은 켜지 않는다');
+});
+
 test('lanes 순수 — parseDiff 는 지운 줄의 "-- " 내용을 머리줄로 읽지 않고 줄 번호를 센다', () => {
   const text = 'diff --git a/q.sql b/q.sql\n--- a/q.sql\n+++ b/q.sql\n@@ -3,2 +3,1 @@\n--- old comment\n-select 1\n+select 2\n';
   const [f] = parseDiff(text);
