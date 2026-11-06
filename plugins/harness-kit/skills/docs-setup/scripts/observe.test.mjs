@@ -101,6 +101,9 @@ w('docs/later.md', '# 나중 절\n\n## 기록\n\n> 이 절은 현행 아님 표�
 w('docs/archive/plan-b.md', `# 끝난 계획 둘\n\n${banner('docs/plan-b.md')}\n## 본문\n\n내용.\n`);
 w('docs/old-bold.md', '# 옛 설계\n\n**폐기됨** — 새 설계로 바뀌었다.\n');
 w('docs/old-warn.md', '⚠️ superseded by the new guide.\n\n# old guide\n');
+// 손으로 단 거부 배너 · 같은 낱말이 배너 자리에 없는 문서
+w('docs/archive/rejected-plan.md', '# 폭 확장 계획\n\n> 🔴 **결론: 최종 거부됨 — 아래 사유로 진행하지 않는다.**\n\n## 본문\n\n내용.\n');
+w('docs/api-errors.md', '# 오류\n\n권한이 없으면 요청이 거부됨 으로 끝난다.\n\n- 거부됨: 403\n');
 // 첫 제목이 `##` 인 문서 — TEMPLATES §1 대로 그 첫 제목 줄 바로 아래에 배너를 달았다
 w('docs/archive/plan-h2.md', `## 끝난 계획 셋\n\n${banner('docs/plan-h2.md')}\n### 본문\n\n내용.\n`);
 git('add', '.'); git('commit', '-q', '-m', 'readme');
@@ -114,6 +117,8 @@ eq(bannerOf('docs/archive/plan-b.md'), true, '이 스킬의 배너(첫 제목 �
 eq(bannerOf('docs/old-bold.md'), true, '굵은 글씨로 시작하는 첫머리 배너 줄은 배너다');
 eq(bannerOf('docs/old-warn.md'), true, '맨 위 경고 표시 줄(제목 없음)은 배너다');
 eq(bannerOf('docs/archive/plan-h2.md'), true, '첫 제목이 ## 이어도 그 제목 바로 아래 인용 줄은 배너다');
+eq(bannerOf('docs/archive/rejected-plan.md'), true, '인용 줄의 「최종 거부됨」은 배너다');
+eq(bannerOf('docs/api-errors.md'), false, '일반 문단 · 목록 줄의 「거부됨」은 배너가 아니다');
 
 console.log(`\n${pass}/${pass + fail} PASS · 작업 레포 ${repo}`);
 process.exit(fail ? 1 : 0);
