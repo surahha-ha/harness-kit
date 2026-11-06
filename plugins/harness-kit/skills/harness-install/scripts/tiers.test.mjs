@@ -51,7 +51,7 @@ ok(JSON.stringify(instrumentedUnder('project.docs', ['project.docs.domainIndex',
 const legacy = receiptTier({ schema: 1, files: [] });
 ok(legacy.tier === 'instrumented' && legacy.legacy === true, '① schema 1 영수증(tier 없음)은 계측으로 읽는다');
 ok(receiptTier({ schema: 2, tier: 'light' }).tier === 'light' && receiptTier(null) === null, '① schema 2 영수증은 tier 를 그대로 · 영수증 없음은 null');
-ok(normTier('라이트') === 'light' && normTier('계측') === 'instrumented' && normTier('standard') === null, '① 범위 이름 — 라이트·계측만(표준은 아직 없다)');
+ok(normTier('라이트') === 'light' && normTier('계측') === 'instrumented' && normTier('standard') === null, '① 범위 이름 — 라이트·계측만(표준은 만들지 않는다)');
 
 // ── ② slots ──
 {
