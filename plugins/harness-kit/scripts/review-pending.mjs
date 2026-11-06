@@ -185,8 +185,8 @@ export function findUnreviewed(root, cfg, revArgs) {
 // 정밀도 우선이다. 대부분 커밋은 A 하나만 돌아야 한다 — 패턴이 넓어 B·C 가 늘 켜지면 갈래를 나눈 뜻이 없다.
 // 문서·시험·잠금 파일은 보지 않는다. 내용 패턴은 추가 줄만 본다(인가 검사는 지운 줄도 본다).
 
-/** 갈래 고르기에서 빼는 파일 — 문서 · 시험 · 잠금 · 압축본 */
-export const LANE_SKIP = /\.(md|mdx|markdown|txt|rst|adoc)$|(^|\/)(tests?|__tests__|specs?|fixtures?)\/|[._-](test|spec)\.[^/]+$|Test\.(java|kt)$|(^|\/)(package-lock\.json|yarn\.lock|pnpm-lock\.yaml)$|\.min\.(js|css)$/i;
+/** 갈래 고르기에서 빼는 파일 — 문서 · 문서 폴더의 .sql · 시험 · 잠금 · 압축본 */
+export const LANE_SKIP = /\.(md|mdx|markdown|txt|rst|adoc)$|(^|\/)docs?\/.*\.sql$|(^|\/)(tests?|__tests__|specs?|fixtures?)\/|[._-](test|spec)\.[^/]+$|Test\.(java|kt)$|(^|\/)(package-lock\.json|yarn\.lock|pnpm-lock\.yaml)$|\.min\.(js|css)$/i;
 
 const SQL_I = /\b(select\b[^;]*?\bfrom|insert\s+into|update\s+\S+\s+set|delete\s+from|merge\s+into)\b/i;
 const SQL_UPPER = /\b(SELECT\b[^;]*?\bFROM|INSERT\s+INTO|UPDATE\s+\S+\s+SET|DELETE\s+FROM|MERGE\s+INTO)\b/;
@@ -206,7 +206,7 @@ const PLACEHOLDER = /^(<.*>|\$\{.*\}|x+|\*+)$|example|changeme|dummy|placeholder
 const PII = word('ssn|social_?security(_?(no|number))?|resident_?(registration|reg)_?(no|number)|birth_?date|date_?of_?birth|passport_?(no|number)|credit_?card|card_?(no|number)|account_?(no|number)|bank_?account');
 const LOG_CALL = /\b(console\.(log|info|warn|error|debug)|log(ger)?\.(info|warn|error|debug|trace)|logging\.\w+|print(ln|f)?)\s*\(/;
 const SENSITIVE = word('password|passwd|secret|token|api_?key|ssn|email|phone|card_?(no|number)');
-const AUTH_CHECK = /@(PreAuthorize|PostAuthorize|Secured|RolesAllowed|PermitAll|DenyAll)\b|\b(permitAll|hasRole|hasAnyRole|hasAuthority|hasPermission|isAuthenticated|checkPermission|requireAuth\w*)\s*\(/;
+const AUTH_CHECK = /@(PreAuthorize|PostAuthorize|Secured|RolesAllowed|PermitAll|DenyAll|RequirePermission)\b|\b(permitAll|hasRole|hasAnyRole|hasAuthority|hasPermission|isAuthenticated|checkPermission|requireAuth\w*)\s*\(/;
 // 직접 만든 권한 판정 — validate·is·has… 뒤에 대문자로 이어지고 권한 낱말을 품은 식별자의 선언·호출(isFinalApprover · validateApprover · canAccessOrder)
 const AUTHZ_NAME = /\b(?:validate|verify|check|ensure|require|is|has|can)(?=[A-Z])\w*?(?:Approv|Permission|Owner|Role|Access|Auth|Scope|Admin|Privilege|Grant)\w*\s*\(/;
 const UNSAFE = /\beval\s*\(|\bnew\s+Function\s*\(|shell\s*=\s*True|Runtime\.getRuntime\(\)\.exec|\.innerHTML\s*=|dangerouslySetInnerHTML|\bv-html\b/;

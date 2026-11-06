@@ -22,7 +22,7 @@ const OPEN = /\bTODO\b|IN[_ ]PROGRESS|\bACTIVE\b|\bBLOCKED\b|진행 ?중|대기|
 // 첫 제목이 `#` 이든 `##` 이든 그 제목 바로 아래(제목이 없으면 맨 위)가 배너 자리다(TEMPLATES §1).
 // 배너 줄은 인용(`>`)·경고 표시(⚠)·굵은 글씨(`**`)로 시작하고 표지 낱말을 담는다. 표 줄 · 목록 줄 · 일반 문단은 배너가 아니다 —
 // 인수 시험에서 docs-setup 이 만든 docs/README.md 의 성격표 줄(「시점 기록 — 현행 아님」)을 배너로 읽어 아카이브 문서로 오판했다
-const BANNER_WORD = /현행 아님|시점 (문서|기록)|archived|superseded|폐기됨/i;
+const BANNER_WORD = /현행 아님|시점 (문서|기록)|archived|superseded|폐기됨|거부됨/i;
 const BANNER_LEAD = /^\s*(?:>|⚠|\*\*|:warning:)/;
 const HEADING = /^\s*#{1,6}(?:\s|$)/;
 function hasBanner(lines) {

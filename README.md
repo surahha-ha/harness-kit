@@ -83,7 +83,7 @@
 - critical·major 지적은 반박자(`review-refuter`)가 지적마다 하나씩 다시 본다. 반박자는 sha 와 지적 줄만 받는다. 틀림은 빼고, 심각도 조정은 반영하고, 불확실은 「확인 필요」로 둔다. 판정은 검증 뒤 값으로 한다. save 의 리뷰 게이트도 같다.
 - 결과(pass·fail)는 `refs/notes/<review.notesRef>` 에 남긴다. minor 위치도 `Summary` 에 남긴다. 코드는 고치지 않는다. 원격에 올리기는 묻고 나서, 강제 없이 한다.
 - 보고는 두 층이다. 요약층을 먼저, 상세층을 아래에 낸다.
-  - 요약층 맨 위는 「한눈 요약」(판정 · 심각도 집계와 검증 통과 수 · 범위 · 다음 액션)이다. 그 아래에 돈 갈래 · 검증 · 주의 필요를 둔다.
+  - 요약층 맨 위는 「한눈 요약」(판정 · 심각도 집계와 검증 통과 수 · 범위 · 다음 액션)이다. 원격 기록 받기가 실패하면 범위 아래에 그 줄을 더한다. 그 아래에 돈 갈래 · 검증 · 주의 필요를 둔다.
   - 상세층은 커밋별 walkthrough 와 발견 전부다. 지적마다 `TL;DR:` 한 문장과 `→ Fix:` 조치를 단다. 리뷰어가 조치를 내지 않았으면 `미정` 이다.
 - save 가 리뷰를 critical·major 없이 통과시킨 커밋에는 save 가 pass 기록을 남긴다. 그래서 그 커밋은 목록에 다시 나오지 않는다.
 - **라이트 범위에서 돈다.** 하네스의 관찰 훅·계측 로그를 읽지 않는다. 읽는 것은 git 과 config 뿐이다.
@@ -370,6 +370,8 @@ node tools/scan-commit-meta.mjs --all        # 기존 커밋 전체의 author·c
 - 실제 명령: `cd tests && node --test` (`tests/` 의 `*.test.mjs`)
 - Node 20 에서도 돈다.
 - 실제 사용자 홈(`~/.claude`)과 이 PC 의 git 전역 설정은 쓰지 않는다.
+
+`npm run test:skills` 는 `tests/` 밖의 스킬 시험 6개(docs-setup 넷 · harness-install `tiers` · harness-uninstall `scenarios`)를 차례로 돌린다. 하나가 실패하면 거기서 멈추고 0 이 아닌 코드로 끝난다.
 
 ## 변경 기록
 
