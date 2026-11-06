@@ -3,8 +3,9 @@
 매니페스트에 `version` 필드를 두지 않는다. 판은 main 커밋 SHA 로 갈린다. 절은 병합 단위로 적는다.
 (0.1.0 까지는 `plugin.json` 과 `marketplace.json` 의 명시 버전을 함께 올렸다.)
 
-## 미발행 — 걷어내기 후보 header 통일 · 출처 대장 · 스킬 시험 스크립트 · 사후리뷰 원격 받기 실패 표시 · lanes 패턴 둘 · 배너 표지 낱말 · BOM 표기
+## 미발행 — 걷어내기 후보 header 통일 · 출처 대장 · 스킬 시험 스크립트 · 사후리뷰 원격 받기 실패 표시 · lanes 패턴 둘 · 배너 표지 낱말 · BOM 표기 · 플러그인 설명
 
+- `plugin.json` 설명에 harness-install · harness-uninstall · docs-setup 스킬을 넣는다. 스킬 11개가 모두 설명에 나온다
 - docs-setup observe 의 배너 표지 낱말에 `거부됨` 을 더한다. 전에는 첫머리 인용 줄의 「최종 거부됨」을 배너로 읽지 못했다
   - 배너 자리의 줄만 본다. 일반 문단 · 목록 줄의 같은 낱말은 배너가 아니다
   - 시험: `observe.test.mjs`
@@ -54,6 +55,7 @@
 - 영수증 `settings.keys[]` 에 `file`(`.claude/settings.local.json`)을 둔다
   - write-manifest 가 그 파일에서 값을 대조한다. 파일이 없거나 값이 다르거나 다른 경로면 영수증을 쓰지 않는다
   - harness-uninstall 이 `settings.local.json` 의 false 키도 후보로 낸다(header `로컬끈플러그인 복원`). 전에는 영수증에 없어 그 키를 걷지 못했다
+    - 영수증이 없으면 이 파일의 키는 「개발 하네스」 절이 적었을 때만 후보로 낸다. 이 파일은 커밋 기록이 없어 설치 커밋 · HEAD 로 가를 수 없다
 - D0 header 를 `하네스 설치범위` 하나로 맞춘다. SKILL.md 의 예가 대상 없는 `설치범위` 였다. TEMPLATES §8 header 표 · uninstall.mjs 범위 낮추기 기록은 이미 이 값이었다
 - 라이트 안내절 · TEMPLATES §8 용어 풀이 표 · DECISIONS D0 의 「계측 로그가 쌓이지 않는다」를 고친다. 실행 전 가드는 명령마다 판정(`fire` · `pass`)을 `.harness/log.jsonl` 에 남긴다. 쌓이지 않는 것은 턴·실행 뒤·증거 기록이다
 - `--scope project` 설치가 `user` scope 로만 기록된 일 — 세션 안 `/plugin install … --scope project` 가 user 범위 기록을 새로 만들었다(그 기록의 `installedAt` 이 명령 시각과 같다). 원인 미확인 — Claude Code 동작으로 보고 확인 절차만 둔다. 5단계 5번에 `installed_plugins.json` 의 이 레포 project 기록 확인과 없을 때의 보고·기록(`plugin.scope`)을 적는다. 이미 enabled 라 CLI 를 건너뛰어도 이 확인은 한다
