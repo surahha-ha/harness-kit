@@ -1078,7 +1078,7 @@ function snapshotAfterPlugin(s) {
 /** installed_plugins.json 에서 harness-kit 기록을 읽는다. 시험에서는 --records 나 HARNESS_UNINSTALL_PLUGINS_JSON 으로 가짜 파일을 넘긴다. */
 function readRecords() {
   const file = opt('--records') || process.env.HARNESS_UNINSTALL_PLUGINS_JSON || path.join(os.homedir(), '.claude', 'plugins', 'installed_plugins.json');
-  try { const j = JSON.parse(readFileSync(file, 'utf8').replace(/^﻿/, '')); return { file, list: ((j.plugins || {})[KIT_PLUGIN]) || [] }; } catch (e) { return { file, error: String(e.message || e) }; }
+  try { const j = JSON.parse(readFileSync(file, 'utf8').replace(/^\uFEFF/, '')); return { file, list: ((j.plugins || {})[KIT_PLUGIN]) || [] }; } catch (e) { return { file, error: String(e.message || e) }; }
 }
 
 /**
@@ -1134,7 +1134,7 @@ function records() {
 function describeJsonDiff(a, b) {
   const out = [];
   let A, B;
-  try { A = JSON.parse(a.replace(/^﻿/, '')); B = JSON.parse(b.replace(/^﻿/, '')); } catch { return ['JSON 으로 읽지 못했다']; }
+  try { A = JSON.parse(a.replace(/^\uFEFF/, '')); B = JSON.parse(b.replace(/^\uFEFF/, '')); } catch { return ['JSON 으로 읽지 못했다']; }
   const join = (p, k) => (p ? `${p}.${k}` : k);
   const walk = (x, y, p, depth) => {
     const obj = (v) => v && typeof v === 'object' && !Array.isArray(v);
