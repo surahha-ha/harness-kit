@@ -6,7 +6,7 @@
  *   example 사본은 원본의 harness.config.example.mjs 를 그 SHA 판으로 scratchpad 에 꺼낸 것(CHECKS.md §5 ②).
  *   체크포인트는 대상 트리의 `git rev-parse --git-path harness-install-state.json` 에서 읽는다.
  *
- * ① 체크포인트 답 ↔ config·settings 값  ② 같은 규칙 중복  ③ example 과 값이 같은 칸(목록만)
+ * ① 체크포인트 답 ↔ config·settings·settings.local 값(slot 의 file)  ② 같은 규칙 중복  ③ example 과 값이 같은 칸(목록만)
  * ④ 「미확정」 주석인데 값이 있는 줄  ⑤ 권장과 다른 답 · 권장 없음(목록만, recs 누락은 실패)
  *    질문마다 basis(권장 이유 또는 권장 없음의 이유)가 비면 실패 · header 가 12자를 넘거나 D 번호로 시작하면 실패.
  *    D 번호 밖 질문은 체크포인트 `asked`(header · recommended · basis)에서 같은 것을 본다
@@ -14,7 +14,7 @@
  *    example 기본값)로 내고, 범위 때문에 묻지 않고 채운 답(auto)은 AUTO 로 낸다.
  * 읽기만 한다 — 대상 레포에 파일을 만들지 않는다.
  */
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -25,7 +25,11 @@ const root = path.resolve(process.argv[2]);
 const load = async (p) => (await import(pathToFileURL(p).href)).default;
 const config = await load(path.join(root, 'harness.config.mjs'));
 const example = await load(path.resolve(process.argv[3]));
-const settings = JSON.parse(readFileSync(path.join(root, '.claude/settings.json'), 'utf8').replace(/^\uFEFF/, ''));
+const readJson = (rel) => { const p = path.join(root, rel); return existsSync(p) ? JSON.parse(readFileSync(p, 'utf8').replace(/^\uFEFF/, '')) : null; };
+const settings = readJson('.claude/settings.json');
+// D6 「이 레포에서 끈다 — settings.local.json」 답은 개인 설정 파일에 적힌다. 그 파일이 없으면 칸 값은 undefined 로 대조한다
+const settingsLocal = readJson('.claude/settings.local.json');
+const SLOT_FILES = { config, settings, 'settings.local': settingsLocal };
 const statePath = path.resolve(root, execFileSync('git', ['-C', root, 'rev-parse', '--git-path', 'harness-install-state.json'], { encoding: 'utf8' }).trim());
 const state = JSON.parse(readFileSync(statePath, 'utf8'));
 let fail = 0;
@@ -42,7 +46,9 @@ const pick = (o, [k, ...rest]) => k === undefined ? o
 
 // ① 체크포인트 답 ↔ 값 (정규식 값은 체크포인트에 String(re) 꼴로 적혀 있다)
 for (const d of state.decisions || []) for (const s of d.slots || []) {
-  const got = pick(s.file === 'settings' ? settings : config, s.path);
+  const file = s.file ?? 'config';
+  if (!(file in SLOT_FILES)) { bad(`${d.id} ${s.path.join('.')} 모르는 file 「${file}」 — config · settings · settings.local 가운데 하나(TEMPLATES §7)`); continue; }
+  const got = pick(SLOT_FILES[file], s.path);
   canon(got) === canon(s.value) ? console.log(`OK   ${d.id} ${s.path.join('.')}`)
     : bad(`${d.id} ${s.path.join('.')} 답=${canon(s.value)} 값=${canon(got)}`);
 }

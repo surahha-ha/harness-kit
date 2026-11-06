@@ -79,6 +79,9 @@
 ```
 
 - D6 에서 「커밋되는 settings 에서 끈다」로 정한 플러그인만 `"<이름>@<마켓>": false` 를 더한다.
+- D6 에서 「`settings.local.json` 에서 끈다」로 정한 플러그인은 같은 키를 `.claude/settings.local.json` 의 `enabledPlugins` 에 더한다.
+  - 체크포인트 slot 은 `"file": "settings.local"` 로 적는다(§7). 영수증 키에는 `"file": ".claude/settings.local.json"` 을 적는다(§9).
+  - 둘을 빠뜨리면 6단계 answer-trace 가 값을 읽지 못하고, harness-uninstall 이 그 키를 찾지 못한다.
 - 이미 `enabledPlugins` 가 있으면 그 객체에 키를 더한다.
 
 ## §3 `.gitignore`
@@ -130,7 +133,7 @@
   - 입력에는 결함이 날 갈래를 넣는다 — 계정 유형 판정이면 유형마다 실제 입력 하나, 표시·조합이면 겹침·최대 조합. 그 입력을 만들 수 없었으면 미확인이다.
   - 위임 결과를 받으면 근거 칸을 읽는다. 근거 없는 주장을 사실로 다시 넘기지 않고, 대조하거나 미확인으로 옮긴다.
   - 확인 주장이 없으면 「확인 근거: 없음(확인 주장 없음)」이라고 쓴다. 칸은 10줄까지 두고, 넘으면 전문 경로로 보낸다. 아무것도 막지 않는다.
-- 상태 확인: `node .harness/danger-guard.mjs --status`. 관찰 훅(턴 시작·종료 · 실행 뒤)은 걸지 않았다 — 계측 로그가 쌓이지 않는다.
+- 상태 확인: `node .harness/danger-guard.mjs --status`. 관찰 훅(턴 시작·종료 · 실행 뒤)은 걸지 않았다. 가드는 Bash·PowerShell 명령마다 판정(`fire` · `pass`)을 `.harness/log.jsonl` 에 남긴다(커밋하지 않음). 턴·증거 기록은 쌓이지 않는다.
 - **플러그인** — `harness-kit` 은 `.claude/settings.json` 으로 project scope 에서 켜져 있다. 처음 쓰는 PC 의 설치 절차는 계측 판의 플러그인 항목(1~3)과 같다.
 - 걷어내기: `harness-uninstall`. 계측으로 올리려면 걷어 낸 뒤 새 세션에서 `harness-install` 을 계측으로.
 <!-- harness-kit:end -->
@@ -327,6 +330,10 @@ example 을 복사한 직후 **첫 줄 앞에** 한 줄을 넣는다(Edit). 정�
 
 **칸 설명**
 
+- `decisions[].slots[].file` — 그 답이 들어간 파일이다. `answer-trace.mjs` ① 이 이 파일에서 값을 읽어 답과 대조한다.
+  - `config`(`harness.config.mjs`, 빼면 이 값) · `settings`(`.claude/settings.json`) · `settings.local`(`.claude/settings.local.json` — D6 「`settings.local.json` 에서 끈다」)
+  - 다른 값은 실패로 낸다.
+- `settings.keys[].file` — 그 키가 `settings.local.json` 에 있을 때만 `".claude/settings.local.json"` 을 적는다(빼면 `settings.json`). 영수증에 그대로 옮긴다(§9).
 - `asked` — D 번호 밖 질문마다 하나다(DECISIONS.md 「D 번호 밖 질문」).
   - 필드: `header` · `step` · `recommended`(권장 없음이면 `null`) · `basis`(권장 이유 또는 권장 없음의 이유) · `answer`
   - `recommended` 칸은 값이 `null` 이어도 빼지 않는다. `answer-trace.mjs` ⑤-2 가 칸이 없거나 `basis` 가 비면 실패로 낸다.
@@ -407,7 +414,7 @@ example 을 복사한 직후 **첫 줄 앞에** 한 줄을 넣는다(Edit). 정�
 | `review.integrationBranch` | 작업 브랜치를 합쳐 넣는 브랜치. 여기에 아직 없는 커밋을 리뷰 대상으로 본다 |
 | `review.batchAsk` | 리뷰할 커밋이 이 수보다 많으면 리뷰 전에 묻는다 |
 | probe · 프로브 | 훅이 실제로 도는지 확인하는 가짜 명령. 아무것도 막지 않는다 |
-| 라이트 · 설치 범위 | 위험한 명령을 실행 전에 막는 가드 하나만 건다. 관찰·기록은 하지 않는다 |
+| 라이트 · 설치 범위 | 위험한 명령을 실행 전에 막는 가드 하나만 건다. 턴마다 한 일은 관찰하지 않는다. 가드가 막았는지·통과시켰는지만 로그 파일에 남는다 |
 | 계측 | 막는 가드에 더해, 턴마다 무엇을 했는지 관찰해 기록(계측 로그)한다. 하네스 자체를 개발·평가하는 설치처용이다 |
 | docs-setup · 문서 구조 맞추기 | 지난 계획서 같은 낡은 문서를 따로 둘 폴더(아카이브)와 문서 목록을 정해, 문서 정리 도구가 그 문서를 옮길 수 있게 한다 |
 
@@ -711,7 +718,12 @@ D10. Claude Code 아래 상태 줄에 지금 쓰는 줄과 graft 줄을 함께 �
   - `count` 는 `after` 가 그 파일에 나오는 수다.
 - `settings.hooks` — 넣은 훅마다 하나. `matcher` 가 없는 이벤트는 `null`. `eventCreated` 는 그 이벤트 키를 이 설치가 새로 만들었는가.
 - `settings.keys` — 넣은 키마다 하나. `parentCreated` 는 `enabledPlugins`·`extraKnownMarketplaces` 객체를 새로 만들었는가, `decision` 은 그 키를 정한 결정.
+  - `file` — 키가 `.claude/settings.local.json` 에 있을 때만 그 경로를 적는다(D6 「`settings.local.json` 에서 끈다」). 빼면 `settings.path` 다.
+    - 예: `{ "path": ["enabledPlugins", "<이름>@<마켓>"], "value": false, "parentCreated": true, "decision": "D6", "file": ".claude/settings.local.json" }`
+    - 스크립트가 그 파일에서 값을 대조한다. 파일이 없거나 값이 다르면 영수증을 쓰지 않는다. `settings.path` · `settings.local.json` 밖의 경로도 막는다.
+    - harness-uninstall 은 이 `file` 로 그 파일의 false 키를 후보로 낸다. 이 키는 이 PC·이 트리에만 있다 — 다른 PC·worktree 에는 후보가 없다.
 - `plugin.installRecord` — `installed`(5단계 3번을 실행) · `skipped`(이미 enabled 라 건너뜀).
+- `plugin.scope` — 명령에 준 scope 가 아니라 5단계 5번에서 `installed_plugins.json` 으로 확인한 이 레포의 기록 scope 다. 이 레포 루트의 `project` 기록이 없으면 불러오는 기록의 scope(`user` 등)를 적는다 — `--scope project` 로 돌려도 `user` 로만 기록된 일이 있다.
 - 반출 — 로컬 클론 경로·사용자 홈·드라이브 경로를 넣지 않는다(스크립트가 막는다). 결정 답에 경로가 필요하면 상대경로나 일반 이름으로 적는다.
 
 스크립트가 쓰는 영수증은 초안에 `schema: 2`·`tool` 과 sha256(파일·블록·줄)을 더한 꼴이다.

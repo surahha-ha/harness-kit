@@ -151,7 +151,7 @@ function headerParts(c) {
   if (c.kind === 'runtime') return H('계측로그', '보관');
   if (c.kind === 'manifest') return H('영수증', '삭제');
   if (c.kind === 'plugin') return H('kit 키', '처리');
-  if (c.kind === 'key') return H('끈플러그인', '복원');
+  if (c.kind === 'key') return H('끈플러그인', '복원', c.data.file === SETTINGS_LOCAL ? '로컬' : '');
   if (c.kind === 'hook') return H(HOOK_SHORT[c.data.event] || c.data.event, '삭제', c.data.file === SETTINGS_LOCAL ? '로컬' : '', '훅');
   if (c.kind === 'file') return H(c.data.path === CONFIG ? '하네스설정' : '보조파일', '삭제');
   const p = c.data.path, op = c.data.op.op;
@@ -414,31 +414,38 @@ async function scan() {
     // 그 범위에 있어야 할 훅이 없다 — 걷어 낼 것은 없지만, 설치가 틀렸거나 손으로 뺀 것이다
     if (judge && sf === SETTINGS) for (const spec of hooksFor(judge)) if (!harnessHooks.some((e) => hookSpec(e.event, e.command) === spec)) warnings.push(`설치 범위 ${LABEL[judge]}의 ${spec.what} 훅(${spec.event})이 ${SETTINGS} 에 없다 — 이미 빠졌거나 손으로 뺐다(걷어 낼 것 없음)`);
   }
-  const settings = exists(SETTINGS) ? loadJson(SETTINGS) : null;
-  if (settings) {
-    const ep = settings.enabledPlugins || {};
-    const mKeys = (mf.settings && mf.settings.keys) || [];
-    const headSettings = (() => { try { return JSON.parse(tryGit('show', `HEAD:${SETTINGS}`)); } catch { return null; } })();
-    const allSection = sectionTexts.join('\n');
-    const atInstall = (rev) => { try { return (JSON.parse(tryGit('show', `${rev}:${SETTINGS}`)).enabledPlugins) || {}; } catch { return {}; } };
-    for (const [k, v] of Object.entries(ep)) {
+  // false 키 — settings.json 과 settings.local.json 둘 다 본다. D6 을 「settings.local.json 에서 끈다」로 답하면 키가 개인 설정 파일에 있다.
+  //   영수증 키의 file 이 없으면 settings.path(옛 영수증 포함)다. 다른 PC·worktree 에는 settings.local.json 의 키가 없다 — 그때는 후보가 없다
+  const mKeys = (mf.settings && mf.settings.keys) || [];
+  const mKeyFile = (x) => x.file || (mf.settings && mf.settings.path) || SETTINGS;
+  const headSettings = (() => { try { return JSON.parse(tryGit('show', `HEAD:${SETTINGS}`)); } catch { return null; } })();
+  const allSection = sectionTexts.join('\n');
+  const atInstall = (rev) => { try { return (JSON.parse(tryGit('show', `${rev}:${SETTINGS}`)).enabledPlugins) || {}; } catch { return {}; } };
+  for (const sf of [SETTINGS, SETTINGS_LOCAL]) {
+    const json = exists(sf) ? loadJson(sf) : null;
+    if (!json) continue;
+    for (const [k, v] of Object.entries(json.enabledPlugins || {})) {
       if (k === KIT_PLUGIN) continue;
-      const m = mKeys.find((x) => x.path && x.path[0] === 'enabledPlugins' && x.path[1] === k);
+      const m = mKeys.find((x) => x.path && x.path[0] === 'enabledPlugins' && x.path[1] === k && mKeyFile(x) === sf);
       let recommend = null, basis;
       if (manifest) {
         if (!m) continue;
         recommend = 'remove'; basis = `영수증의 ${m.decision || '설치'} 결정으로 넣은 키`;
       } else {
         if (v !== false) continue;
-        const inHeadKey = !!(headSettings && headSettings.enabledPlugins && k in headSettings.enabledPlugins);
         if (allSection.includes(k)) { recommend = 'remove'; basis = '「개발 하네스」 절이 이 키를 설치 결정으로 적었다'; }
+        else if (sf === SETTINGS_LOCAL) continue;   // 개인 설정 파일은 커밋 기록이 없어 설치 커밋·HEAD 로 가를 수 없다
         else if (installCommit && k in atInstall(installCommit) && !(k in atInstall(`${installCommit}^`))) { recommend = 'remove'; basis = `설치 커밋 ${installCommit.slice(0, 7)} 에서 생긴 키`; }
-        else if (!inHeadKey && exists(CONFIG) && !files.tracked.has(CONFIG)) basis = 'HEAD 에 없고 미추적 config 와 함께 생겼다 — 설치가 넣었는지 판단 근거 부족';
+        else if (!(headSettings && headSettings.enabledPlugins && k in headSettings.enabledPlugins) && exists(CONFIG) && !files.tracked.has(CONFIG)) basis = 'HEAD 에 없고 미추적 config 와 함께 생겼다 — 설치가 넣었는지 판단 근거 부족';
         else continue;
       }
-      add({ id: `key:${SETTINGS}#enabledPlugins.${k}`, kind: 'key', group: 'settings', title: `${SETTINGS} enabledPlugins."${k}": ${JSON.stringify(v)}`, status: m ? 'clean' : 'unknown', recommend,
-        basis: `${basis} — 지우면 이 레포에서 그 플러그인이 설치 전처럼 다시 켜진다`, data: { file: SETTINGS, keys: ['enabledPlugins', k] } });
+      add({ id: `key:${sf}#enabledPlugins.${k}`, kind: 'key', group: 'settings', title: `${sf} enabledPlugins."${k}": ${JSON.stringify(v)}`, status: m ? 'clean' : 'unknown', recommend,
+        basis: `${basis} — 지우면 이 레포에서 그 플러그인이 설치 전처럼 다시 켜진다`, data: { file: sf, keys: ['enabledPlugins', k] } });
     }
+  }
+  const settings = exists(SETTINGS) ? loadJson(SETTINGS) : null;
+  if (settings) {
+    const ep = settings.enabledPlugins || {};
     const keys = [];
     if (KIT_PLUGIN in ep) keys.push(['enabledPlugins', KIT_PLUGIN]);
     if (settings.extraKnownMarketplaces && KIT_MARKET in settings.extraKnownMarketplaces) keys.push(['extraKnownMarketplaces', KIT_MARKET]);
