@@ -177,6 +177,12 @@ const scenario = async (name, fn) => { try { await fn(); } catch (e) { ok(false,
 const U = (t, ...a) => run(UN, a[0], t.repo, ...a.slice(1));
 const porcelain = (t) => t.git('status', '--porcelain', '--untracked-files=all').trim();
 
+/** 한 계획의 후보 header — 대상 + 「처리」(겹칠 때만 번호) · 12자 이하 · 서로 다르다. 선택지 하나를 쓰면 다른 답을 고를 때 header 와 답이 어긋난다. */
+function checkHeaders(plan, label) {
+  const hs = plan.candidates.map((c) => c.header);
+  ok(hs.length > 0 && hs.every((h) => /^\S.* 처리( \d+)?$/.test(h) && [...h].length <= 12) && new Set(hs).size === hs.length, `${label} header (${hs.join(' · ')})`);
+}
+
 /** 걷어내기 전 과정(목적 remove · 권장대로) — 끝나면 설치 전과 같아야 한다. */
 function removeAll(t, label) {
   const steps = [['scan', '--refresh'], ['answer', 'purpose=remove', '--recommended'], ['backup'], ['apply'], ['plugin'], ['records'], ['verify']];
@@ -218,6 +224,8 @@ await scenario('B', async () => {
   ok(ev && ev.before === '[]' && ev.beforeNote === '', 'B config.slots: 여러 줄 배열 칸의 설치 전 값 = example 원문 [] · 꼬리 주석 없음');
   const met = m.config.slots.find((s) => s.path === 'metrics.enabled');
   ok(met && met.before === 'false' && met.beforeNote === '// 꺼 둔다', `B config.slots: 꼬리 주석도 설치 전 판으로 적는다(metrics.enabled ${JSON.stringify(met && met.beforeNote)})`);
+  ok(U(t, 'scan').code === 0, 'B scan 종료코드 0');
+  checkHeaders(t.state().plan, 'B 걷어내기 계획');
   removeAll(t, 'B 계측');
 });
 
@@ -237,8 +245,9 @@ await scenario('C', async () => {
   ok(st.plan.candidates.every((c) => !['file', 'files', 'runtime', 'manifest', 'plugin'].includes(c.kind)), 'C 후보: 골격 사본·config 파일·로그·플러그인 키는 후보가 아니다');
   ok(st.plan.tier.keep.length === 1 && st.plan.tier.keep[0].event === 'PreToolUse', 'C 계획: 실행 전 가드는 남는다(tier.keep)');
   const blk = st.plan.candidates.find((c) => c.kind === 'text');
-  ok(blk.header === '안내절 교체' && blk.recommend === null, `C 안내절 후보: header 「${blk.header}」 · 새 판 전에는 권장 없음`);
-  ok(st.plan.candidates.filter((c) => c.kind === 'slot').every((c) => c.header.startsWith('설정칸 되돌림')), 'C 칸 후보 header 「설정칸 되돌림 n」');
+  ok(blk.header === '안내절 처리' && blk.recommend === null, `C 안내절 후보: header 「${blk.header}」 · 새 판 전에는 권장 없음`);
+  ok(st.plan.candidates.filter((c) => c.kind === 'slot').every((c) => /^설정칸 처리 \d+$/.test(c.header)), 'C 칸 후보 header 「설정칸 처리 n」');
+  checkHeaders(st.plan, 'C 범위 낮추기 계획');
   const noRep = U(t, 'answer', `${blk.id}=replace`);
   ok(noRep.code === 2 && /새 판이 없다/.test(noRep.out), 'C 새 판 없이 「바꿈」 답은 거절한다');
   const badBlock = path.join(t.repo + '-bad.md');
@@ -564,8 +573,8 @@ await scenario('P', async () => {
   ok(mk && mk.file === '.claude/settings.local.json' && mk.decision === 'D6' && mk.value === false, 'P 영수증: D6 키에 file .claude/settings.local.json 이 남는다');
   ok(U(t, 'scan', '--refresh').code === 0, 'P scan');
   const key = t.state().plan.candidates.find((c) => c.kind === 'key');
-  ok(key && key.data.file === '.claude/settings.local.json' && key.recommend === 'remove' && key.status === 'clean' && key.header === '로컬끈플러그인 복원',
-    `P 후보: settings.local.json 의 끈 플러그인 키 · 권장 지움 · header 「로컬끈플러그인 복원」 (${key && `${key.id} ${key.header}`})`);
+  ok(key && key.data.file === '.claude/settings.local.json' && key.recommend === 'remove' && key.status === 'clean' && key.header === '로컬끈플러그인 처리',
+    `P 후보: settings.local.json 의 끈 플러그인 키 · 권장 지움 · header 「로컬끈플러그인 처리」 (${key && `${key.id} ${key.header}`})`);
   if (!removeAll(t, 'P D6 로컬 키')) return;
   const after = JSON.parse(t.r('.claude/settings.local.json'));
   ok(!(after.enabledPlugins && OTHER in after.enabledPlugins) && JSON.stringify(after.permissions) === JSON.stringify(LOCAL_BEFORE.permissions), 'P 걷어낸 뒤: 끈 플러그인 키만 빠지고 settings.local.json 의 다른 키는 그대로다');

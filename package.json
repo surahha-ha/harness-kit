@@ -4,6 +4,7 @@
   "description": "Shared Claude Code plugin marketplace. `npm run scan` runs the forbidden-info gate over every tracked file.",
   "scripts": {
     "scan": "node tools/scan-forbidden.mjs --all",
-    "test": "cd tests && node --test"
+    "test": "cd tests && node --test",
+    "test:skills": "node plugins/harness-kit/skills/docs-setup/scripts/boundary.test.mjs && node plugins/harness-kit/skills/docs-setup/scripts/links.test.mjs && node plugins/harness-kit/skills/docs-setup/scripts/observe.test.mjs && node plugins/harness-kit/skills/docs-setup/scripts/refs.test.mjs && node plugins/harness-kit/skills/harness-install/scripts/tiers.test.mjs && node plugins/harness-kit/skills/harness-uninstall/scripts/scenarios.test.mjs"
   }
 }

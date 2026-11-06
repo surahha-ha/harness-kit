@@ -371,6 +371,8 @@ node tools/scan-commit-meta.mjs --all        # 기존 커밋 전체의 author·c
 - Node 20 에서도 돈다.
 - 실제 사용자 홈(`~/.claude`)과 이 PC 의 git 전역 설정은 쓰지 않는다.
 
+`npm run test:skills` 는 `tests/` 밖의 스킬 시험 6개(docs-setup 넷 · harness-install `tiers` · harness-uninstall `scenarios`)를 차례로 돌린다. 하나가 실패하면 거기서 멈추고 0 이 아닌 코드로 끝난다.
+
 ## 변경 기록
 
 [CHANGELOG.md](CHANGELOG.md)

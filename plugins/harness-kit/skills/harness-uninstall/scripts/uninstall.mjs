@@ -140,25 +140,28 @@ function evidenceDirs(exclude = null) {
 const HOOK_SHORT = { Stop: 'Stop', PreToolUse: 'PreTool', PostToolUse: 'PostTool', PostToolUseFailure: 'PostFail', UserPromptSubmit: 'Prompt',
   SessionStart: 'Session', SessionEnd: 'SessEnd', SubagentStop: 'SubStop', Notification: 'Notify', PreCompact: 'Compact' };
 const HEADER_MAX = 12;
-/** header 의 조각 — pre + core + tail + ' ' + action. 12자를 넘으면 core 만 뒤에서 줄인다. */
+/**
+ * header 의 조각 — pre + core + tail + ' 처리'. 12자를 넘으면 core 만 뒤에서 줄인다.
+ * 끝말은 정할 것(처리)이다. 선택지 하나(삭제 · 보관 등)를 쓰면 다른 답을 고를 때 header 와 답이 어긋난다(harness-install TEMPLATES §8).
+ */
 function headerParts(c) {
-  const H = (core, action, pre = '', tail = '') => ({ pre, core, tail, action });
-  if (c.kind === 'slot') return H('설정칸', '되돌림');
-  if (c.kind === 'receipt') return H('영수증', '갱신');
-  if (c.kind === 'text' && c.lower && c.data.op.op === 'block') return H('안내절', '교체');
-  if (['modified', 'extra'].includes(c.status) && ['file', 'text', 'hook'].includes(c.kind)) return H('손댄파일', '처리');
-  if (c.kind === 'files') return H('하네스파일', '삭제');
-  if (c.kind === 'runtime') return H('계측로그', '보관');
-  if (c.kind === 'manifest') return H('영수증', '삭제');
-  if (c.kind === 'plugin') return H('kit 키', '처리');
-  if (c.kind === 'key') return H('끈플러그인', '복원', c.data.file === SETTINGS_LOCAL ? '로컬' : '');
-  if (c.kind === 'hook') return H(HOOK_SHORT[c.data.event] || c.data.event, '삭제', c.data.file === SETTINGS_LOCAL ? '로컬' : '', '훅');
-  if (c.kind === 'file') return H(c.data.path === CONFIG ? '하네스설정' : '보조파일', '삭제');
+  const H = (core, pre = '', tail = '') => ({ pre, core, tail, action: '처리' });
+  if (c.kind === 'slot') return H('설정칸');
+  if (c.kind === 'receipt') return H('영수증');
+  if (c.kind === 'text' && c.lower && c.data.op.op === 'block') return H('안내절');
+  if (['modified', 'extra'].includes(c.status) && ['file', 'text', 'hook'].includes(c.kind)) return H('손댄파일');
+  if (c.kind === 'files') return H('하네스파일');
+  if (c.kind === 'runtime') return H('계측로그');
+  if (c.kind === 'manifest') return H('영수증');
+  if (c.kind === 'plugin') return H('kit 키');
+  if (c.kind === 'key') return H('끈플러그인', c.data.file === SETTINGS_LOCAL ? '로컬' : '');
+  if (c.kind === 'hook') return H(HOOK_SHORT[c.data.event] || c.data.event, c.data.file === SETTINGS_LOCAL ? '로컬' : '', '훅');
+  if (c.kind === 'file') return H(c.data.path === CONFIG ? '하네스설정' : '보조파일');
   const p = c.data.path, op = c.data.op.op;
-  if (op === 'replace') return H('문서줄', '되돌림');
-  if (p === '.gitignore') return H('무시목록', '줄삭제');
-  if (op === 'section' || op === 'block') return /(^|\/)CLAUDE\.md$/.test(p) ? H('안내절', '삭제') : H('표시블록', '삭제');
-  return H('안내줄', '삭제');
+  if (op === 'replace') return H('문서줄');
+  if (p === '.gitignore') return H('무시목록');
+  if (op === 'section' || op === 'block') return /(^|\/)CLAUDE\.md$/.test(p) ? H('안내절') : H('표시블록');
+  return H('안내줄');
 }
 /** 후보마다 header 를 정한다 — 같은 header 가 둘 이상이면 끝에 번호를 붙여 한 계획 안에서 겹치지 않게 한다. */
 function assignHeaders(cands) {
