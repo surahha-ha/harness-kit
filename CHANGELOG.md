@@ -20,6 +20,10 @@
   - `git.push` 가 `'never'` 이거나 `review.remote` 가 `null` 이면 이 단계는 없다. `'auto'` 여도 목록을 보이고 묻는다
   - save 가 읽는 슬롯에 `review.remote` 를 더한다(README · harness-install DECISIONS 의 소비자 칸)
 
+## 미발행 — e2e 실행 전 대상 환경 갈래
+
+- change-verifier · unit-test-engineer 의 e2e·headed 실행 규칙을 대상 환경으로 가른다. mock·로컬이면 한 줄로 알리고 돌린다. 공유 환경이면 사용자가 요구할 때만 승인받고 돌린다. 설정으로 로컬임을 확인하지 못했으면 공유 환경으로 본다(근거: 사용자 전역 규칙 2026-11-26)
+
 ## 미발행 — 확인 근거 칸 규칙 6(설명 산출물)
 
 - 근거: `surahha-ha/harness-agent` main `1fcccc6` 의 칸 규칙 6(`docs/01` §3 절차 4 · `docs/16` 결정 이력 2026-11-25(2))
