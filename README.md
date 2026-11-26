@@ -232,7 +232,7 @@ node <harness-kit 플러그인>/scripts/graft-localize.mjs localize <레포 루�
 | `risk` | `sharedDbSuites` · `sharedDbProfiles` · `devServer` · `destructive` — 표 아래 「`risk` 하위 키」 | change-verifier · unit-test-engineer · save · data-migration · monitor-view(`devServer`) |
 | `docs` | `domainIndex` · `screenMap` · `repoMap` · `testGuide` · `uiUxRules` · `archiveDir` · `pathValidator` · `autoloaded`(자동 로드 `CLAUDE.md` 목록) | 여러 자산(monitor-view 는 `uiUxRules`) · `archiveDir`·`pathValidator`·`autoloaded` 는 docs-setup 이 채운다 |
 | `git` | `protectedBranches` · `commitFormat`(한 문장) · `commitExecution`(`'auto'` \| `'message-only'`) · `push`(`'auto'` \| `'ask'` \| `'never'`) · `coAuthor`(trailer 허용 여부) · `reviewThreshold`(`{ files, lines }`) | save · frontend-engineer · plugin-sync·archive-cycle(`commitExecution`) · review-pending(`reviewThreshold`·`push`) |
-| `review` | `notesRef` · `integrationBranch` · `remote` · `batchAsk` — 표 아래 「`review` 하위 키」. 임계는 `git.reviewThreshold` 를 같이 쓴다 | review-pending · save(`notesRef`) |
+| `review` | `notesRef` · `integrationBranch` · `remote` · `batchAsk` — 표 아래 「`review` 하위 키」. 임계는 `git.reviewThreshold` 를 같이 쓴다 | review-pending · save(`notesRef` · `remote`) |
 | `agents` | 역할 → 에이전트 이름 덮어쓰기. 역할: `schemaDesign` · `schemaApply` · `migration` · `backend` · `frontend` · `testAuthor` · `verifier` | coordinator · 에이전트 |
 | `memory` | `slugs`(`~/.claude/projects/` 아래 메모리 디렉토리 이름) · `policy`(백로그를 어디에 남기나 — 한 문장) | archive-cycle · qa-cycle · docs-setup(채움) |
 | `plugin` | 플러그인 정본 레포에서만: `canonicalRepo` · `canonicalBranch` · `dir` · `marketplaceFile` · `readme` · `mirrorScript` · `hookTests` · `auditSources` | plugin-sync · plugin-curator |
