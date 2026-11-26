@@ -3,6 +3,10 @@
 매니페스트에 `version` 필드를 두지 않는다. 판은 main 커밋 SHA 로 갈린다. 절은 병합 단위로 적는다.
 (0.1.0 까지는 `plugin.json` 과 `marketplace.json` 의 명시 버전을 함께 올렸다.)
 
+## 미발행 — e2e 실행 전 대상 환경 갈래
+
+- change-verifier · unit-test-engineer 의 e2e·headed 실행 규칙을 대상 환경으로 가른다. mock·로컬이면 한 줄로 알리고 돌린다. 공유 환경이면 사용자가 요구할 때만 승인받고 돌린다. 설정으로 로컬임을 확인하지 못했으면 공유 환경으로 본다(근거: 사용자 전역 규칙 2026-11-26)
+
 ## 미발행 — 확인 근거 칸 규칙 6(설명 산출물)
 
 - 근거: `surahha-ha/harness-agent` main `1fcccc6` 의 칸 규칙 6(`docs/01` §3 절차 4 · `docs/16` 결정 이력 2026-11-25(2))
