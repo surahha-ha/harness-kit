@@ -520,7 +520,7 @@ harness-kit 의 스킬·커맨드·에이전트는 config `project` 블록의 �
 | `risk.sharedDbSuites`·`sharedDbProfiles`·`destructive` | save · change-verifier · data-migration | 실행 전 환경 확인 안내 | D2·D2-2 근거로 채운다 — 비우지 않는다(없으면 `[]`) |
 | `risk.devServer` | frontend-engineer | dev 서버 프록시 경고 | 근거로 채운다. 프록시가 없으면 `null` + 주석 |
 | `git.*` | save · frontend-engineer | 커밋·push 단계 | **묻는다**(D5) |
-| `review.notesRef`·`integrationBranch`·`remote`·`batchAsk` | review-pending · save(`notesRef`) | `review` 또는 `notesRef` 가 `null` 이면 사후리뷰 전체 · `remote` 가 `null` 이면 원격 기록 받기·올리기 · `integrationBranch` 가 `null` 이면 기본 범위의 첫 자리(`@{upstream}..HEAD` 로 간다) · `batchAsk` 가 `null` 이면 많을 때 묻기 | **두 범위 모두 묻는다**(아래 「사후리뷰 설정」). 임계는 `git.reviewThreshold`(D5)를 같이 쓴다 — 여기에 다시 두지 않는다 |
+| `review.notesRef`·`integrationBranch`·`remote`·`batchAsk` | review-pending · save(`notesRef` · `remote`) | `review` 또는 `notesRef` 가 `null` 이면 사후리뷰 전체 · `remote` 가 `null` 이면 원격 기록 받기·올리기 · `integrationBranch` 가 `null` 이면 기본 범위의 첫 자리(`@{upstream}..HEAD` 로 간다) · `batchAsk` 가 `null` 이면 많을 때 묻기 | **두 범위 모두 묻는다**(아래 「사후리뷰 설정」). 임계는 `git.reviewThreshold`(D5)를 같이 쓴다 — 여기에 다시 두지 않는다 |
 | `docs.domainIndex`·`screenMap`·`repoMap`·`testGuide`·`uiUxRules` | fe-be-trace · qa-cycle · ui-ux-guide · 에이전트 | 그 문서를 읽는 단계 | **두 범위 모두** 근거로 채운다(파일이 있을 때만). 없으면 `null` + 자산 이름 주석. 재설치면 `slots` 의 `PREV` 값을 권한다(아래 주) |
 | `docs.archiveDir`·`pathValidator`·`autoloaded` | archive-cycle | ④ 레포 문서 이동 · ⑤-2 경로 검사 · ① 상시 적재 계측 | **근거가 있을 때만** 채운다. 없으면 `null` + 주석(아래 주) |
 | `memory.slugs` | archive-cycle · qa-cycle | 메모리 계측·정리 | D7 규칙대로(근거 있을 때만, 대소문자 차이는 하나로) |

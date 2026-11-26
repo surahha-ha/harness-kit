@@ -391,33 +391,114 @@ node "<RP>" note <sha> fail --summary "<요약>"; echo "[exit=$?]"
 
 ## Step 7: 리뷰 기록 올리기 — 묻고 나서
 
-이번 실행에서 `note` 를 하나라도 남겼으면 올릴지 묻는다. 묻지 않고 올리지 않는다. `review.remote` 가 `null` 이면 묻지 않는다.
+이번 실행에서 `note` 를 하나라도 남겼으면 아래 「올리기 절차」를 따른다. 묻지 않고 올리지 않는다.
 
-```text
-header: 리뷰기록 공유
-이번에 남긴 리뷰 기록 <N>건을 원격(<REMOTE>)에 올려 다른 PC·팀원도 보게 할까요? 커밋은 바뀌지 않습니다. (git push <REMOTE> <NOTES>)
-근거: project.git.push = <값> · 이번 기록 pass <a>건 · fail <b>건
-```
-
-| 관찰 | 권장 |
-| - | - |
-| `project.git.push` 가 `'never'` | **올리지 않음** — 권장 이유: 레포 규칙이 push 를 금한다 |
-| 그 밖 | 권장 없음 — 리뷰 기록은 팀이 같이 보는 ref 라 올릴 시점은 사용자가 정한다. 직접 골라 주세요 |
-
-- 선택지 — 바뀌는 것
-  - **올림** — 원격 `<NOTES>` 에 이번 기록이 더해진다. 다른 PC 의 다음 실행에서 그 커밋이 빠진다.
-  - **올리지 않음** — 기록은 이 PC 에만 있다. 잃는 것은 없다. 나중에 아래 명령으로 올린다.
-
-```bash
-git push <REMOTE> "<NOTES>"; echo "[exit=$?]"
-```
+- `review.remote` 가 `null` 이면 이 단계는 없다.
+- `/harness-kit:save` Step 4 도 이 절차를 따른다. 리뷰 기록 올리기 절차의 SSOT 는 이 절이다.
+- `<REMOTE>` · `<NOTES>` · `<TRACKING>` 은 Step 1 의 값이다(`review.remote` · `refs.notes` · `refs.tracking`).
 
 > 🔴 **`--force`·`+<NOTES>` 로 밀어 넣지 않는다.**
 > 이유: notes ref 는 팀 공용이다. 강제로 올리면 다른 사람이 남긴 리뷰 기록이 지워진다.
 
+### 올리기 절차
+
+notes ref 는 git common dir 에 있다. 같은 레포의 모든 워크트리가 한 ref 를 쓴다.
+그래서 올리면 다른 워크트리 · 다른 세션이 남긴 기록도 함께 올라간다. 3 에서 올라갈 목록을 먼저 보인다.
+
+1. 원격 기록을 받아 둔 기록 ref 로 받는다. Step 2 와 같은 명령이다.
+
+   ```bash
+   git fetch <REMOTE> "+<NOTES>:<TRACKING>"; echo "[exit=$?]"
+   ```
+
+   - `couldn't find remote ref` 면 원격 기록이 없다. 2 의 `rev-list` 를 건너뛴다.
+     - 3 에서 원격 목록은 빈 파일로 둔다. `<TRACKING>` 을 읽지 않는다.
+     - 이유: 예전 받기로 남은 `<TRACKING>` 이 있으면 목록이 적게 보인다.
+   - 다른 이유로 실패하면 멈추고 보고한다. 낡은 사본으로 2 · 3 을 판정하지 않는다.
+
+2. 이 PC 의 기록 ref 가 있는지 먼저 본다.
+
+   ```bash
+   git rev-parse --verify -q "<NOTES>"; echo "[exit=$?]"
+   ```
+
+   - 종료코드가 `0` 이 아니면 이 PC 의 기록이 없다. 묻지 않고 끝낸다.
+
+   다음으로 이 PC 의 기록이 원격 기록을 포함하는지 본다(fast-forward 가능 여부).
+
+   ```bash
+   git rev-list --count "<NOTES>..<TRACKING>"; echo "[exit=$?]"
+   ```
+
+   - `0` 이면 fast-forward 로 올라간다. 3 으로 간다.
+   - `0` 보다 크면 원격에만 있는 기록이 있다. 아래 「거절됐을 때」로 합친다.
+     - 합치기는 묻기 전에 한다. 이 PC 의 `<NOTES>` 만 바뀌고 원격은 그대로다.
+     - `-s ours` 라 양쪽 기록이 모두 남는다. 지워지는 기록은 없다.
+     - 합쳤다는 사실을 3 의 질문 근거 줄에 적는다.
+
+3. 올라갈 기록 목록을 보이고 올릴지 묻는다.
+
+   ```bash
+   T="${TMPDIR:-/tmp}"
+   git notes --ref=<NOTES> list > "$T/rp-push-local.raw"; echo "[exit=$?]"
+   git notes --ref=<TRACKING> list > "$T/rp-push-remote.raw"; echo "[exit=$?]"
+   # 1 이 couldn't find remote ref 였으면 위 줄 대신: : > "$T/rp-push-remote.raw"
+   sort "$T/rp-push-local.raw" > "$T/rp-push-local.txt"
+   sort "$T/rp-push-remote.raw" > "$T/rp-push-remote.txt"
+   comm -23 "$T/rp-push-local.txt" "$T/rp-push-remote.txt" > "$T/rp-push-new.txt"; echo "[exit=$?]"
+   while read -r _ c; do git log -1 --format='%h %s' "$c" 2>/dev/null || echo "$c"; done < "$T/rp-push-new.txt"
+   ```
+
+   - 원격에 없거나 내용이 다른 기록이 커밋마다 한 줄로 나온다.
+   - 원격 기록이 없으면(1 의 갈래) 원격 목록은 빈 파일이다. 이 PC 의 기록이 모두 나온다.
+   - 목록이 비면 올릴 것이 없다. 묻지 않고 끝낸다.
+   - 목록이 있으면 아래 질문을 낸다. 목록을 질문 앞 응답 본문에 보인다.
+
+   ```text
+   header: 리뷰기록 공유
+   리뷰 기록 <N>건(위 목록)을 원격(<REMOTE>)에 올려 다른 PC·팀원도 보게 할까요? 커밋은 바뀌지 않습니다. (git push <REMOTE> <NOTES>)
+   근거: project.git.push = <값> · 이번 기록 pass <a>건 · fail <b>건 · 다른 실행이 남긴 기록 <c>건[ · 합침: 원격에만 있던 기록을 이 PC 기록에 합쳤다(-s ours · 양쪽 기록 유지 · 원격은 그대로)]
+   ```
+
+   - `<N>` 은 `rp-push-new.txt` 의 줄 수다.
+   - `<a>` · `<b>` 는 이번 실행이 `note` 로 남긴 pass · fail 수다.
+     - save 에서 들어오면 save Step 3 의 `note` 하나만 센다. 종료 0 이고 기록했으면 pass 1, 아니면 0 이다. fail 은 0 이다.
+   - `<c>` = `<N>` − (이번 실행이 `note` 한 sha 가운데 목록에 있는 수)
+   - `[ … ]` 는 2 에서 합쳤을 때만 붙인다.
+
+   | 관찰 | 권장 |
+   | - | - |
+   | `project.git.push` 가 `'never'` | **올리지 않음** — 권장 이유: 레포 규칙이 push 를 금한다 |
+   | 그 밖 | 권장 없음 — 리뷰 기록은 팀이 같이 보는 ref 라 올릴 시점은 사용자가 정한다. 직접 골라 주세요 |
+
+   - 선택지 — 바뀌는 것
+     - **올림** — 원격 `<NOTES>` 에 목록의 기록이 더해진다. 다른 PC 의 다음 실행에서 그 커밋이 빠진다.
+     - **올리지 않음** — 기록은 이 PC 에만 있다. 잃는 것은 없다. 나중에 이 절차로 올린다.
+
+4. 올린다.
+
+   ```bash
+   git push <REMOTE> "<NOTES>"; echo "[exit=$?]"
+   ```
+
+   - non-fast-forward 로 거절되면 아래 「거절됐을 때」로 간다.
+   - 서버가 받지 않으면 아래 「서버가 받지 않을 때」로 간다.
+
+5. 원격 값과 이 PC 의 값을 대조한다.
+
+   ```bash
+   git ls-remote <REMOTE> "<NOTES>"; echo "[exit=$?]"
+   git rev-parse "<NOTES>"; echo "[exit=$?]"
+   ```
+
+   - 두 sha 가 같으면 올리기가 끝났다.
+   - 다르면 멈추고 두 값을 보고한다.
+
 ### 거절됐을 때 — non-fast-forward (`rejected … fetch first` · `non-fast-forward`)
 
 원격에 이 PC 가 아직 합치지 않은 기록이 있다는 뜻이다. 받아 둔 기록을 합친 뒤 **한 번만** 다시 올린다.
+「올리기 절차」 2 에서 원격에만 있는 기록을 찾았을 때도 이 절차를 쓴다.
+절차 2 에서 들어온 합치기는 재시도로 세지 않는다. push 거절 뒤 재시도는 1회다.
 
 1. Step 2 의 받기를 다시 돌린다. 그 사이 원격이 또 바뀌었을 수 있다.
 2. 양쪽에 다 있고 내용이 다른 커밋을 응답 본문에 보인다. 합치면 이 PC 쪽이 남는다.
@@ -429,12 +510,13 @@ git push <REMOTE> "<NOTES>"; echo "[exit=$?]"
 
    두 파일에서 둘째 칸(커밋 sha)이 같고 첫째 칸(기록 blob)이 다른 줄이 그 커밋이다.
 
-3. 합치고 다시 올린다.
+3. 합친다.
 
    ```bash
    git notes --ref=<NOTES> merge -s ours "<TRACKING>"; echo "[exit=$?]"
-   git push <REMOTE> "<NOTES>"; echo "[exit=$?]"
    ```
+
+4. 「올리기 절차」 3 부터 다시 한다(목록 → 묻기 → 올리기 → 대조).
 
 - 전략은 **`ours`(이 PC 우선)** 다.
   - 이 PC 의 기록은 방금 리뷰한 결과다.

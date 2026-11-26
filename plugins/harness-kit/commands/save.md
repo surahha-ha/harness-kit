@@ -10,7 +10,7 @@ description: 테스트 → 커밋 → 푸시. 테스트 명령·보호 브랜치
 이 커맨드는 프로젝트 고유값을 본문에 갖지 않는다. 레포 루트 `harness.config.mjs` 의 `project` 블록에서 읽는다(슬롯 정의는 harness-kit README 「프로젝트 프로필」).
 
 - 읽는 순서: 현재 레포 config → `project.pairOwner` 가 가리키는 주 레포 config. 짝 공통값(`layout`·`contract`·`git`)은 주 레포에만 있다.
-- 이 커맨드가 읽는 슬롯: `layout` · `sides.*.root` · `sides.*.marker` · `commands.*.testAll` · `commands.be.compile` · `repos.peers` · `contract.beGlobs` · `risk.sharedDbSuites` · `git.protectedBranches` · `git.commitFormat` · `git.commitExecution` · `git.push` · `git.coAuthor` · `git.reviewThreshold` · `review.notesRef`
+- 이 커맨드가 읽는 슬롯: `layout` · `sides.*.root` · `sides.*.marker` · `commands.*.testAll` · `commands.be.compile` · `repos.peers` · `contract.beGlobs` · `risk.sharedDbSuites` · `git.protectedBranches` · `git.commitFormat` · `git.commitExecution` · `git.push` · `git.coAuthor` · `git.reviewThreshold` · `review.notesRef` · `review.remote`
 - 단일 레포에서 `project.commands` 가 없으면 harness 최상위 `commands`(`unitTest` 등)를 읽는다.
   - 이유: 같은 값을 두 곳에 적지 않기 위해서다.
 - **값이 없으면 지어내지 않는다.**
@@ -152,7 +152,7 @@ R="<ROOT>"; B="<BRANCH>"
 
   - 종료 0 이면 기록했거나 사후리뷰가 꺼져 있다(`project.review` 가 `null` — stderr 에 그렇게 나온다).
   - 종료 2 면 「리뷰 기록 못 남김(<stderr 첫 줄>)」을 보고에 적고 이어 간다. 커밋은 그대로다.
-  - 기록은 이 PC 에만 있다. 올리기는 `/harness-kit:review-pending` 의 질문으로 한다. 이 커맨드는 notes 를 push 하지 않는다.
+  - 기록은 이 PC 에만 있다. 올리기는 Step 4 「리뷰 기록 올리기」에서 사용자 확인 뒤에 한다.
 
 ### 검출력 게이트 — 새 단위테스트가 실제로 잡는지 확인
 
@@ -161,12 +161,38 @@ R="<ROOT>"; B="<BRANCH>"
 제외: 문서만 · e2e · `risk.sharedDbSuites`(공유 DB 실접속) · 훅 테스트 · 되돌릴 이전 버전이 없는 신규 파일 · 경계표 밖 배선 코드.
 
 1. 그 테스트가 겨냥하는 프로덕션 심볼을 하나 고른다.
-2. `git restore --source=<rev> --worktree -- <파일>` 로 분기·가드·바인딩 하나를 되돌린다.
-   🔴 `git checkout <rev> -- <파일>` 금지 — 인덱스까지 덮어 스테이징된 수정이 사라진다.
-3. 대상 테스트만 좁게 돌린다. 변형 1~3개, 5분 상한.
-4. 원복 후 `git status --porcelain` 과 `git diff HEAD --stat -- <PATHS>` 가 전과 같은지 확인한다.
-5. 변형이 살아남으면(테스트가 그대로 통과하면) 사용자에게 알리고 **묻는다. 막지 않는다.**
-6. 커밋 메시지에 `검출력: 변형 N · 생존 M · 케이스 K` 한 줄과 되돌림 방법을 남긴다.
+2. 변형할 파일을 세션 scratchpad 로 백업한다. 백업의 sha256 과 상태 요약을 적어 둔다.
+
+   ```bash
+   # <scratchpad>=세션 scratchpad(없으면 ${TMPDIR:-/tmp} 아래 새 폴더) · <PATHS…>=커밋 경로 전부
+   # <파일>=레포 루트 기준 상대경로 — 레포 루트에서 돌린다
+   mkdir -p "$(dirname "<scratchpad>/mutation-backup/<파일>")"
+   cp "<파일>" "<scratchpad>/mutation-backup/<파일>"; sha256sum "<파일>" "<scratchpad>/mutation-backup/<파일>"
+   git status --porcelain; git diff HEAD --stat -- <PATHS…>
+   ```
+
+   - 백업은 레포 상대경로를 그대로 살린다. 이름이 같은 두 파일을 변형해도 백업이 덮이지 않는다.
+   - `sha256sum` 이 없으면(macOS) `shasum -a 256` 을 쓴다.
+   - Bash 호출 사이에 셸 변수는 남지 않는다. 5 · 6 에도 백업 경로를 그대로 적는다.
+
+3. Edit 도구로 분기·가드·바인딩 하나를 변형한다.
+   - 이전 구현으로 되돌리려면 `git show <rev>:<경로>` 로 읽는다. 그 부분을 Edit 로 붙인다.
+   - `git restore`·`git checkout <rev> -- <파일>` 은 쓰지 않는다. 작업 트리를 덮는 git 쓰기라 git 쓰기를 막는 훅에 걸린다.
+   - 훅이 없어도 Edit · cp 경로가 더 안전하다. 6 의 원복 대조까지 남는다.
+4. 대상 테스트만 좁게 돌린다. 레드면 테스트가 변형을 잡은 것이다. 변형 1~3개, 5분 상한.
+5. 백업으로 원복한다. `cp` 만 쓴다.
+
+   ```bash
+   cp "<scratchpad>/mutation-backup/<파일>" "<파일>"
+   ```
+
+   - Write 로 원복하지 않는다. 줄바꿈 · BOM 이 바뀌어 sha256 대조가 어긋날 수 있다.
+6. 원복을 대조한다.
+   - 2 의 `sha256sum` 을 다시 돌린다. 두 값이 같은지 본다.
+   - `git status --porcelain` · `git diff HEAD --stat -- <PATHS…>` 가 2 의 값과 같은지 본다.
+   - 하나라도 어긋나면 멈추고 보고한다. 커밋으로 가지 않는다.
+7. 변형이 살아남으면(테스트가 그대로 통과하면) 사용자에게 알리고 **묻는다. 막지 않는다.**
+8. 커밋 메시지에 `검출력: 변형 N · 생존 M · 케이스 K` 한 줄과 되돌림 방법을 남긴다.
 
 왜 막지 않고 묻는가 — 이 게이트의 기준은 「deny 는 되돌릴 수 없거나 오탐이 없는 영역에만」이다. 변형은 원복이 트리비얼하고, 오탐이 알려져 있다(신규 파일·변형 위치 오선정·배선 코드·flaky/외부자원 의존). 막으면 그 경우에 정상 커밋이 멈춘다.
 
@@ -244,6 +270,21 @@ R="<ROOT>"; B="<BRANCH>"
 
 - `<BRANCH>` 가 `git.protectedBranches` 에 있으면 실행하지 않는다(Step 1 에서 이미 멈췄어야 한다).
 - `--force` 류는 이 커맨드가 쓰지 않는다. 필요하면 사용자가 직접 친다.
+
+### 리뷰 기록 올리기
+
+브랜치 push 는 리뷰 기록(git notes `refs/notes/<review.notesRef>`)을 싣지 않는다. 브랜치 push 뒤에 따로 올린다.
+
+- 다음이면 이 단계는 없다.
+  - 사후리뷰가 꺼져 있다(`project.review` 또는 `review.notesRef` 가 `null`).
+  - `review.remote` 가 `null` 이다.
+  - `git.push` 가 `'never'` 다. 사용자가 할 절차 위치만 알린다.
+- 그 밖이면 `/harness-kit:review-pending` Step 7 「올리기 절차」를 따른다(`${CLAUDE_PLUGIN_ROOT}/commands/review-pending.md`).
+  - config 읽기와 올리기 절차의 모든 명령은 `<R>`(Step 4 의 `R`)에서 돌린다. `(cd "$R" && …)` 또는 `git -C "$R" …` 로 쓴다.
+    - 이유: 그 절차의 명령은 지금 디렉토리 기준이다. paired 레이아웃에서 지금 디렉토리가 `<R>` 가 아니면 다른 레포의 config · notes 를 다룬다.
+  - `<REMOTE>` · `<NOTES>` · `<TRACKING>` 은 review-pending Step 0 · 1 의 `config` 명령을 돌려 읽는다.
+  - 올라갈 기록이 없으면 그 절차는 묻지 않고 끝난다.
+  - 올라갈 기록이 있으면 목록을 보이고 사용자 확인 뒤에만 올린다. `git.push` 가 `'auto'` 여도 묻는다.
 
 ## 규칙
 

@@ -3,6 +3,23 @@
 매니페스트에 `version` 필드를 두지 않는다. 판은 main 커밋 SHA 로 갈린다. 절은 병합 단위로 적는다.
 (0.1.0 까지는 `plugin.json` 과 `marketplace.json` 의 명시 버전을 함께 올렸다.)
 
+## 미발행 — save 검출력 게이트를 git restore 없이 · 리뷰 기록 올리기 절차 한 곳
+
+- 근거: 프로젝트 오버레이 플러그인에 먼저 넣은 같은 수정을 범용으로 옮긴다
+- save 「검출력 게이트」: 변형과 원복에 git 쓰기를 쓰지 않는다
+  - 순서: scratchpad 백업 + sha256 → Edit 로 변형 → 좁은 레드 실행 → `cp` 로 원복 → sha256 · 상태 대조
+  - 전에는 `git restore --source=<rev> --worktree` 로 변형했다. git 쓰기를 막는 훅에 걸렸다
+  - 대조가 어긋나면 멈추고 보고한다. 커밋으로 가지 않는다
+- review-pending Step 7 에 「올리기 절차」를 둔다. 리뷰 기록 올리기의 SSOT 다
+  - 판정 순서: 받아 둔 기록 ref 로 받기 → 이 PC 의 ref 확인(`rev-parse --verify -q`) → fast-forward 판정(`rev-list --count`)
+  - 올리기 순서: 올라갈 목록을 보이고 묻기 → push → `ls-remote` · `rev-parse` 대조
+  - notes ref 는 모든 워크트리가 같이 쓴다. 다른 세션의 기록도 함께 올라가므로 목록을 먼저 보인다
+  - 「거절됐을 때」는 합친 뒤 절차 3 부터 다시 한다. 전에는 합친 뒤 바로 push 했다
+- save Step 4 에 「리뷰 기록 올리기」를 둔다. 브랜치 push 뒤 위 절차를 따른다
+  - 전에는 save 가 notes 를 올리지 않았다. 올리기는 review-pending 질문으로만 했다
+  - `git.push` 가 `'never'` 이거나 `review.remote` 가 `null` 이면 이 단계는 없다. `'auto'` 여도 목록을 보이고 묻는다
+  - save 가 읽는 슬롯에 `review.remote` 를 더한다(README · harness-install DECISIONS 의 소비자 칸)
+
 ## 미발행 — e2e 실행 전 대상 환경 갈래
 
 - change-verifier · unit-test-engineer 의 e2e·headed 실행 규칙을 대상 환경으로 가른다. mock·로컬이면 한 줄로 알리고 돌린다. 공유 환경이면 사용자가 요구할 때만 승인받고 돌린다. 설정으로 로컬임을 확인하지 못했으면 공유 환경으로 본다(근거: 사용자 전역 규칙 2026-11-26)
